@@ -29,18 +29,16 @@ export TRASEQ_BASE_URL="https://api.traseq.com"
 
 ## Install
 
-Inside the monorepo:
+```sh
+npm install @traseq/agent
+traseq-agent check-env
+```
+
+Inside the monorepo (development):
 
 ```sh
 pnpm --dir packages/agent build
 node packages/agent/dist/cli.js check-env
-```
-
-After publishing or installing the package:
-
-```sh
-npm install @traseq/agent
-traseq-agent check-env
 ```
 
 ## SDK
@@ -93,7 +91,7 @@ Run the stdio MCP server:
 traseq-agent-mcp
 ```
 
-Example MCP server configuration:
+Example MCP server configuration for **Claude Desktop** (`claude_desktop_config.json`) or **Claude Code** (`~/.claude/settings.json`):
 
 ```json
 {
@@ -166,6 +164,11 @@ Traseq app.
 pnpm --dir packages/sdk test
 pnpm --dir packages/agent test
 ```
+
+## See Also
+
+- [Root README](../../README.md) — architecture overview, getting started, and full usage examples
+- [`@traseq/sdk`](../sdk/) — low-level API client and types (included as a dependency)
 
 ## License
 

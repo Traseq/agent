@@ -1,9 +1,4 @@
-import type {
-  JsonObject,
-  StrategyDraft,
-  StrategySettings,
-  Timeframe,
-} from './types.js';
+import type { StrategyDraft, StrategySettings, Timeframe } from './types.js';
 
 const TIMEFRAMES: Timeframe[] = ['15m', '1h', '4h', '1d'];
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -1813,6 +1808,18 @@ function resolveNestedObjectPath(
   for (const segment of segments) {
     currentPath = `${currentPath}.${segment}`;
 
+    if (
+      segment === '__proto__' ||
+      segment === 'constructor' ||
+      segment === 'prototype'
+    ) {
+      return {
+        exists: false,
+        path: currentPath,
+        value: undefined,
+      };
+    }
+
     if (!isPlainObject(currentValue)) {
       return {
         exists: false,
@@ -1829,7 +1836,7 @@ function resolveNestedObjectPath(
       };
     }
 
-    currentValue = currentValue[segment];
+    currentValue = (currentValue as Record<string, unknown>)[segment];
   }
 
   return {

@@ -111,6 +111,11 @@ try {
 }
 ```
 
+## See Also
+
+- [Root README](../../README.md) — architecture overview, getting started, and usage examples
+- [`@traseq/agent`](../agent/) — MCP server, CLI, strategy templates, scoring, and research workflows built on this SDK
+
 ## License
 
 MIT
