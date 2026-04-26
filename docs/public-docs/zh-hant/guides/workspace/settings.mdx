@@ -1,0 +1,66 @@
+---
+title: 工作空間設定
+description: 管理 workspace 基本資料，以及會預先帶入新回測的 backtest defaults。
+---
+工作空間設定分成兩個層次：
+
+- **General**: 工作空間本身的資料
+- **Backtest Defaults**: 新回測會預先帶入的研究預設
+
+## General
+
+### 名稱
+
+修改工作空間顯示名稱。
+
+### 描述
+
+新增或編輯簡短描述。
+
+### Logo
+
+上傳 PNG、JPG 等常見格式的 logo。
+
+這一區從 **Settings** -> **General** 進入。
+
+## Backtest Defaults
+
+Backtest Defaults 是工作空間共用的研究基準，會預先帶入：
+
+- 預設 timeframe
+- 預設日期區間
+- 初始資金
+- 預設交易對
+- execution 預設
+
+### execution 預設包含什麼
+
+execution shell 採研究導向設計，包含：
+
+- **Execution Defaults**: 這個工作空間儲存的 execution 基線
+- **Execution Summary**: 顯示 fill 假設、fees 與 slippage 的唯讀摘要
+- **Trading Fees**: maker / taker 摘要與進階 tier schedule
+- **Slippage**: `None`、`Fixed`、`Volatility Scaled`
+- **Expert Settings**: routing、進階 fee schedule 與 volatility cap
+
+這一頁只會編輯工作空間已儲存的 execution model。新工作空間一開始會是
+`0% / 0%` maker/taker 與 `None` 滑價，直到你手動修改。
+
+系統會把 fill model 保留在內部，不讓使用者直接編輯。固定的 bar-based
+成交假設會寫進 backtest manifest，方便之後追溯。
+
+### 從哪裡編輯 backtest defaults
+
+進入 **Settings** -> **Backtest Defaults**。
+
+這一頁的目的是維護會預先帶入新回測的 workspace baseline，而不是把所有
+execution 細節都塞進主畫面。
+
+## 權限
+
+修改這兩個區塊都需要 **Owner** 或 **Admin** 權限。
+
+## 下一步
+
+- [工作空間總覽](/zh-hant/guides/workspace/overview)
+- [成員角色與權限](/zh-hant/guides/workspace/roles-permissions)

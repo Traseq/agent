@@ -1,0 +1,79 @@
+---
+title: API 總覽
+description: Traseq management APIs 與 Public Agent API 的入口說明。
+---
+
+Traseq 目前有兩個主要 API 面向。
+
+## 1. Management APIs
+
+這一層 API 使用 JWT 驗證，主要給已登入的工作空間使用者操作。
+
+適合用於：
+
+- 建立與撤銷 API keys
+- 管理成員與邀請
+- 工作空間層級的管理操作
+
+驗證範例：
+
+```http
+Authorization: Bearer <supabase_jwt>
+```
+
+## 2. Public Agent API
+
+這一層是提供給外部整合與 AI agents 的工作空間範圍 API。所有方案都可以建立
+API key；Free 與 Plus 仍會受到較低的 key quota、research credits 與 workspace
+limits 控制。
+
+Base path：
+
+```text
+/public/v1
+```
+
+適合用於：
+
+- 讀取 workspace context
+- 在產生 payload 前讀取 authoring capabilities
+- 讀取 system strategies
+- 驗證 canonical 策略 payload
+- 建立策略草稿
+- 定案版本
+- 建立與輪詢回測
+
+目前的 canonical 策略 contract 是 `StrategyAstV1`，也就是
+`protocol: "traseq.strategy"`、`version: 1`。Agent 也可以傳送
+`SignalGraphV2`（`protocol: "traseq.signal-graph"`、`version: 2`）作為更高階的
+authoring graph；後端會先把它編譯成 canonical `strategyAst` 再驗證與持久化。
+`entryTokens` / `exitTokens` 仍可能出現在回應中，但應視為 editor /
+derived representation，而不是長期 source of truth。策略寫入 API 現在要求
+`strategyAst` 或 `signalGraph` 至少一者。若 editor 仍以 token authoring，應先透過
+`POST /workspaces/:workspaceId/backtests/validate-strategy` 編譯成 canonical
+payload，AI agent 若採用 `signalGraph` authoring 則可使用
+`POST /workspaces/:workspaceId/backtests/validate-signal-graph`。
+
+建議驗證方式：
+
+```http
+x-api-key: trsq_live_<keyId>_<secret>
+```
+
+## OpenAPI 真實來源
+
+站內的生成式端點文件應來自 backend Swagger 匯出的
+`openapi/traseq-public-agent.json`，並由 CI 驗證同步狀態。
+
+## 給 agents 的建議順序
+
+1. 使用 API key 驗證。
+2. 先呼叫 `GET /public/v1` 取得高階 contract。
+3. 再呼叫 `GET /public/v1/workspace` 確認 role、scopes 與 tier。
+4. 在 write 或 backtest workflow 前呼叫 `GET /public/v1/usage`，檢查目前 budget 與 hard limits。
+5. 在組 payload 前先呼叫 `GET /public/v1/capabilities`，讓 agent 使用受支援的 indicators、node inputs、bindings、operators、params 與 tier limits。
+6. 先把 editor token flow 編譯成 `strategyAst`，或直接送 `signalGraph`，再以 canonical payload 驗證與寫入。
+7. 讀回測結果時，先看 `result.summaryJson.strategyTrace` 與
+   `result.summaryJson.ruleStatsSummary`，需要完整鑽取時再抓 artifact。
+
+若你要完整接第三方 agent workflow，可參考 [AI Agent 整合指南](./ai-agent-integration)。

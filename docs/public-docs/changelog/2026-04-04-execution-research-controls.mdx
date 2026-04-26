@@ -1,0 +1,60 @@
+---
+title: "2026-04-04: Research-first advanced settings and execution defaults"
+description: Guided execution presets, simplified slippage controls, and workspace-level backtest defaults.
+---
+This update makes it easier to configure backtest execution settings and
+introduces workspace-level defaults so your team can start research from a
+consistent baseline.
+
+## What changed
+
+### Guided advanced settings
+
+The QuickRun panel now organizes execution controls into clear groups:
+
+- **Execution Preset** — pick a starting point
+- **Costs & Friction** — fees and slippage
+- **Portfolio Guardrails** — risk limits
+- **Expert Settings** — fine-grained control for advanced users
+
+This makes it easy to launch a backtest quickly while keeping detailed options
+accessible when you need them.
+
+### Execution presets
+
+Three presets are now available when configuring a backtest:
+
+| Preset | What it does |
+| --- | --- |
+| **Workspace** | Uses your saved workspace defaults. New workspaces start with zero friction. |
+| **Market Baseline** | Applies realistic crypto spot assumptions: taker routing, `6 bps / 10 bps` fees, and `ATR x0.25` slippage (capped to `2–20 bps`). |
+| **Stress Test** | Same fee structure with harsher slippage: `ATR x0.40` (capped to `4–30 bps`). |
+
+### Simplified slippage controls
+
+You now configure slippage using three straightforward options:
+
+- **None** — no slippage applied
+- **Fixed** — a constant amount in basis points or ticks
+- **Volatility Scaled** — scales with market volatility using ATR
+
+Fill logic (how simulated orders execute) is handled automatically by Traseq
+and stays consistent across all backtests.
+
+### Workspace backtest defaults
+
+Workspace settings now include a dedicated **Backtest Defaults** section that
+prefills every new backtest with your preferred symbol, timeframe, date range,
+balance, fees, and slippage. This keeps your team aligned without needing to
+reconfigure each run manually.
+
+### Terminology update
+
+"Impact" has been renamed to **Slippage** throughout the product for clarity
+and consistency.
+
+## Why this matters
+
+These changes make it simpler to get started with realistic execution
+assumptions. Most researchers can pick a preset and go, while advanced users
+still have full control over every parameter.

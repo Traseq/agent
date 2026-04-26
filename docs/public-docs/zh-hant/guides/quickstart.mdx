@@ -1,0 +1,92 @@
+---
+title: 快速開始
+description: 在大約五分鐘內完成第一個策略建立與第一次回測。
+---
+本指南帶你在大約五分鐘內完成第一個策略建立與回測。
+
+## 在 App 中繼續
+
+- [免費開始，照著這份 quickstart 實作][quickstart-start-free-zh]
+
+## 前置準備
+
+- 已註冊 Traseq 帳號並登入
+- 已進入你的工作空間
+
+## 步驟一：建立新策略
+
+1. 從左側導覽列點選 **Strategies**
+2. 點選右上角的 **New Strategy**
+3. 輸入策略名稱，例如 `RSI 超賣反彈`
+
+> Note: 為策略取一個清楚的名稱，方便日後追蹤版本與回測歷史。
+
+## 步驟二：從積木庫選擇積木
+
+1. 使用左側的 **積木庫** 面板
+2. 依分類瀏覽系統積木
+3. 加入一個積木到 Canvas，例如 `RSI Oversold`
+
+## 步驟三：合併積木
+
+1. 再加入第二個積木，例如 `EMA Bullish Cross`
+2. 將其中一個積木拖曳靠近另一個
+3. 出現合併提示後放開
+
+合併後會形成條件群組，代表所有條件都要同時成立。
+
+## 步驟四：拖放到進場區
+
+1. 在 Canvas 下方找到 **Entry** 與 **Exit**
+2. 把條件群組拖進 **Entry**
+3. 這會定義策略開倉條件
+
+## 步驟五：設定進場動作
+
+1. 點選 Entry 區域的 **進場動作**
+2. 設定：
+   - **方向**
+   - **倉位大小**
+3. 完成後關閉面板
+
+## 步驟六：定案策略
+
+1. 確認策略邏輯正確
+2. 點選右上角 **Finalize**
+3. 版本會從 Draft 變成 Ready，並鎖定供回測使用
+
+> Warning: 定案後這個版本不能直接編輯。如需修改，請建立新版本。
+
+## 步驟七：執行回測
+
+定案後，**QuickRun** 面板會自動打開。
+
+1. 選擇回測區間
+2. 選擇時間框架，例如 `15m`、`1h`、`4h`、`1d`
+3. 確認初始資金，預設為 `$10,000 USD`
+4. 點選 **Run Backtest**
+
+> 注意：目前主流程支援的現貨 USDT 交易對以 `BTCUSDT`、`ETHUSDT`、
+> `SOLUSDT` 等核心標的為主。所有方案都可使用目前支援的 timeframe，
+> 差別主要在單次回測可掃描的 bars 上限。
+
+## 步驟八：查看結果
+
+回測完成後，結果頁會包含以下分頁：
+
+| 分頁 | 內容 |
+| --- | --- |
+| **Summary** | 報酬、最大回撤、交易數等關鍵指標 |
+| **Rules** | 本次回測使用的策略規則 |
+| **Trades** | 每一筆交易的明細 |
+| **Analytics** | 損益分佈與月度表現等分析圖表 |
+| **Charts** | 價格 K 線、權益曲線與回撤 |
+
+## 下一步
+
+- [核心概念](/zh-hant/guides/core-concepts)
+- [介面總覽](/zh-hant/guides/interface-overview)
+- [解讀回測結果](/zh-hant/guides/tutorials/read-backtest-results)
+- [比較多個回測](/zh-hant/guides/tutorials/compare-backtests)
+
+[quickstart-start-free-zh]: https://app.traseq.com/login?redirectTo=%2Fhome&entry_surface=docs&entry_source=docs_quickstart_primary_cta&content_id=guides_quickstart&content_type=docs_page&cta_id=quickstart_start_free&source_page_path=%2Fzh-hant%2Fguides%2Fquickstart

@@ -1,0 +1,154 @@
+---
+title: Run Your First Backtest
+description: Configure the QuickRun panel and launch a backtest for a finalized strategy.
+---
+
+Once your strategy is finalized, you're ready to run a backtest. This tutorial
+walks through every setting in the QuickRun panel.
+
+## Try it now
+
+- [Start free and follow along in Traseq][first-backtest-start-free]
+
+## Open the QuickRun panel
+
+The QuickRun panel opens automatically after you finalize a strategy. You can
+also open it anytime from the strategy detail page.
+
+## Configure backtest parameters
+
+### Select the strategy version
+
+Make sure the selected version is the one you want to test (it should show
+Ready status).
+
+### Select a trading pair
+
+Choose from the currently supported pairs:
+
+| Trading Pair | Description     |
+| ------------ | --------------- |
+| **BTCUSDT**  | Bitcoin / USDT  |
+| **ETHUSDT**  | Ethereum / USDT |
+| **SOLUSDT**  | Solana / USDT   |
+
+### Set the timeframe
+
+| Timeframe | Best for                              |
+| --------- | ------------------------------------- |
+| **1d**    | Medium and long-term trend strategies |
+| **4h**    | Swing trading                         |
+| **1h**    | Intraday to short swing               |
+| **15m**   | Short-term strategies                 |
+
+All timeframes are available on every plan. All current plans can also select
+full available history; monthly research credits control total usage.
+
+### Set the backtest period
+
+Pick a preset or enter a custom date range:
+
+`1M` · `3M` · `6M` · `1Y` · `2Y` · `YTD` · Custom
+
+All current plans can select full available history. Monthly research credits
+control how much total backtesting you can run in a billing cycle:
+
+| Plan    | Backtest depth         | Monthly research credits |
+| ------- | ---------------------- | ------------------------ |
+| Free    | Full available history | 10                       |
+| Plus    | Full available history | 120                      |
+| Pro     | Full available history | 400                      |
+| Team    | Full available history | 1,500                    |
+
+### Set the initial capital
+
+The default is `$10,000 USD`. You can set any amount from `$100` to
+`$1,000,000,000`.
+
+### Choose an execution preset
+
+Open **Advanced** to pick an execution preset — this is the easiest way to
+set realistic trading conditions:
+
+| Preset              | What it does                                                                                                      |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **Workspace**       | Uses your saved workspace defaults. New workspaces start at zero fees and no slippage.                            |
+| **Market Baseline** | Realistic crypto spot scenario: `6 bps` maker / `10 bps` taker fees, `ATR x0.25` slippage (capped to `2–20 bps`). |
+| **Stress Test**     | Same fees, but with harsher slippage: `ATR x0.40` (capped to `4–30 bps`).                                         |
+
+New backtests default to your **Workspace** preset. You can update your
+workspace defaults anytime in **Settings > Backtest Defaults**.
+
+### Fill assumptions
+
+Traseq handles order execution automatically — you don't need to configure
+fill logic. Here's how it works:
+
+- Signal entries and exits fill at the **next bar open**.
+- Take-profit orders use a **limit / gap fill**.
+- Stop-loss and trailing-stop orders use a **stop / gap fill**.
+- Fees and slippage are applied **after** the fill price is determined.
+
+### Trading fees
+
+The fee summary comes from your workspace backtest defaults. New workspaces
+start with `0% / 0%` maker/taker — update this in **Settings > Backtest
+Defaults** to match your actual exchange fees.
+
+### Slippage
+
+Three slippage models are available:
+
+- **None** — no slippage applied
+- **Fixed** — a constant amount in `bps` (or `ticks` for symbols with
+  tick-size metadata)
+- **Volatility Scaled** — dynamically scales with `ATR %` or `Bar Range %`
+
+> Note: Slippage only affects market-style fills. Limit fills always execute
+> at the resolved limit or gap price.
+
+### Expert settings
+
+For fine-grained control, expand **Expert Settings**:
+
+- order routing for entry, exit, and risk orders
+- tiered maker / taker fee schedules
+- ATR period and min / max caps for volatility-scaled slippage
+- portfolio guardrails like max drawdown or max daily loss
+
+## Run the backtest
+
+Once you've confirmed your settings, click **Run Backtest**. Traseq will:
+
+1. Validate your strategy rules.
+2. Queue the backtest.
+3. Show a real-time progress bar.
+
+## Credit cost
+
+Before running, the panel shows the estimated credit cost and number of bars
+to scan.
+
+```text
+Estimated research credits ≈ bars scanned / 100,000
+```
+
+Small runs still use the `0.1` research credit minimum, so very short scans
+will usually show `0.1` credits before you run.
+
+## When the backtest finishes
+
+Traseq takes you to the results page automatically. If the backtest fails,
+common reasons include:
+
+- not enough research credits remaining
+- insufficient market data for the selected period
+- strategy conditions were never triggered (no trades)
+
+## Next steps
+
+- [Reading Backtest Results](/guides/tutorials/read-backtest-results)
+- [Comparing Multiple Backtests](/guides/tutorials/compare-backtests)
+- [System Templates](/guides/tutorials/system-templates)
+
+[first-backtest-start-free]: https://app.traseq.com/login?redirectTo=%2Fhome&entry_surface=docs&entry_source=docs_first_backtest_primary_cta&content_id=guides_tutorials_first_backtest&content_type=docs_page&cta_id=first_backtest_start_free&source_page_path=%2Fguides%2Ftutorials%2Ffirst-backtest

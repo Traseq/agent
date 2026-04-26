@@ -1,0 +1,97 @@
+---
+title: "如何在 Traseq 完成第一個可重現回測流程"
+description: "第一次回測不只是按下 Run Backtest。這篇文章帶你用 Traseq 建立第一個可重現研究基線：定案策略、設定 QuickRun、理解 execution 假設，並保留之後可比較的上下文。"
+keywords: ["Traseq 回測", "Traseq 教學", "可重現回測", "crypto spot research"]
+contentId: "learn_content_factory_acceptance_20260420"
+generatedBy: "content-factory"
+---
+
+如果你要在 Traseq 跑第一次回測，最重要的目標不是立刻找到最佳績效，而是先建立一個之後可以重做、比較、修正的研究基線。一個常見的流程是：建立策略、至少放入一個進場條件、定案成 Ready 版本、打開 QuickRun、選擇交易對與 timeframe、執行第一次回測，再用結果頁確認這次測的到底是不是你想驗證的假設。
+
+Traseq 是加密現貨策略研究與回測工具，不是交易執行平台。第一次回測的重點在於建立可重現的研究流程，這有助於後續比較與修正，但不保證任何結果。
+
+## 先確認這次回測要驗證什麼
+
+第一次回測最常見的錯誤，是把太多變數一起改掉。比較好的做法是先回答一個小問題，例如：
+
+- 這個策略邏輯能不能在 `BTCUSDT` 的 `1h` 週期上順利跑完？
+- 在同一個 timeframe 下，訊號是否真的會觸發交易？
+- 我的 execution baseline 是否合理？
+
+只要問題清楚，第一次回測可以作為後續版本比較的參考點，但不代表一定有研究價值或成果。
+
+## 讓策略進入可回測的 Ready 狀態
+
+在 Traseq 中，Draft 版本可以自由編輯，但真正供回測使用的是 Ready 版本。你至少要先放入一個進場條件，才可以定案。
+
+你可以把最小流程想成這樣：
+
+1. 在 **Strategies** 建立新策略。
+2. 從積木庫加入一到兩個條件積木。
+3. 把條件或條件群組拖進 **Entry**。
+4. 設定進場動作，例如方向與倉位大小。
+5. 點選 **Finalize**，把版本從 Draft 轉成 Ready。
+
+這一步的重點不是 UI 操作本身，而是「鎖定版本」。一旦版本進入 Ready，這次回測就能和那個版本、那組設定、那份資料脈絡綁在一起，之後你才能把新版本與舊版本並排比較。
+
+## 用 QuickRun 跑出第一個基線結果
+
+接下來的重點，是用同一個 Ready 版本進入回測設定流程。第一次驗收建議把設定維持簡單，讓你更容易判斷問題是來自策略邏輯，還是來自回測設定。
+
+建議的第一組設定：
+
+- 交易對：先選一個你熟悉、方便解讀的核心現貨交易對
+- Timeframe：先選一個你容易解讀的週期
+- 區間：選一段明確且可重做的觀察範圍
+- 初始資金：先用一個固定基準值
+
+第一次驗收時，先固定你要觀察的 timeframe 與區間，重點不是一次把所有設定都調完，而是前後使用同一組研究設定，讓結果能被重做與比較。
+
+如果你想讓第一次結果更容易解讀，先不要同時改太多 execution 參數。先保留你現在的基線設定，或在你確定需要時再切換到更明確的 baseline。
+
+## 回測結果先看哪三個地方
+
+第一次回測完成後，不要只看一個報酬數字。先看下面三件事：
+
+### 1. Summary
+
+確認這次回測是否真的產生了你預期的基本結果，例如交易次數、最大回撤、整體報酬有沒有落在合理範圍。這一步的目的不是下判斷，而是先檢查流程是否正常。
+
+### 2. Rules
+
+確認結果頁顯示的規則，真的是你剛剛定案的 Ready 版本。這會幫你避免把 Draft 中尚未鎖定的想法，誤當成已驗證的規則。
+
+### 3. Trades 與 Analytics
+
+當你看到結果異常時，先去看 Trades 與 Analytics。很多時候問題不是策略完全無效，而是：
+
+- 訊號幾乎沒有觸發
+- 選的 timeframe 太噪音
+- 選的區間不適合當前假設
+- 你以為的 execution 假設，和實際使用的 baseline 不一致
+
+## 下一輪迭代怎麼保持可比較
+
+Traseq 的回測是 bar-based research simulation。條件在 bar close 評估，訊號型進出場在下一根 bar 開盤成交；止盈、止損、手續費與滑價則依固定的 execution 規則處理。這些假設固定下來的價值，是讓你之後做版本迭代時有可比較的上下文。
+
+因此，第一次回測跑完後，下一輪不要直接覆蓋原版本。比較好的節奏是：
+
+1. 保留這次 Ready 版本當作 baseline。
+2. 建立新版本，只改一到兩個變數。
+3. 用相近的 symbol、timeframe 與區間再跑一次。
+4. 再用結果去比較，而不是憑印象決定哪個版本比較好。
+
+這樣可以讓你的研究流程更有結構性與可追蹤性，但不保證任何結果或績效。
+
+## 風險與責任聲明
+
+- 本文僅供教育與研究用途，不構成投資建議。 (`This content is for educational and research purposes only. It does not constitute investment advice.`)
+- 過去績效與回測結果不保證未來報酬。 (`Past performance and backtest results do not guarantee future returns.`)
+- 交易具有風險，你可能損失部分或全部投資。 (`Trading involves risk. You may lose some or all of your investment.`)
+- Traseq 是研究與回測工具，所有交易決策由你自行負責。 (`Traseq is a research and backtesting tool. You are solely responsible for your trading decisions.`)
+
+## Next step
+
+Continue in Traseq and run the workflow yourself.
+
+[Start Free](https://app.traseq.com/login?redirectTo=%2Fhome&entry_surface=docs&entry_source=docs_learn_content_factory_acceptance_20260420_primary_cta&content_id=learn_content_factory_acceptance_20260420&content_type=docs_page&cta_id=traseq_start_free&source_page_path=%2Fzh-hant%2Flearn%2Fcontent-factory-acceptance-20260420)

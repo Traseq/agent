@@ -1,0 +1,41 @@
+import { DOMAIN_CONSTANTS_REFERENCE } from './domain-constants.js';
+import { NODE_KINDS_REFERENCE } from './node-kinds.js';
+import { STRATEGY_COMPOSITION_REFERENCE } from './strategy-composition.js';
+import { INDICATOR_GUIDE_REFERENCE } from './indicator-guide.js';
+import { BACKTEST_CONFIGURATION_REFERENCE } from './backtest-configuration.js';
+import { RESULTS_INTERPRETATION_REFERENCE } from './results-interpretation.js';
+import { ITERATION_PLAYBOOK_REFERENCE } from './iteration-playbook.js';
+
+export {
+  DOMAIN_CONSTANTS_REFERENCE,
+  NODE_KINDS_REFERENCE,
+  STRATEGY_COMPOSITION_REFERENCE,
+  INDICATOR_GUIDE_REFERENCE,
+  BACKTEST_CONFIGURATION_REFERENCE,
+  RESULTS_INTERPRETATION_REFERENCE,
+  ITERATION_PLAYBOOK_REFERENCE,
+};
+
+const ALL_REFERENCES = [
+  DOMAIN_CONSTANTS_REFERENCE,
+  NODE_KINDS_REFERENCE,
+  STRATEGY_COMPOSITION_REFERENCE,
+  INDICATOR_GUIDE_REFERENCE,
+  BACKTEST_CONFIGURATION_REFERENCE,
+  RESULTS_INTERPRETATION_REFERENCE,
+  ITERATION_PLAYBOOK_REFERENCE,
+] as const;
+
+export const references = {
+  domainConstants: DOMAIN_CONSTANTS_REFERENCE,
+  nodeKinds: NODE_KINDS_REFERENCE,
+  strategyComposition: STRATEGY_COMPOSITION_REFERENCE,
+  indicatorGuide: INDICATOR_GUIDE_REFERENCE,
+  backtestConfiguration: BACKTEST_CONFIGURATION_REFERENCE,
+  resultsInterpretation: RESULTS_INTERPRETATION_REFERENCE,
+  iterationPlaybook: ITERATION_PLAYBOOK_REFERENCE,
+
+  asMarkdown(): string {
+    return ALL_REFERENCES.join('\n\n---\n\n');
+  },
+};

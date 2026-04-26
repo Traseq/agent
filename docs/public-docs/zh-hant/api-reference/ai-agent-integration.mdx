@@ -1,0 +1,413 @@
+---
+title: AI Agent 整合指南
+description: 讓第三方開發者使用自己的 AI agent 透過 Traseq Public Agent API 組合策略。
+---
+
+這份指南是給第三方開發者的。目標是讓你可以用自己的 AI agent，透過
+Traseq 的 public API key，完成 `validate -> create -> finalize -> backtest`
+整條策略流程。
+
+## 開始前
+
+Public Agent API 使用的是 workspace API key，不是 wallet private key、交易所
+secret，或其他資產控制私鑰。請先到 Traseq app 的 **Settings > API Keys**
+建立 key，在明文只顯示一次時複製，並存進 secret manager 或 runtime
+environment，例如 `TRASEQ_API_KEY`。
+
+所有方案都可以建立 API key 並執行核心 agent workflow。Free 與 Plus 主要由較低的
+key quota、research credits、strategy limits、saved-result limits 與 workspace
+capacity 控制使用範圍。
+
+不要把 API key 貼進 AI prompt，也不要讓 model 看見 token。agent host 應該在
+model tool input 之外，把 key 注入 `x-api-key` HTTP header。
+
+若 agent 需要建立策略與執行回測，建議建立 `member` key，並只授予必要 scopes：
+
+- `workspace_read`
+- `strategies_read`
+- `strategies_write`
+- `backtests_read`
+- `backtests_write`
+
+只有在 agent 需要讀系統模板時，才額外加入 `system_strategies_read`。
+
+## 建議的 authoring contract
+
+建議使用以下其中一種 payload：
+
+- `signalGraph`
+  最適合 AI authoring。graph 比 AST 更高階，也更容易依 validation
+  feedback 修正。
+- `strategyAst`
+  只在你的 agent 已經能直接產 canonical payload 時使用。
+
+不要把 token lists 當成主要 write contract。它們目前比較像
+editor-oriented provenance / read-time compatibility data。
+
+## 最小 scopes
+
+若你的 agent 需要自行驗證、寫入策略、並執行回測，建議最小 scopes 是：
+
+- `workspace_read`
+- `strategies_read`
+- `strategies_write`
+- `backtests_read`
+- `backtests_write`
+
+常見補充 scopes：
+
+- `system_strategies_read`
+  當 agent 需要從內建模板起手時很有用。
+
+## 建議呼叫順序
+
+1. `GET /public/v1`
+   先讀 manifest，確認目前 API workflow contract。
+2. `GET /public/v1/workspace`
+   讀 workspace identity、API key scopes、subscription tier。
+3. `GET /public/v1/usage`
+   在 write 或 backtest workflow 前檢查目前 budget、usage 與 hard limits。
+4. `GET /public/v1/capabilities`
+   在 authoring 前先拿可用 indicator、node inputs、bindings、operator、tier limits 與 validation
+   issue shape。
+5. `POST /public/v1/strategies/validate`
+   驗證草稿 payload，直到 `valid === true`。
+6. `POST /public/v1/strategies`
+   建立 draft strategy。
+7. `POST /public/v1/strategies/:id/versions/finalize`
+   把版本升成 `ready`。
+8. `POST /public/v1/backtests`
+   建立回測。
+9. `GET /public/v1/backtests/:id`
+   輪詢直到回測進入終態。
+
+## Machine-readable capabilities
+
+外部 agent 應在寫策略前先呼叫 `GET /public/v1/capabilities`。
+
+這個回應會列出：
+
+- 可用的 `indicators`
+- 可用的 `signalGraph.nodes`
+- 可用的 `signalGraph.bindings`
+- 可用的 `operators`
+- 可用 enum sets，例如 `timeframes`、`marketFields`、`patterns`
+- tier-aware 的 `limits`
+- validation issue shape，包括 `code`、`path`、`message`、`suggestion`
+
+外部 agent 應把這個 endpoint 視為 authoring source of truth，而不是靠 prompt
+自己猜 node shape、indicator params 或 operator。
+
+## 結構化 validation issues
+
+`POST /public/v1/strategies/validate` 現在會回傳 machine-readable issues。token、
+AST、graph 驗證問題至少包含：
+
+- `code`
+- `path`
+- `message`
+- `suggestion`
+
+範例：
+
+```json
+{
+  "code": "WARMUP_TOO_SHORT",
+  "path": "strategyAst.Strategy.warmupPeriod",
+  "field": "strategyAst",
+  "severity": "warning",
+  "message": "Warmup setting is shorter than this strategy's inferred lookback.",
+  "suggestion": "Set warmupPeriod to at least 200 for more consistent behavior when prehistory is limited or after gaps."
+}
+```
+
+建議修復 loop：
+
+1. 產生 `signalGraph` 或 `strategyAst`
+2. validate
+3. 依 `severity` 分類問題
+4. 使用 `code`、`path`、`suggestion` 修 payload
+5. 重新 validate，直到 blocking issues 消失
+
+## cURL 範例
+
+```bash
+export TRASEQ_BASE_URL="https://your-traseq.example.com"
+export TRASEQ_API_KEY="trsq_live_<keyId>_<secret>"
+
+curl -s \
+  -H "x-api-key: $TRASEQ_API_KEY" \
+  "$TRASEQ_BASE_URL/public/v1/usage"
+
+curl -s \
+  -H "x-api-key: $TRASEQ_API_KEY" \
+  "$TRASEQ_BASE_URL/public/v1/capabilities"
+
+curl -s \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $TRASEQ_API_KEY" \
+  -X POST "$TRASEQ_BASE_URL/public/v1/strategies/validate" \
+  -d '{
+    "signalGraph": {
+      "protocol": "traseq.signal-graph",
+      "version": 2,
+      "nodes": [
+        {
+          "id": "ema_fast",
+          "kind": "indicator",
+          "indicator": "ema",
+          "args": { "length": 20 }
+        },
+        {
+          "id": "close_price",
+          "kind": "market",
+          "field": "close"
+        },
+        {
+          "id": "cross_up_fast",
+          "kind": "cross",
+          "op": "cross_up",
+          "left": { "ref": "close_price" },
+          "right": { "ref": "ema_fast" }
+        }
+      ],
+      "strategy": {
+        "kind": "strategy",
+        "entry": {
+          "kind": "entry",
+          "trigger": { "ref": "cross_up_fast" },
+          "action": {
+            "side": "long",
+            "sizing": { "mode": "fixed", "value": 1 }
+          }
+        }
+      }
+    },
+    "settings": {
+      "positionStyle": "single",
+      "warmupPeriod": 200
+    }
+  }'
+```
+
+## 可直接複製的資產
+
+repo 內已附上兩個可直接複製的資產：
+
+- `docs/public-docs/reference/traseq-agent-tool-schema.json`
+  適合 tool-enabled agent 的薄工具層 schema。
+- `docs/public-docs/reference/traseq-agent-example.ts`
+  最小可用的 TypeScript client，加上 validate-repair loop helper。
+
+這個 repo 內 agent package 使用 `@traseq/agent`。它是 tool-first package，不需要 AI provider key。
+
+## TypeScript SDK 範例
+
+若你要完整可複製版本，直接使用 `docs/public-docs/reference/traseq-agent-example.ts`。
+核心流程應該長這樣：
+
+```ts
+const client = new TraseqPublicAgentClient(
+  process.env.TRASEQ_BASE_URL!,
+  process.env.TRASEQ_API_KEY!,
+);
+
+const workspace = await client.getWorkspaceContext();
+const usage = await client.getUsage();
+const capabilities = await client.getCapabilities();
+
+const authoringPayload = await validateWithRepairLoop(
+  client,
+  {
+    signalGraph,
+    settings: {
+      positionStyle: 'single',
+      warmupPeriod: 200,
+    },
+  },
+  async (currentPayload, context) => {
+    return repairPayloadWithYourModel({
+      capabilities,
+      currentPayload,
+      issues: context.issues,
+    });
+  },
+);
+
+const draft = await client.createStrategy({
+  name: 'Agent-authored EMA breakout',
+  description: 'Generated by an external AI agent',
+  ...authoringPayload,
+});
+
+const ready = await client.finalizeStrategyVersion(draft.id, {
+  version: draft.versions[0].version,
+  ...authoringPayload,
+});
+
+const backtest = await client.runBacktest({
+  strategyVersionId: ready.id,
+  config: {
+    timeframe: '1h',
+    signalInstrument: { symbol: 'BTCUSDT' },
+    initialBalance: 10000,
+    execution: {
+      feeModel: {
+        kind: 'tiered_maker_taker',
+        tiers: [
+          {
+            minCumulativeNotional: 0,
+            makerRate: 0.001,
+            takerRate: 0.001,
+          },
+        ],
+      },
+      slippage: {
+        kind: 'fixed',
+        unit: 'bps',
+        value: 5,
+      },
+    },
+  },
+});
+```
+
+真正重要的不是 wrapper class 本身，而是 SDK 強制維持這個順序：
+
+1. 讀 workspace、usage 與 capabilities
+2. 產生 `signalGraph`
+3. validate
+4. repair
+5. create
+6. finalize
+7. backtest
+
+## Agent tool schema
+
+建議替 agent 包一層薄的 tool interface，而不是讓 model 自由拼 HTTP。完整
+JSON asset 可直接使用 `docs/public-docs/reference/traseq-agent-tool-schema.json`。
+
+建議工具：
+
+- `get_manifest`
+- `get_workspace_context`
+- `get_usage`
+- `get_capabilities`
+- `validate_strategy`
+- `create_strategy`
+- `finalize_strategy_version`
+- `run_backtest`
+- `get_backtest`
+
+建議的 `validate_strategy` input shape：
+
+```json
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["settings"],
+  "properties": {
+    "signalGraph": {
+      "type": "object",
+      "description": "Preferred AI authoring payload."
+    },
+    "strategyAst": {
+      "type": "object",
+      "description": "Canonical fallback payload."
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "positionStyle": {
+          "type": "string",
+          "enum": ["single", "pyramid", "accumulate"]
+        },
+        "maxConcurrentPositions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "warmupPeriod": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "anyOf": [{ "required": ["signalGraph"] }, { "required": ["strategyAst"] }]
+}
+```
+
+## 建議 system prompt
+
+system prompt 應強制 model 尊重 capability contract 與 validate-repair loop。
+
+```text
+You are an external AI strategy-authoring agent for Traseq.
+
+Before composing any strategy:
+1. Call get_workspace_context.
+2. Call get_usage.
+3. Call get_capabilities.
+4. Use usage and capabilities as the only source of truth for current budget, limits, supported node kinds, bindings, indicators, operators, and enums.
+
+Authoring rules:
+- Prefer signalGraph over strategyAst unless the user explicitly asks for canonical AST.
+- Keep the first payload minimal and valid.
+- Reuse simple, stable node ids such as close_price, ema_fast, entry_trigger.
+- Do not invent unsupported fields, params, or operators.
+- Do not use tokens as the primary write format.
+
+Validation rules:
+- Always call validate_strategy before create_strategy or finalize_strategy_version.
+- Treat issue code, path, message, and suggestion as the repair source of truth.
+- Modify the minimum subtree needed to resolve each blocking issue.
+- Revalidate after every repair pass.
+
+Execution rules:
+- Create drafts before finalizing.
+- Call get_usage again before write-heavy or backtest-heavy workflows if the session is long-lived.
+- Run backtests only after a ready version exists.
+- Summarize backtest outcomes from summaryJson before inspecting large artifacts.
+
+Error handling rules:
+- When an API error includes publicAgent metadata, show its title, explanation, retryable flag, nextSteps, and app links.
+- For usage or plan limits, direct the user to the billing_plan or billing link returned by Traseq.
+- Do not send users to a public marketing pricing page unless Traseq did not provide an app link.
+```
+
+## Repair loop 模板
+
+不要每次都要求 model 重新生成整份策略。建議使用 deterministic repair
+loop。
+
+```text
+Inputs:
+- user_intent
+- current_payload
+- capabilities
+- blocking_issues[]
+
+Task:
+- Return a revised payload only.
+- Preserve unchanged fields.
+- Modify the minimum subtree needed to resolve the listed blocking issues.
+
+Repair policy:
+1. Read each issue.code and issue.path.
+2. If suggestion is present, prefer it over freeform reinterpretation.
+3. Do not rename unrelated node ids.
+4. Do not introduce new node kinds unless capabilities allow them.
+5. Keep strategy settings unless an issue directly points to settings.
+```
+
+## 實務建議
+
+- 第一版 graph 先做小。單一 trigger 加單一 filter 比大而複雜的 graph
+  更容易修。
+- `GET /public/v1/capabilities` 可以依 workspace tier 快取，但 workspace
+  或 subscription 改變時要刷新。
+- 修復策略時，優先根據 `issue.code` 寫 deterministic repair rule，不要每次都
+  讓 model 重新解讀同一段錯誤文案。
+- 第一輪先只處理 blocking issues；等 payload 有效後，再決定要不要處理 warnings。

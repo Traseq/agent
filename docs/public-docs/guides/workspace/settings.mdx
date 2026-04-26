@@ -1,0 +1,59 @@
+---
+title: Workspace Settings
+description: Configure your workspace profile and set default backtest parameters.
+---
+Workspace Settings has two sections: your workspace profile and the default
+parameters for new backtests.
+
+## General
+
+Update your workspace's profile information at **Settings > General**:
+
+- **Name** — the display name for your workspace
+- **Description** — a short description visible to members
+- **Logo** — upload a PNG or JPG image
+
+## Backtest Defaults
+
+Backtest Defaults set a shared baseline that prefills every new backtest in
+your workspace. Instead of configuring the same parameters from scratch each
+time, your team starts from a consistent starting point.
+
+Default settings include:
+
+- trading pair
+- timeframe
+- date range
+- initial balance
+- execution settings (fees and slippage)
+
+### Execution settings
+
+The execution settings section controls the cost assumptions applied to new
+backtests:
+
+- **Trading Fees** — maker and taker fee rates, with optional tiered schedules
+- **Slippage** — choose from `None`, `Fixed`, or `Volatility Scaled`
+- **Expert Settings** — order routing, advanced fee schedules, and volatility
+  slippage caps
+
+New workspaces start with `0% / 0%` maker/taker fees and `None` slippage. You
+can update these at any time to match your actual trading conditions.
+
+> Note: Fill logic (how orders are executed in the simulation) is handled
+> automatically by Traseq and cannot be changed. You only configure the
+> friction layer — fees and slippage.
+
+### Where to find it
+
+Go to **Settings > Backtest Defaults**. You can always override these defaults
+on a per-run basis from the QuickRun panel.
+
+## Permissions
+
+Only **Owner** and **Admin** roles can edit workspace settings.
+
+## Next steps
+
+- [Workspace Overview](/guides/workspace/overview)
+- [Member Roles and Permissions](/guides/workspace/roles-permissions)

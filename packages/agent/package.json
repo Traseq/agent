@@ -1,0 +1,91 @@
+{
+  "name": "@traseq/agent",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Tool-first Traseq agent kit: MCP tools, SDK wrappers, strategy context, scoring, and research briefs.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/traseq/agent.git",
+    "directory": "packages/agent"
+  },
+  "sideEffects": false,
+  "keywords": [
+    "trading",
+    "backtesting",
+    "ai-agent",
+    "agent",
+    "skill",
+    "traseq"
+  ],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "traseq-agent": "./dist/cli.js",
+    "traseq-agent-mcp": "./dist/mcp-cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./skill": {
+      "types": "./dist/skill/index.d.ts",
+      "import": "./dist/skill/index.js"
+    },
+    "./references": {
+      "types": "./dist/references/index.d.ts",
+      "import": "./dist/references/index.js"
+    },
+    "./templates": {
+      "types": "./dist/templates/index.d.ts",
+      "import": "./dist/templates/index.js"
+    },
+    "./tools": {
+      "types": "./dist/tools/index.d.ts",
+      "import": "./dist/tools/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "import": "./dist/mcp/index.js"
+    },
+    "./research": {
+      "types": "./dist/research.d.ts",
+      "import": "./dist/research.js"
+    }
+  },
+  "scripts": {
+    "sync": "node --import tsx scripts/sync-constants.ts",
+    "build:sdk": "pnpm --dir ../sdk build",
+    "build": "pnpm run build:sdk && tsc -p tsconfig.json",
+    "check": "pnpm run build:sdk && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm run build && node --test ./test/*.test.mjs",
+    "demo:context": "node --import tsx src/cli.ts context",
+    "demo:context:skill": "node --import tsx src/cli.ts context --section skill",
+    "demo:templates": "node --import tsx src/cli.ts templates",
+    "demo:references": "node --import tsx src/cli.ts references",
+    "demo:check-env": "node --import tsx src/cli.ts check-env",
+    "demo:score": "node --import tsx src/cli.ts score",
+    "demo:research": "node --import tsx src/cli.ts research --prompt 'Build a simple RSI mean-reversion strategy for BTC' --rounds 1"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@traseq/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.3"
+  }
+}

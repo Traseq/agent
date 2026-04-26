@@ -1,0 +1,129 @@
+---
+title: Core Concepts
+description: The key ideas behind strategies, backtests, and workspaces in Traseq.
+---
+
+These are the building blocks of Traseq. Understanding them will help you get
+the most out of the platform.
+
+## Strategy
+
+A strategy is a set of trading rules that defines when to open and close
+positions. Every strategy in Traseq has four parts:
+
+- **Entry Conditions** — when to open a position
+- **Exit Conditions** — when to close a position
+- **Entry Action** — which side (Long/Short) and how much capital to use
+- **Exit Action** — how the position is closed
+
+## Strategy Version
+
+Each strategy can have multiple versions, making it easy to track changes and
+iterate on your approach.
+
+| State     | Description                                               |
+| --------- | --------------------------------------------------------- |
+| **Draft** | Editable and not yet locked                               |
+| **Ready** | Finalized, locked for backtesting, and no longer editable |
+
+## Finalize
+
+Finalizing locks a strategy version so it can be backtested. You need at least
+one entry condition before you can finalize.
+
+Once finalized:
+
+- The version is locked and can no longer be edited.
+- Backtest results are reproducible — anyone running the same version gets the
+  same outcome.
+- To make changes, create a new version.
+
+## Semantic Block
+
+Blocks are reusable pieces of strategy logic — for example, `RSI below 30` or
+`EMA Golden Cross`. Think of them as building blocks you can mix and match to
+construct strategies.
+
+Why blocks are useful:
+
+- **Modular** — break complex logic into smaller, understandable pieces
+- **Reusable** — use the same block in multiple strategies
+- **Organized** — browse by category: Signals, Trend, Momentum, Volatility,
+  Volume, or Market
+
+There are two types:
+
+- **System blocks** — built-in blocks provided by Traseq
+- **Custom blocks** — blocks your team creates within a workspace
+
+## Backtest
+
+A backtest runs your strategy against historical market data to see how it
+would have performed. You configure:
+
+- trading pair (e.g., BTCUSDT)
+- timeframe (e.g., 1h)
+- date range
+- starting capital
+- trading fees and slippage
+
+### How backtests are executed
+
+Traseq uses a bar-based simulation model with consistent execution rules:
+
+- Conditions are checked at each **bar close**.
+- Signal entries and exits fill at the **next bar open**.
+- Take-profit orders use a **limit / gap fill**.
+- Stop-loss and trailing-stop orders use a **stop / gap fill**.
+- Fees and slippage are applied **after** the fill price is determined.
+
+> Warning: Backtest results reflect past performance and do not guarantee
+> future results.
+
+## Backtest Defaults
+
+Each workspace has its own backtest defaults — a saved set of parameters
+(symbol, timeframe, date range, balance, fees, and slippage) that prefill
+every new backtest.
+
+This way, you don't have to reconfigure the same settings every time you
+launch a run.
+
+## Comparison Set
+
+A comparison set lets you put multiple backtest results side by side. This is
+useful for comparing:
+
+- different versions of the same strategy
+- the same strategy with different parameter settings
+- entirely different strategies against each other
+
+## Workspace
+
+A workspace is where you and your team do research in Traseq. Everything is
+scoped to a workspace:
+
+- strategies and backtests
+- backtest defaults
+- block library
+- team members and permissions
+- subscription plan and usage
+
+## Research Credits and Bars
+
+Traseq uses a workspace-level credit system to manage backtest usage.
+
+- Each plan includes monthly research credits.
+- Credits are consumed based on how many bars the backtest scans — longer
+  periods and shorter timeframes scan more bars and cost more.
+- `1` research credit covers about `100k` bars scanned.
+- Small runs still use a `0.1` research credit minimum.
+- Paid workspaces can purchase additional credits that do not expire.
+- All plans support the available timeframes: `15m`, `1h`, `4h`, and `1d`.
+- All plans can select full available history. Plan differences mainly limit
+  monthly research credits, seats, and workspace capacity.
+
+## Next steps
+
+- [Interface Overview](/guides/interface-overview)
+- [Build Your First Strategy](/guides/tutorials/first-strategy)

@@ -1,0 +1,124 @@
+---
+title: Cookie & Tracking Notice
+description: Shared notice describing cookies, local storage, analytics, and session replay across the Traseq marketing site, documentation, and authenticated product.
+effectiveDate: '2026-04-07'
+lastUpdated: '2026-04-07'
+---
+
+This Cookie & Tracking Notice explains how Traseq uses cookies, browser storage, analytics, and session replay across our public marketing experiences and authenticated product.
+
+Read this notice together with our [Privacy Policy](/legal/privacy-policy).
+
+---
+
+## 1. How to Read This Notice
+
+Traseq has more than one user-facing surface:
+
+- **Public marketing experiences** such as the landing site, pricing pages, feature pages, and documentation entry points
+- **Authenticated product experiences** such as the Traseq App, workspace pages, billing screens, onboarding flows, and account settings
+
+The core privacy rules are shared across these surfaces, but the tracking footprint is not identical. This notice explains the shared baseline and then calls out surface-specific usage.
+
+---
+
+## 2. How Consent Works
+
+- **Strictly necessary technologies** stay enabled because they are required for requested functionality, authentication, security, fraud prevention, or critical product state
+- **Optional analytics and session replay** are disabled by default on surfaces that use them until the user explicitly allows them
+- Users can revisit their choice from available controls, including in-product data settings where supported
+
+If we materially change which optional technologies are active on a surface, we will update this notice and the related user-facing controls.
+
+---
+
+## 3. Shared Baseline Technologies
+
+These technologies may be used across Traseq surfaces where relevant:
+
+| Category | Typical purpose | Examples |
+|---|---|---|
+| Necessary cookies or equivalent state | Authentication, session continuity, security protections, payment return handling | Sign-in sessions, CSRF protection, return-state after checkout |
+| Browser storage | Product preferences and continuity between views | Theme, panel state, workspace selection, pending invitation context |
+| Server and security telemetry | Reliability, abuse prevention, auditability | Request logs, timestamps, device/browser metadata, abuse signals |
+
+These technologies are used to provide the requested service and are not treated as optional analytics.
+
+---
+
+## 4. Public Marketing Site and Documentation
+
+As of **2026-04-07**, Traseq separates its public surfaces into two tracking baselines:
+
+### 4.1 Public marketing site (`traseq.com`)
+
+The public marketing site may use the following technologies:
+
+| Category | Provider or system | Purpose | When active | Notes |
+|---|---|---|---|---|
+| Necessary site state | Traseq application storage | Preserve consent choice, CTA flow continuity, and authentication handoff context | Always, as needed | Includes attribution context needed to continue a user-initiated journey into the app |
+| Optional analytics | Google Analytics 4 | Measure pageviews, acquisition paths, and CTA performance on marketing pages | Only after the user allows optional tracking | Advertising-related settings remain disabled |
+| Optional session replay | Microsoft Clarity | Review click behavior and investigate UX friction on selected public pages | Only after the user allows optional tracking | Intended for marketing UX analysis, not advertising |
+
+When optional tracking is declined on the marketing site, Traseq intends to keep these technologies off and continue serving only essential functionality.
+
+### 4.2 Documentation site (`docs.traseq.com`)
+
+The documentation site may use the following technologies:
+
+| Category | Provider or system | Purpose | When active | Notes |
+|---|---|---|---|---|
+| Necessary site state | Traseq browser storage | Preserve consent choice and support user-initiated navigation into the app | Always, as needed | Includes content context parameters added to outbound docs CTA links |
+| Optional analytics | Google Analytics 4 | Measure documentation pageviews and docs-to-app CTA performance | Only after the user allows optional tracking | Advertising-related settings remain disabled |
+| Optional session replay | Microsoft Clarity | Review CTA clicks, scroll depth, and UX friction on selected article-style documentation pages | Only after the user allows optional tracking, only on selected article pages, and only when the docs deployment is configured with a Clarity project ID | Intended for guide and learn-center style content, not API reference, legal, changelog, or other non-article docs surfaces |
+
+As of **2026-04-07**, the documentation runtime supports optional Microsoft Clarity on selected article pages, but it remains inactive unless the docs deployment is configured with a Clarity project ID. PostHog session replay and other optional analytics providers are **not** enabled on the documentation site.
+
+---
+
+## 5. Authenticated Traseq App
+
+The authenticated Traseq App may use the following technologies:
+
+| Category | Provider or system | Purpose | When active | Notes |
+|---|---|---|---|---|
+| Necessary product state | Traseq application storage | Preserve product state and critical settings | Always, as needed | Used for interface state, workspace context, and other requested functionality |
+| Optional analytics | Google Analytics 4 | Understand aggregate product usage and navigation | Only after the user allows optional tracking | Advertising-related settings remain disabled |
+| Optional product analytics | PostHog | Understand feature usage, product adoption, and UX friction | Only after the user allows optional tracking | Used for product measurement and improvement |
+| Optional session replay | PostHog Session Replay | Investigate UX issues and diagnose selected product flows | Only after the user allows optional tracking | Configured to suppress form inputs and mask designated sensitive areas |
+
+Optional tracking in the authenticated app is controlled through a single user-facing preference today. When that preference is declined, optional analytics and session replay are intended to remain off.
+
+---
+
+## 6. Session Replay Safeguards
+
+Where session replay is enabled, Traseq intends to use it narrowly for service improvement, support, debugging, and UX investigation.
+
+The current baseline safeguards are:
+
+- On the documentation site, replay is intended to be limited to selected article-style pages rather than API reference, legal, or changelog surfaces
+- Form inputs are configured to be suppressed in replay capture
+- Designated sensitive interface regions can be masked at the application level
+- Replay is not intended to capture plaintext payment card data, plaintext API secrets, or similar highly sensitive content
+- Replay is not used for third-party behavioral advertising
+
+Even with safeguards, no masking implementation is perfect in every scenario. Users should avoid placing unnecessary sensitive personal data into freeform product fields.
+
+---
+
+## 7. Managing Your Preferences
+
+You can manage optional tracking in the authenticated product through the available account data controls.
+
+You may also:
+
+- Use browser settings to clear cookies or site storage
+- Use browser privacy controls or extensions that limit third-party scripts
+- Contact **support@traseq.com** if you believe tracking behavior is inconsistent with this notice
+
+---
+
+## 8. Updates to This Notice
+
+We may update this notice when Traseq changes its tracking stack, expands optional analytics to additional surfaces, changes providers, or improves consent controls.

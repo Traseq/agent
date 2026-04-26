@@ -1,0 +1,416 @@
+---
+title: AI Agent Integration Guide
+description: Build AI agents that create and backtest Traseq strategies through the Public Agent API.
+---
+
+This guide is for developers building AI agents that create trading strategies
+in Traseq. You'll learn how to go from generating a strategy payload to
+running a backtest — all through the Public Agent API.
+
+## Before you start
+
+Public Agent API calls require a workspace API key, not a wallet private key or
+exchange secret. Create one in the Traseq app from **Settings > API Keys**,
+copy the plaintext key while it is shown, and store it in your secret manager
+or runtime environment as `TRASEQ_API_KEY`.
+
+Every plan can create API keys and run the core agent workflow. Free and Plus
+agents are intentionally constrained by lower key quotas, research credits,
+strategy limits, saved-result limits, and related workspace capacity.
+
+Do not paste API keys into AI prompts or expose them to the model. Your agent
+host should inject the key into the `x-api-key` HTTP header outside the model's
+tool input.
+
+For a write-capable strategy agent, create a `member` key with only the scopes
+needed for the workflow:
+
+- `workspace_read`
+- `strategies_read`
+- `strategies_write`
+- `backtests_read`
+- `backtests_write`
+
+Add `system_strategies_read` only when the agent needs to inspect system
+templates.
+
+## Choosing a payload format
+
+Your agent can submit strategies in two formats:
+
+- **SignalGraph** — recommended for AI agents. It's higher-level, easier to
+  generate, and simpler to repair when validation fails.
+- **StrategyAst** — the canonical format. Use this if your agent already
+  produces it directly.
+
+## Minimum scopes
+
+For an autonomous agent that validates, writes strategies, and runs backtests,
+the recommended minimum scopes are:
+
+- `workspace_read`
+- `strategies_read`
+- `strategies_write`
+- `backtests_read`
+- `backtests_write`
+
+Recommended add-ons:
+
+- `system_strategies_read`
+  Useful if your agent starts from built-in templates.
+
+## Recommended request sequence
+
+1. `GET /public/v1`
+   Read the manifest and discover the workflow contract.
+2. `GET /public/v1/workspace`
+   Inspect workspace identity, API key scopes, and subscription tier.
+3. `GET /public/v1/usage`
+   Check current budget, usage, and hard limits before write or backtest workflows.
+4. `GET /public/v1/capabilities`
+   Fetch machine-readable indicators, node inputs, bindings, operators, tier limits, and validation
+   issue shape before authoring a payload.
+5. `POST /public/v1/strategies/validate`
+   Validate the draft payload and repair it until `valid === true`.
+6. `POST /public/v1/strategies`
+   Create a draft strategy.
+7. `POST /public/v1/strategies/:id/versions/finalize`
+   Promote a version to `ready`.
+8. `POST /public/v1/backtests`
+   Queue a backtest.
+9. `GET /public/v1/backtests/:id`
+   Poll until the backtest reaches a terminal state.
+
+## Discovering capabilities
+
+Always call `GET /public/v1/capabilities` before your agent writes a strategy.
+This endpoint returns everything your agent needs to know about what's
+supported:
+
+- available indicators and their parameters
+- supported node kinds and bindings for SignalGraph
+- operators, enums (timeframes, market fields, patterns)
+- plan-specific limits
+- the validation issue format (`code`, `path`, `message`, `suggestion`)
+
+Use this as your source of truth — don't guess indicator names or parameter
+shapes from prompts alone.
+
+## Structured validation issues
+
+`POST /public/v1/strategies/validate` returns machine-readable issues. Token,
+AST, and graph validation issues now include:
+
+- `code`
+- `path`
+- `message`
+- `suggestion`
+
+Example token issue:
+
+```json
+{
+  "code": "WARMUP_TOO_SHORT",
+  "path": "strategyAst.Strategy.warmupPeriod",
+  "field": "strategyAst",
+  "severity": "warning",
+  "message": "Warmup setting is shorter than this strategy's inferred lookback.",
+  "suggestion": "Set warmupPeriod to at least 200 for more consistent behavior when prehistory is limited or after gaps."
+}
+```
+
+Recommended repair loop:
+
+1. Generate `signalGraph` or `strategyAst`.
+2. Validate.
+3. Group issues by `severity`.
+4. Repair the payload using `code`, `path`, and `suggestion`.
+5. Revalidate until blocking issues are gone.
+
+## cURL example
+
+```bash
+export TRASEQ_BASE_URL="https://your-traseq.example.com"
+export TRASEQ_API_KEY="trsq_live_<keyId>_<secret>"
+
+curl -s \
+  -H "x-api-key: $TRASEQ_API_KEY" \
+  "$TRASEQ_BASE_URL/public/v1/usage"
+
+curl -s \
+  -H "x-api-key: $TRASEQ_API_KEY" \
+  "$TRASEQ_BASE_URL/public/v1/capabilities"
+
+curl -s \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $TRASEQ_API_KEY" \
+  -X POST "$TRASEQ_BASE_URL/public/v1/strategies/validate" \
+  -d '{
+    "signalGraph": {
+      "protocol": "traseq.signal-graph",
+      "version": 2,
+      "nodes": [
+        {
+          "id": "ema_fast",
+          "kind": "indicator",
+          "indicator": "ema",
+          "args": { "length": 20 }
+        },
+        {
+          "id": "close_price",
+          "kind": "market",
+          "field": "close"
+        },
+        {
+          "id": "cross_up_fast",
+          "kind": "cross",
+          "op": "cross_up",
+          "left": { "ref": "close_price" },
+          "right": { "ref": "ema_fast" }
+        }
+      ],
+      "strategy": {
+        "kind": "strategy",
+        "entry": {
+          "kind": "entry",
+          "trigger": { "ref": "cross_up_fast" },
+          "action": {
+            "side": "long",
+            "sizing": { "mode": "fixed", "value": 1 }
+          }
+        }
+      }
+    },
+    "settings": {
+      "positionStyle": "single",
+      "warmupPeriod": 200
+    }
+  }'
+```
+
+## Ready-to-use assets
+
+Two reference files are available to help you get started:
+
+- **`traseq-agent-tool-schema.json`** — a tool contract for the public API,
+  ready to use with tool-enabled AI agents.
+- **`traseq-agent-example.ts`** — a minimal TypeScript client with a
+  validate-repair loop helper.
+
+The first-party agent package is `@traseq/agent`. It is tool-first and does
+not require an AI provider key.
+
+## TypeScript SDK example
+
+Here's the core pattern for building an agent client. See
+`traseq-agent-example.ts` for a full working version.
+
+```ts
+const client = new TraseqPublicAgentClient(
+  process.env.TRASEQ_BASE_URL!,
+  process.env.TRASEQ_API_KEY!,
+);
+
+const workspace = await client.getWorkspaceContext();
+const usage = await client.getUsage();
+const capabilities = await client.getCapabilities();
+
+const authoringPayload = await validateWithRepairLoop(
+  client,
+  {
+    signalGraph,
+    settings: {
+      positionStyle: 'single',
+      warmupPeriod: 200,
+    },
+  },
+  async (currentPayload, context) => {
+    return repairPayloadWithYourModel({
+      capabilities,
+      currentPayload,
+      issues: context.issues,
+    });
+  },
+);
+
+const draft = await client.createStrategy({
+  name: 'Agent-authored EMA breakout',
+  description: 'Generated by an external AI agent',
+  ...authoringPayload,
+});
+
+const ready = await client.finalizeStrategyVersion(draft.id, {
+  version: draft.versions[0].version,
+  ...authoringPayload,
+});
+
+const backtest = await client.runBacktest({
+  strategyVersionId: ready.id,
+  config: {
+    timeframe: '1h',
+    signalInstrument: { symbol: 'BTCUSDT' },
+    initialBalance: 10000,
+    execution: {
+      feeModel: {
+        kind: 'tiered_maker_taker',
+        tiers: [
+          {
+            minCumulativeNotional: 0,
+            makerRate: 0.001,
+            takerRate: 0.001,
+          },
+        ],
+      },
+      slippage: {
+        kind: 'fixed',
+        unit: 'bps',
+        value: 5,
+      },
+    },
+  },
+});
+```
+
+The key point is the strict ordering — always follow this sequence:
+
+1. read workspace, usage, and capabilities
+2. generate `signalGraph`
+3. validate
+4. repair
+5. create
+6. finalize
+7. backtest
+
+## Agent tool schema
+
+Instead of giving your AI model raw HTTP access, wrap the API in a structured
+tool layer. See `traseq-agent-tool-schema.json` for the full JSON definition.
+
+Recommended tools:
+
+- `get_manifest`
+- `get_workspace_context`
+- `get_usage`
+- `get_capabilities`
+- `validate_strategy`
+- `create_strategy`
+- `finalize_strategy_version`
+- `run_backtest`
+- `get_backtest`
+
+Recommended `validate_strategy` input shape:
+
+```json
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["settings"],
+  "properties": {
+    "signalGraph": {
+      "type": "object",
+      "description": "Preferred AI authoring payload."
+    },
+    "strategyAst": {
+      "type": "object",
+      "description": "Canonical fallback payload."
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "positionStyle": {
+          "type": "string",
+          "enum": ["single", "pyramid", "accumulate"]
+        },
+        "maxConcurrentPositions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "warmupPeriod": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "anyOf": [{ "required": ["signalGraph"] }, { "required": ["strategyAst"] }]
+}
+```
+
+## Suggested system prompt
+
+Give your AI model a system prompt that enforces the capability contract and
+validate-repair loop.
+
+```text
+You are an external AI strategy-authoring agent for Traseq.
+
+Before composing any strategy:
+1. Call get_workspace_context.
+2. Call get_usage.
+3. Call get_capabilities.
+4. Use usage and capabilities as the only source of truth for current budget, limits, supported node kinds, bindings, indicators, operators, and enums.
+
+Authoring rules:
+- Prefer signalGraph over strategyAst unless the user explicitly asks for canonical AST.
+- Keep the first payload minimal and valid.
+- Reuse simple, stable node ids such as close_price, ema_fast, entry_trigger.
+- Do not invent unsupported fields, params, or operators.
+- Do not use tokens as the primary write format.
+
+Validation rules:
+- Always call validate_strategy before create_strategy or finalize_strategy_version.
+- Treat issue code, path, message, and suggestion as the repair source of truth.
+- Modify the minimum subtree needed to resolve each blocking issue.
+- Revalidate after every repair pass.
+
+Execution rules:
+- Create drafts before finalizing.
+- Call get_usage again before write-heavy or backtest-heavy workflows if the session is long-lived.
+- Run backtests only after a ready version exists.
+- Summarize backtest outcomes from summaryJson before inspecting large artifacts.
+
+Error handling rules:
+- When an API error includes publicAgent metadata, show its title, explanation, retryable flag, nextSteps, and app links.
+- For usage or plan limits, direct the user to the billing_plan or billing link returned by Traseq.
+- Do not send users to a public marketing pricing page unless Traseq did not provide an app link.
+```
+
+## Repair loop template
+
+When validation fails, repair the specific issues rather than regenerating the
+entire strategy. Here's a template for a deterministic repair loop.
+
+```text
+Inputs:
+- user_intent
+- current_payload
+- capabilities
+- blocking_issues[]
+
+Task:
+- Return a revised payload only.
+- Preserve unchanged fields.
+- Modify the minimum subtree needed to resolve the listed blocking issues.
+
+Repair policy:
+1. Read each issue.code and issue.path.
+2. If suggestion is present, prefer it over freeform reinterpretation.
+3. Do not rename unrelated node ids.
+4. Do not introduce new node kinds unless capabilities allow them.
+5. Keep strategy settings unless an issue directly points to settings.
+```
+
+## Tips
+
+- **Start simple.** One trigger plus one confirmation filter is much easier to
+  repair than a complex multi-branch graph.
+- **Cache capabilities.** Cache the response from `GET /public/v1/capabilities`
+  per workspace tier, and refresh when the subscription changes.
+- **Use issue codes for repairs.** Deterministic repair rules based on
+  `issue.code` are more reliable than asking the model to reinterpret error
+  messages.
+- **Fix errors first, warnings second.** Feed the repair loop only blocking
+  issues initially — handle warnings in a second pass once the payload is
+  valid.

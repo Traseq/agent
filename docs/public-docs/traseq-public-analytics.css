@@ -1,0 +1,236 @@
+#traseq-docs-consent-root {
+  position: fixed;
+  inset: auto 20px 20px auto;
+  z-index: 2147483000;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  color: #0f172a;
+}
+
+.traseq-docs-consent-card,
+.traseq-docs-consent-modal-card,
+.traseq-docs-consent-manage {
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.96));
+  box-shadow:
+    0 18px 48px rgba(15, 23, 42, 0.18),
+    0 2px 6px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(14px);
+}
+
+.traseq-docs-consent-card {
+  width: min(420px, calc(100vw - 40px));
+  border-radius: 20px;
+  padding: 18px;
+}
+
+.traseq-docs-consent-copy,
+.traseq-docs-consent-modal-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.traseq-docs-consent-eyebrow {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0f766e;
+}
+
+.traseq-docs-consent-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.traseq-docs-consent-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #334155;
+}
+
+.traseq-docs-consent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.traseq-docs-consent-button,
+.traseq-docs-consent-manage {
+  appearance: none;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.traseq-docs-consent-button {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.78);
+  color: #0f172a;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.traseq-docs-consent-button:hover,
+.traseq-docs-consent-manage:hover {
+  transform: translateY(-1px);
+}
+
+.traseq-docs-consent-button-primary {
+  border-color: rgba(15, 118, 110, 0.22);
+  background: linear-gradient(135deg, #0f766e, #115e59);
+  color: #f8fafc;
+}
+
+.traseq-docs-consent-button-ghost {
+  background: transparent;
+}
+
+.traseq-docs-consent-manage {
+  margin-top: 12px;
+  margin-left: auto;
+  display: block;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.traseq-docs-consent-modal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.28);
+}
+
+.traseq-docs-consent-modal[hidden] {
+  display: none;
+}
+
+.traseq-docs-consent-modal-card {
+  width: min(560px, calc(100vw - 40px));
+  border-radius: 24px;
+  padding: 24px;
+}
+
+.traseq-docs-consent-options {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.traseq-docs-consent-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 16px;
+}
+
+.traseq-docs-consent-option-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.traseq-docs-consent-option-title {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.traseq-docs-consent-option-body {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #475569;
+}
+
+.traseq-docs-consent-option input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: #0f766e;
+}
+
+@media (max-width: 720px) {
+  #traseq-docs-consent-root {
+    inset: auto 12px 12px 12px;
+  }
+
+  .traseq-docs-consent-card,
+  .traseq-docs-consent-modal-card {
+    width: min(100%, 100vw - 24px);
+  }
+
+  .traseq-docs-consent-actions {
+    flex-direction: column;
+  }
+
+  .traseq-docs-consent-button,
+  .traseq-docs-consent-manage {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  #traseq-docs-consent-root {
+    color: #e2e8f0;
+  }
+
+  .traseq-docs-consent-card,
+  .traseq-docs-consent-modal-card,
+  .traseq-docs-consent-manage {
+    border-color: rgba(148, 163, 184, 0.18);
+    background:
+      linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.92));
+    box-shadow:
+      0 18px 48px rgba(2, 6, 23, 0.44),
+      0 2px 6px rgba(2, 6, 23, 0.18);
+  }
+
+  .traseq-docs-consent-body,
+  .traseq-docs-consent-option-body {
+    color: #cbd5e1;
+  }
+
+  .traseq-docs-consent-button {
+    border-color: rgba(148, 163, 184, 0.22);
+    background: rgba(15, 23, 42, 0.68);
+    color: #e2e8f0;
+  }
+
+  .traseq-docs-consent-button-ghost {
+    background: transparent;
+  }
+
+  .traseq-docs-consent-manage {
+    color: #e2e8f0;
+  }
+
+  .traseq-docs-consent-option {
+    border-color: rgba(148, 163, 184, 0.16);
+    background: rgba(15, 23, 42, 0.5);
+  }
+}

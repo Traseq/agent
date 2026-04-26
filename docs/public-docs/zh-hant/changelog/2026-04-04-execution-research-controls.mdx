@@ -1,0 +1,74 @@
+---
+title: 2026-04-04：研究導向的 advanced settings 與 execution defaults
+description: Advanced settings 現在改成 guided preset、較簡化的 user-facing slippage controls，以及工作空間層級的 execution defaults。
+---
+這次更新同時調整了產品 UX 與公開文件對 backtest execution 的說明方式。
+
+## 這次更新了什麼
+
+### Advanced settings 改成 guided 結構
+
+QuickRun 面板現在把 execution 控制拆成：
+
+- **Execution Preset**
+- **Costs & Friction**
+- **Portfolio Guardrails**
+- **Expert Settings**
+
+目標是讓一般研究流程可以快速完成，同時保留進階使用者需要的控制。
+
+### 新增 execution preset
+
+產品現在提供三個 preset：
+
+- **Workspace**
+- **Market Baseline**
+- **Stress Test**
+
+`Workspace` 代表工作空間已儲存的 execution 設定。新工作空間會先從零摩擦開始，
+而 `Market Baseline` 與 `Stress Test` 則是平台固定的 ATR-based 市場情境。
+
+### Fill 留在內部，slippage 對外可設定
+
+引擎仍然使用固定的 bar-based fill 假設：
+
+- 訊號單在下一根 bar 開盤成交
+- 止盈使用 limit / gap fill
+- 止損與 trailing stop 使用 stop / gap fill
+
+使用者現在只設定 friction layer：
+
+- `None`
+- `Fixed`
+- `Volatility Scaled`
+
+舊的 volume-impact 設定仍可讀取歷史結果，但不再是主要的 write model。
+
+### Workspace backtest defaults 成為一級工作流
+
+Workspace settings 現在會明確區分：
+
+- **General** 工作空間資料
+- **Backtest Defaults** 新回測的研究預設
+
+這些預設會帶入 symbol、timeframe、日期區間、資金、fees 與 slippage。
+
+更精確地說：
+
+- **Workspace** = 你自己儲存的設定
+- **Market Baseline** = taker routing、`6 bps / 10 bps` 手續費、上限 `2-20 bps` 的 `ATR x0.25` 滑價
+- **Stress Test** = 相同手續費結構、上限 `4-30 bps` 的 `ATR x0.40` 滑價
+
+### 用詞統一
+
+所有 user-facing 摘要現在統一使用 **Slippage**，不再用 **Impact**，讓產品、
+SDK、文件與 engine 語言維持一致。
+
+## 為什麼這很重要
+
+Traseq 目前是 **crypto spot research product**。產品需要把 execution friction
+講清楚，但不應該要求使用者去管理內部 fill mechanics，或提前暴露尚未公開的
+多資產 execution 概念。
+
+這次更新讓大多數研究使用者更容易操作，同時也保留了未來擴展更多 market
+profile 的乾淨路徑。

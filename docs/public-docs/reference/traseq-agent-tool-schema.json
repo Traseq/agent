@@ -1,0 +1,1342 @@
+[
+  {
+    "name": "get_manifest",
+    "description": "Read the Traseq Public Agent API manifest.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    }
+  },
+  {
+    "name": "get_health",
+    "description": "Check public API reachability.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/health"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    }
+  },
+  {
+    "name": "get_workspace_context",
+    "description": "Read workspace identity, granted API key scopes, and subscription tier.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/workspace"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    }
+  },
+  {
+    "name": "get_usage",
+    "description": "Read current workspace usage, budget, and enforced limits.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/usage"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    }
+  },
+  {
+    "name": "get_capabilities",
+    "description": "Read live strategy authoring capabilities and validation limits.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/capabilities"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    }
+  },
+  {
+    "name": "list_system_strategies",
+    "description": "List system strategy templates.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/system-strategies"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "type": "string"
+        },
+        "search": {
+          "type": "string"
+        },
+        "tags": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "get_system_strategy",
+    "description": "Get a system strategy template by key.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/system-strategies/{key}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "copy_system_strategy",
+    "description": "Copy a system strategy template into the workspace.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/system-strategies/{key}/copy"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "key"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "validate_strategy",
+    "description": "Validate a strategyAst or signalGraph authoring payload.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/strategies/validate"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "settings"
+      ],
+      "properties": {
+        "strategyAst": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "signalGraph": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "settings": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  },
+  {
+    "name": "list_strategies",
+    "description": "List workspace strategies.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/strategies"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "page": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "search": {
+          "type": "string"
+        },
+        "includeMetadata": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  {
+    "name": "create_strategy",
+    "description": "Create a draft strategy with the first version attached.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/strategies"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "settings"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "strategyAst": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "signalGraph": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "settings": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  },
+  {
+    "name": "get_strategy",
+    "description": "Get strategy detail with versions.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/strategies/{strategyId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategyId"
+      ],
+      "properties": {
+        "strategyId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "update_strategy",
+    "description": "Update strategy metadata.",
+    "endpoint": {
+      "method": "PATCH",
+      "path": "/public/v1/strategies/{strategyId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategyId"
+      ],
+      "properties": {
+        "strategyId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "create_strategy_version",
+    "description": "Create a draft version for an existing strategy.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/strategies/{strategyId}/versions"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategyId",
+        "settings"
+      ],
+      "properties": {
+        "strategyId": {
+          "type": "string"
+        },
+        "forkedFromVersionId": {
+          "type": "string"
+        },
+        "strategyAst": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "signalGraph": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "settings": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  },
+  {
+    "name": "get_strategy_version",
+    "description": "Get strategy version detail.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/strategies/{strategyId}/versions/{version}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategyId",
+        "version"
+      ],
+      "properties": {
+        "strategyId": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  {
+    "name": "update_strategy_version",
+    "description": "Update a draft strategy version.",
+    "endpoint": {
+      "method": "PATCH",
+      "path": "/public/v1/strategies/{strategyId}/versions/{version}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategyId",
+        "version"
+      ],
+      "properties": {
+        "strategyId": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "strategyAst": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "signalGraph": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "settings": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  },
+  {
+    "name": "finalize_strategy_version",
+    "description": "Finalize a draft or new strategy version.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/strategies/{strategyId}/versions/finalize"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategyId",
+        "settings"
+      ],
+      "properties": {
+        "strategyId": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "ignoreWarnings": {
+          "type": "boolean"
+        },
+        "forkedFromVersionId": {
+          "type": "string"
+        },
+        "strategyAst": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "signalGraph": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "settings": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  },
+  {
+    "name": "delete_strategy_version",
+    "description": "Delete a strategy version. Requires confirm=true.",
+    "endpoint": {
+      "method": "DELETE",
+      "path": "/public/v1/strategies/{strategyId}/versions/{version}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategyId",
+        "version",
+        "confirm"
+      ],
+      "properties": {
+        "strategyId": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "confirm": {
+          "type": "boolean"
+        }
+      }
+    },
+    "destructive": true
+  },
+  {
+    "name": "archive_strategy_version",
+    "description": "Archive a ready strategy version.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/strategies/{strategyId}/versions/{version}/archive"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategyId",
+        "version"
+      ],
+      "properties": {
+        "strategyId": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  {
+    "name": "restore_strategy_version",
+    "description": "Restore an archived strategy version.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/strategies/{strategyId}/versions/{version}/restore"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategyId",
+        "version"
+      ],
+      "properties": {
+        "strategyId": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  {
+    "name": "create_pine_export",
+    "description": "Export Pine script for a strategy version.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/strategies/{strategyId}/versions/{version}/pine-export"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategyId",
+        "version"
+      ],
+      "properties": {
+        "strategyId": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "validationMode": {
+          "type": "string",
+          "enum": [
+            "compatible",
+            "exact_only"
+          ]
+        },
+        "strategyName": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "validate_conflicts",
+    "description": "Check conflicts between strategy blocks.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/strategies/validate-conflicts"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blocks"
+      ],
+      "properties": {
+        "blocks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "list_backtests",
+    "description": "List workspace backtests.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/backtests"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "strategyId": {
+          "type": "string"
+        },
+        "strategyVersionId": {
+          "type": "string"
+        },
+        "search": {
+          "type": "string"
+        },
+        "sortBy": {
+          "type": "string"
+        },
+        "order": {
+          "type": "string",
+          "enum": [
+            "asc",
+            "desc"
+          ]
+        },
+        "page": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  {
+    "name": "run_backtest",
+    "description": "Queue a backtest for a ready strategy version.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/backtests"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategyVersionId",
+        "config"
+      ],
+      "properties": {
+        "strategyVersionId": {
+          "type": "string"
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "longRunning": true
+  },
+  {
+    "name": "get_backtest",
+    "description": "Get backtest detail, status, and result.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/backtests/{backtestId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backtestId"
+      ],
+      "properties": {
+        "backtestId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_backtest_progress",
+    "description": "Get backtest progress snapshot.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/backtests/{backtestId}/progress"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backtestId"
+      ],
+      "properties": {
+        "backtestId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_backtest_chart_data",
+    "description": "Get candles and indicator chart data for a backtest.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/backtests/{backtestId}/chart-data"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "backtestId"
+      ],
+      "properties": {
+        "backtestId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_backtest_price_preview",
+    "description": "Get bucketed OHLC preview and trade density for a backtest.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/backtests/{backtestId}/price-preview"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backtestId"
+      ],
+      "properties": {
+        "backtestId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "set_primary_backtest",
+    "description": "Set a backtest as primary for its strategy version.",
+    "endpoint": {
+      "method": "PATCH",
+      "path": "/public/v1/backtests/{backtestId}/set-primary"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backtestId"
+      ],
+      "properties": {
+        "backtestId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "delete_backtest",
+    "description": "Delete a backtest. Requires confirm=true.",
+    "endpoint": {
+      "method": "DELETE",
+      "path": "/public/v1/backtests/{backtestId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backtestId",
+        "confirm"
+      ],
+      "properties": {
+        "backtestId": {
+          "type": "string"
+        },
+        "confirm": {
+          "type": "boolean"
+        }
+      }
+    },
+    "destructive": true
+  },
+  {
+    "name": "wait_backtest",
+    "description": "Poll a backtest until it reaches a terminal status.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/backtests/{backtestId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backtestId"
+      ],
+      "properties": {
+        "backtestId": {
+          "type": "string"
+        },
+        "intervalMs": {
+          "type": "integer"
+        },
+        "timeoutMs": {
+          "type": "integer"
+        }
+      }
+    },
+    "longRunning": true
+  },
+  {
+    "name": "preview_robustness_analysis",
+    "description": "Preview robustness analysis scenarios and cost.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/analysis-runs/robustness/preview"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceBacktestId"
+      ],
+      "properties": {
+        "sourceBacktestId": {
+          "type": "string"
+        },
+        "preset": {
+          "type": "string",
+          "enum": [
+            "core_v1"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "create_robustness_analysis",
+    "description": "Create and start a robustness analysis run.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/analysis-runs/robustness"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceBacktestId"
+      ],
+      "properties": {
+        "sourceBacktestId": {
+          "type": "string"
+        },
+        "preset": {
+          "type": "string",
+          "enum": [
+            "core_v1"
+          ]
+        }
+      }
+    },
+    "longRunning": true
+  },
+  {
+    "name": "list_analysis_runs",
+    "description": "List analysis runs.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/analysis-runs"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "page": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_analysis_run",
+    "description": "Get analysis run detail.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/analysis-runs/{analysisRunId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "analysisRunId"
+      ],
+      "properties": {
+        "analysisRunId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "update_analysis_run",
+    "description": "Update analysis run title or description.",
+    "endpoint": {
+      "method": "PATCH",
+      "path": "/public/v1/analysis-runs/{analysisRunId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "analysisRunId"
+      ],
+      "properties": {
+        "analysisRunId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "delete_analysis_run",
+    "description": "Delete analysis run and child backtests. Requires confirm=true.",
+    "endpoint": {
+      "method": "DELETE",
+      "path": "/public/v1/analysis-runs/{analysisRunId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "analysisRunId",
+        "confirm"
+      ],
+      "properties": {
+        "analysisRunId": {
+          "type": "string"
+        },
+        "confirm": {
+          "type": "boolean"
+        }
+      }
+    },
+    "destructive": true
+  },
+  {
+    "name": "wait_analysis_run",
+    "description": "Poll an analysis run until terminal status.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/analysis-runs/{analysisRunId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "analysisRunId"
+      ],
+      "properties": {
+        "analysisRunId": {
+          "type": "string"
+        },
+        "intervalMs": {
+          "type": "integer"
+        },
+        "timeoutMs": {
+          "type": "integer"
+        }
+      }
+    },
+    "longRunning": true
+  },
+  {
+    "name": "list_comparison_sets",
+    "description": "List comparison sets.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/comparison-sets"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "search": {
+          "type": "string"
+        },
+        "page": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "sortBy": {
+          "type": "string"
+        },
+        "sortOrder": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_comparison_set",
+    "description": "Get comparison set detail.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/comparison-sets/{comparisonSetId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comparisonSetId"
+      ],
+      "properties": {
+        "comparisonSetId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "create_comparison_set",
+    "description": "Create a comparison set from backtests.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/comparison-sets"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "backtestIds"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "backtestIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "update_comparison_set",
+    "description": "Update comparison set metadata or backtests.",
+    "endpoint": {
+      "method": "PATCH",
+      "path": "/public/v1/comparison-sets/{comparisonSetId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comparisonSetId"
+      ],
+      "properties": {
+        "comparisonSetId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "notes": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "backtestIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  {
+    "name": "delete_comparison_set",
+    "description": "Delete a comparison set. Requires confirm=true.",
+    "endpoint": {
+      "method": "DELETE",
+      "path": "/public/v1/comparison-sets/{comparisonSetId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comparisonSetId",
+        "confirm"
+      ],
+      "properties": {
+        "comparisonSetId": {
+          "type": "string"
+        },
+        "confirm": {
+          "type": "boolean"
+        }
+      }
+    },
+    "destructive": true
+  },
+  {
+    "name": "list_blocks",
+    "description": "List reusable custom and system blocks.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/blocks"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "filter": {
+          "type": "string"
+        },
+        "search": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "page": {
+          "type": "integer"
+        },
+        "limit": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_block",
+    "description": "Get reusable block detail.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/blocks/{blockId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blockId"
+      ],
+      "properties": {
+        "blockId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "create_block",
+    "description": "Create a reusable block.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/blocks"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "tokens"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "tokens": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "indicatorFamily": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string"
+        },
+        "exclusiveGroup": {
+          "type": "string"
+        },
+        "ignoreWarnings": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  {
+    "name": "update_block",
+    "description": "Update a reusable block.",
+    "endpoint": {
+      "method": "PATCH",
+      "path": "/public/v1/blocks/{blockId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blockId"
+      ],
+      "properties": {
+        "blockId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "tokens": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "indicatorFamily": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string"
+        },
+        "exclusiveGroup": {
+          "type": "string"
+        },
+        "ignoreWarnings": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  {
+    "name": "delete_block",
+    "description": "Delete a reusable block. Requires confirm=true.",
+    "endpoint": {
+      "method": "DELETE",
+      "path": "/public/v1/blocks/{blockId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blockId",
+        "confirm"
+      ],
+      "properties": {
+        "blockId": {
+          "type": "string"
+        },
+        "confirm": {
+          "type": "boolean"
+        }
+      }
+    },
+    "destructive": true
+  },
+  {
+    "name": "pin_block",
+    "description": "Pin a reusable block.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/blocks/{blockId}/pin"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blockId"
+      ],
+      "properties": {
+        "blockId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "unpin_block",
+    "description": "Unpin a reusable block.",
+    "endpoint": {
+      "method": "DELETE",
+      "path": "/public/v1/blocks/{blockId}/pin"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blockId"
+      ],
+      "properties": {
+        "blockId": {
+          "type": "string"
+        }
+      }
+    }
+  }
+]

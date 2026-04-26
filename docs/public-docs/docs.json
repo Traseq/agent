@@ -1,0 +1,196 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Traseq Docs",
+  "description": "Workflow-first product and API documentation for Traseq users, developers, and AI agents.",
+  "colors": {
+    "primary": "#0F766E",
+    "light": "#99F6E4",
+    "dark": "#115E59"
+  },
+  "navigation": {
+    "languages": [
+      {
+        "language": "en",
+        "default": true,
+        "tabs": [
+          {
+            "tab": "Guides",
+            "groups": [
+              {
+                "group": "Start Here",
+                "pages": [
+                  "index",
+                  "guides/quickstart",
+                  "guides/core-concepts",
+                  "guides/interface-overview"
+                ]
+              },
+              {
+                "group": "Tutorials",
+                "pages": [
+                  "guides/tutorials/first-strategy",
+                  "guides/tutorials/first-backtest",
+                  "guides/tutorials/read-backtest-results",
+                  "guides/tutorials/compare-backtests",
+                  "guides/tutorials/system-templates"
+                ]
+              },
+              {
+                "group": "Workspace",
+                "pages": [
+                  "guides/workspace/overview",
+                  "guides/workspace/create-and-switch",
+                  "guides/workspace/roles-permissions",
+                  "guides/workspace/invitations",
+                  "guides/workspace/settings"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "API Reference",
+            "groups": [
+              {
+                "group": "Overview",
+                "pages": [
+                  "api-reference/overview",
+                  "api-reference/authentication",
+                  "api-reference/api-keys"
+                ]
+              },
+              {
+                "group": "Endpoints",
+                "openapi": "openapi/traseq-public-agent.json"
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
+              {
+                "group": "Reference",
+                "pages": [
+                  "reference/faq"
+                ]
+              },
+              {
+                "group": "Legal",
+                "pages": [
+                  "legal/terms-of-service",
+                  "legal/privacy-policy",
+                  "legal/refund-policy",
+                  "legal/disclaimer"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Changelog",
+            "groups": [
+              {
+                "group": "Updates",
+                "pages": [
+                  "changelog/overview",
+                  "changelog/2026-04-04-execution-research-controls"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "language": "zh-Hant",
+        "tabs": [
+          {
+            "tab": "Guides",
+            "groups": [
+              {
+                "group": "開始使用",
+                "pages": [
+                  "zh-hant/index",
+                  "zh-hant/guides/quickstart",
+                  "zh-hant/guides/core-concepts",
+                  "zh-hant/guides/interface-overview"
+                ]
+              },
+              {
+                "group": "教學",
+                "pages": [
+                  "zh-hant/guides/tutorials/first-strategy",
+                  "zh-hant/guides/tutorials/first-backtest",
+                  "zh-hant/guides/tutorials/read-backtest-results",
+                  "zh-hant/guides/tutorials/compare-backtests",
+                  "zh-hant/guides/tutorials/system-templates"
+                ]
+              },
+              {
+                "group": "工作空間",
+                "pages": [
+                  "zh-hant/guides/workspace/overview",
+                  "zh-hant/guides/workspace/create-and-switch",
+                  "zh-hant/guides/workspace/roles-permissions",
+                  "zh-hant/guides/workspace/invitations",
+                  "zh-hant/guides/workspace/settings"
+                ]
+              },
+              {
+                "group": "學習中心",
+                "pages": [
+                  "zh-hant/learn/content-factory-acceptance-20260420"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "API Reference",
+            "groups": [
+              {
+                "group": "總覽",
+                "pages": [
+                  "zh-hant/api-reference/overview",
+                  "zh-hant/api-reference/authentication",
+                  "zh-hant/api-reference/api-keys"
+                ]
+              },
+              {
+                "group": "端點",
+                "openapi": "openapi/traseq-public-agent.json"
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
+              {
+                "group": "參考資料",
+                "pages": [
+                  "zh-hant/reference/faq"
+                ]
+              },
+              {
+                "group": "法律",
+                "pages": [
+                  "zh-hant/legal/terms-of-service",
+                  "zh-hant/legal/privacy-policy"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Changelog",
+            "groups": [
+              {
+                "group": "更新",
+                "pages": [
+                  "zh-hant/changelog/overview",
+                  "zh-hant/changelog/2026-04-04-execution-research-controls"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

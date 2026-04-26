@@ -1,0 +1,55 @@
+---
+title: Authentication
+description: How to authenticate with the Traseq Management API and Public Agent API.
+---
+Traseq uses two authentication methods depending on the API you're calling.
+
+## JWT for the Management API
+
+When you're signed in to Traseq and managing workspace resources (such as
+creating API keys or managing members), requests are authenticated with a JWT
+token.
+
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+This applies to workspace management endpoints like:
+
+- `POST /workspaces/:workspaceId/api-keys`
+- `GET /workspaces/:workspaceId/api-keys`
+- `DELETE /workspaces/:workspaceId/api-keys/:apiKeyId`
+
+## API keys for the Public Agent API
+
+For external integrations and AI agents, use a workspace API key. You can
+create one from **Settings > API Keys** in the Traseq app on any plan. Active
+key quota varies by subscription tier.
+
+Preferred header:
+
+```http
+x-api-key: trsq_live_<keyId>_<secret>
+```
+
+You can also pass the key as a Bearer token:
+
+```http
+Authorization: Bearer trsq_live_<keyId>_<secret>
+```
+
+## First request after authentication
+
+After authenticating, call `GET /public/v1/workspace` as your first request.
+This confirms:
+
+- which workspace the key belongs to
+- your available scopes and effective role
+- your plan's limits and constraints
+
+## Best practices
+
+- Use JWT authentication for workspace administration in the browser.
+- Use API keys for server-to-server integrations and AI agents.
+- Store API keys securely — the plaintext key is shown only once at creation
+  time and cannot be retrieved later.

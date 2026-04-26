@@ -1,0 +1,423 @@
+---
+title: API Keys
+description: Traseq workspace API key 的生命週期、驗證方式、quota 規則與管理流程。
+---
+
+API key 是銜接已登入工作空間管理流程與外部整合、AI agent 的主要憑證。
+
+這一頁是 API key narrative docs 的主來源，回答三件事：
+
+- 這把 key 可以做什麼
+- 管理 API 的行為是什麼
+- agent 應該怎麼用它打 `/public/v1`
+
+## 快速結論
+
+- API key 以 workspace 為範圍，不是全域 token。
+- 管理 API key 的端點使用 JWT 驗證，不是用 API key 管自己。
+- Public Agent API 則使用 API key 本身驗證。
+- 所有方案都可以建立 API key；active-key quota 依 subscription tier 不同。
+- 明文 key material 只會在建立成功當下回傳一次。
+- 過期 key 不再授權請求，也不計入 active-key quota。
+- 如果 key 的建立者不再是有效 workspace member，該 key 會失效。
+
+## 格式與傳遞方式
+
+格式：
+
+```text
+trsq_live_<keyId>_<secret>
+```
+
+建議 header：
+
+```http
+x-api-key: trsq_live_<keyId>_<secret>
+```
+
+替代方式：
+
+```http
+Authorization: Bearer trsq_live_<keyId>_<secret>
+```
+
+## 在 app 建立 key
+
+設定 agent 時，請從 Traseq app 建立 key：
+
+1. 進入 agent 要存取的 workspace，打開 **Settings > API Keys**。
+2. 選擇 **New API Key**。
+3. 用單一 agent 或 environment 命名，例如 `agent-prod`。
+4. 選擇該 workflow 需要的最小 role 與 scopes。
+5. 能設定到期日時，建議設定到期日。
+6. 在明文 key 顯示時立即複製，並存進 secret manager 或 environment variable，
+   例如 `TRASEQ_API_KEY`。
+
+明文 key 之後無法再次取回。如果遺失，請撤銷舊 key 並建立新的替代 key。
+
+不要把 wallet private key、交易所 secret，或其他能控制資產的憑證當作 Traseq
+API key。Traseq agent 只應取得呼叫 Public Agent API 所需的 scoped workspace
+API key。
+
+## Status 模型
+
+| Status    | 意義                                    |
+| --------- | --------------------------------------- |
+| `active`  | 尚未 revoke，且尚未過期                 |
+| `expired` | 尚未 revoke，但 `expiresAt` 已到        |
+| `revoked` | 已撤銷；即使同時過期，也以 revoked 為準 |
+
+## Role 與 Scope 模型
+
+### 可接受的 role
+
+目前建立 API key 時接受：
+
+- `viewer`
+- `member`
+
+| Role     | 適用情境                             | 能否呼叫寫入型 public endpoint |
+| -------- | ------------------------------------ | ------------------------------ |
+| `viewer` | read-only agent 與查詢型流程         | 不行                           |
+| `member` | 會驗證、建立、定案或排程工作的 agent | 可以                           |
+
+重要規則：
+
+- `scope` 決定這把 key 可碰哪些 API surface
+- `role` 決定它在 workspace 中的有效權限
+- 即使你要求了 write scopes，`viewer` key 打寫入端點仍可能被拒絕
+
+### Scopes
+
+| Scope                    | 用途                               | 常見端點                                                                                                                |
+| ------------------------ | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `workspace_read`         | 讀取 workspace context 與訂閱資訊  | `GET /public/v1/workspace`                                                                                              |
+| `system_strategies_read` | 讀取系統策略模板                   | `GET /public/v1/system-strategies`                                                                                      |
+| `strategies_read`        | 讀取 workspace strategies          | `GET /public/v1/strategies`                                                                                             |
+| `strategies_write`       | 驗證與建立策略、複製模板、定案版本 | `POST /public/v1/strategies/validate`, `POST /public/v1/strategies`, `POST /public/v1/strategies/:id/versions/finalize` |
+| `backtests_read`         | 讀取 backtests 與結果              | `GET /public/v1/backtests`, `GET /public/v1/backtests/:id`                                                              |
+| `backtests_write`        | 建立 backtest job                  | `POST /public/v1/backtests`                                                                                             |
+
+## Active-key quota
+
+目前 active-key quota 依 subscription tier 決定：
+
+| Tier   | Active key 上限 |
+| ------ | --------------- |
+| `free` | 1               |
+| `plus` | 3               |
+| `pro`  | 24              |
+| `team` | 50              |
+
+這裡的 active key 指的是：
+
+- `revokedAt = null`
+- 且 `expiresAt` 為 `null`，或仍在未來
+
+因此：
+
+- expired key 不會阻擋 replacement key
+- revoked key 不算在 quota 裡
+
+## 管理 API Keys 的 API
+
+這組端點給已登入的 workspace `owner` 或 `admin` 使用。
+
+驗證方式：
+
+```http
+Authorization: Bearer <supabase_jwt>
+```
+
+Base path：
+
+```text
+/workspaces/:workspaceId/api-keys
+```
+
+### 列出 API keys
+
+```http
+GET /workspaces/:workspaceId/api-keys
+```
+
+這個端點會回傳 key metadata，但不會回傳明文 secret。
+
+Response shape：
+
+```json
+{
+  "data": [
+    {
+      "id": "api_key_123",
+      "name": "agent-prod",
+      "description": "Production key for autonomous research agent",
+      "role": "member",
+      "scopes": [
+        "workspace_read",
+        "system_strategies_read",
+        "strategies_read",
+        "strategies_write",
+        "backtests_read",
+        "backtests_write"
+      ],
+      "keyPrefix": "trsq_live_abcd1234",
+      "tokenPreview": "trsq_live_abcd1234_...",
+      "status": "active",
+      "lastUsedAt": "2026-03-19T08:20:00.000Z",
+      "expiresAt": "2026-12-31T23:59:59.000Z",
+      "revokedAt": null,
+      "createdAt": "2026-03-19T08:00:00.000Z",
+      "createdBy": {
+        "id": "user_123",
+        "email": "owner@example.com",
+        "name": "Workspace Owner"
+      }
+    }
+  ]
+}
+```
+
+### 建立 API key
+
+```http
+POST /workspaces/:workspaceId/api-keys
+```
+
+Request body：
+
+```json
+{
+  "name": "agent-prod",
+  "description": "Production key for autonomous research agent",
+  "role": "member",
+  "scopes": [
+    "workspace_read",
+    "system_strategies_read",
+    "strategies_read",
+    "strategies_write",
+    "backtests_read",
+    "backtests_write"
+  ],
+  "expiresAt": "2026-12-31T23:59:59.000Z"
+}
+```
+
+驗證規則：
+
+- `name`: 必填，1-100 字元
+- `description`: 選填，最多 500 字元
+- `role`: 選填，只接受 `member` 或 `viewer`
+- `scopes`: 選填，但如果提供，至少要有一個 scope
+- `expiresAt`: 選填，但必須是未來時間
+
+預設行為：
+
+- 預設 `role` 是 `member`
+- 預設 scopes 是核心寫入型 agent workflow：`workspace_read`、
+  `strategies_read`、`strategies_write`、`backtests_read` 與
+  `backtests_write`
+
+Create response：
+
+```json
+{
+  "id": "api_key_123",
+  "name": "agent-prod",
+  "description": "Production key for autonomous research agent",
+  "role": "member",
+  "scopes": [
+    "workspace_read",
+    "system_strategies_read",
+    "strategies_read",
+    "strategies_write",
+    "backtests_read",
+    "backtests_write"
+  ],
+  "keyPrefix": "trsq_live_abcd1234",
+  "expiresAt": "2026-12-31T23:59:59.000Z",
+  "createdAt": "2026-03-19T08:00:00.000Z",
+  "apiKey": "trsq_live_abcd1234_super_secret_value"
+}
+```
+
+重要說明：
+
+- `apiKey` 只會在建立成功當下回傳一次
+- 資料庫保存的是 hash，不是明文 secret
+
+### 撤銷 API key
+
+```http
+DELETE /workspaces/:workspaceId/api-keys/:apiKeyId
+```
+
+Response shape：
+
+```json
+{
+  "success": true,
+  "revokedAt": "2026-03-19T09:00:00.000Z"
+}
+```
+
+行為特性：
+
+- revoke 立即生效
+- 對已撤銷的 key 重複呼叫仍是 idempotent，會回傳 success
+
+## 用 API key 呼叫 Public Agent API
+
+Base path：
+
+```text
+/public/v1
+```
+
+### 建議的第一個請求
+
+對開發者與 AI agent，第一個請求都建議是：
+
+```http
+GET /public/v1/workspace
+```
+
+它可以幫你確認：
+
+- 這把 key 屬於哪個 workspace
+- 有效 `role`
+- 已授權的 `scopes`
+- 可能影響行為的 subscription tier 限制
+
+Example：
+
+```bash
+curl -s \
+  -H "x-api-key: $TRASEQ_API_KEY" \
+  http://localhost:8000/public/v1/workspace
+```
+
+### 最小 workflow
+
+#### Read-only agent
+
+適合 `viewer` key。
+
+1. `GET /public/v1/workspace`
+2. `GET /public/v1/system-strategies`
+3. `GET /public/v1/strategies`
+4. `GET /public/v1/backtests`
+
+建議 scopes：
+
+```json
+[
+  "workspace_read",
+  "system_strategies_read",
+  "strategies_read",
+  "backtests_read"
+]
+```
+
+#### Write-capable agent
+
+適合 `member` key。
+
+1. `GET /public/v1/workspace`
+2. `POST /public/v1/strategies/validate`
+3. `POST /public/v1/strategies`
+4. `POST /public/v1/strategies/:id/versions/finalize`
+5. `POST /public/v1/backtests`
+6. `GET /public/v1/backtests/:id` 輪詢結果
+
+建議 scopes：
+
+```json
+[
+  "workspace_read",
+  "strategies_write",
+  "strategies_read",
+  "backtests_write",
+  "backtests_read"
+]
+```
+
+## 常見錯誤
+
+### 401 Unauthorized
+
+常見原因：
+
+- 缺少 `x-api-key`
+- `Authorization: Bearer ...` 格式不合法
+- key 格式錯誤
+- key 已 revoked
+- key 已 expired
+- key creator 不再是 workspace member
+
+常見訊息：
+
+```text
+Missing API key. Provide x-api-key or Authorization: Bearer <api_key>.
+```
+
+```text
+Invalid API key
+```
+
+```text
+API key has been revoked
+```
+
+```text
+API key has expired
+```
+
+```text
+API key creator is no longer a workspace member
+```
+
+### 403 Forbidden
+
+常見原因：
+
+- scope 不足
+- role 不足，例如 `viewer` key 去打寫入端點
+- 建立 key 時 active-key quota 已滿
+
+quota error 範例：
+
+```text
+API key quota reached for the current plan (1 active key). Revoke unused keys or upgrade your plan.
+```
+
+### 404 Not Found
+
+管理 API 常見情境：
+
+- `DELETE /workspaces/:workspaceId/api-keys/:apiKeyId` 指到不存在的 key
+
+## 實務建議
+
+對人類操作人員：
+
+- 把 API key 當密碼管理，放進 secret manager
+- 每個 agent 或 environment 用獨立 key，不要共用
+- read-only workflow 優先使用 `viewer` 加 read scopes
+- 需要建立策略或跑 backtest 的 agent 請用 `member`
+- 能加 expiration 就加，不要無限制放著
+- 不再使用的 key 直接 revoke
+
+對 AI agents：
+
+- 先打 `GET /public/v1/workspace` 再決定下一步
+- 寫入前先用 `POST /public/v1/strategies/validate`
+- 不要假設 backtest 會同步完成，要用 polling
+- agent workflow 只依賴 `/public/v1`，不要直接走私有
+  `/workspaces/...` 寫入路徑
+- 解析錯誤時，先看 HTTP status，再看 response message
+
+## 相關文件
+
+- [API 總覽](/zh-hant/api-reference/overview)
+- [驗證方式](/zh-hant/api-reference/authentication)

@@ -1,0 +1,75 @@
+---
+title: 解讀回測結果
+description: 理解 Summary、Rules、Trades、Analytics 與 Charts 五個分頁。
+---
+回測完成後，結果頁會協助你檢查績效、風險與交易行為。
+
+## Summary
+
+Summary 分頁會顯示最重要的績效指標。
+
+| 指標 | 說明 | 如何解讀 |
+| --- | --- | --- |
+| **Return %** | 回測期間總報酬 | 正數代表獲利，越高越好 |
+| **Max Drawdown** | 權益曲線最大回撤 | 越小越好 |
+| **Total Positions** | 總交易數 | 太少可能條件太嚴，太多可能過度交易 |
+| **Win Rate** | 獲利交易比例 | 需要搭配盈虧比一起看 |
+| **Sharpe Ratio** | 風險調整後報酬 | 大於 1 通常不錯 |
+| **Profit Factor** | 總獲利 / 總虧損 | 大於 1 代表整體有利潤 |
+
+## Rules
+
+Rules 分頁會顯示：
+
+- 進場條件
+- 出場條件
+- 進場動作
+- 出場動作
+
+## Trades
+
+Trades 分頁列出每一筆交易。
+
+| 欄位 | 說明 |
+| --- | --- |
+| **Entry Time** | 開倉時間 |
+| **Exit Time** | 平倉時間 |
+| **Side** | Long 或 Short |
+| **Entry Price** | 進場價格 |
+| **Exit Price** | 出場價格 |
+| **PnL** | 損益金額 |
+| **PnL %** | 損益百分比 |
+| **Duration** | 持倉時間 |
+
+## Analytics
+
+Analytics 分頁通常包含：
+
+- P&L Histogram
+- Duration Distribution
+- MAE/MFE Scatter
+- Monthly Returns Heatmap
+
+## Charts
+
+Charts 分頁會整合：
+
+1. 價格 K 線
+2. 權益曲線
+3. 回撤深度
+4. 交易標記
+
+> Note: 視覺化檢查往往能看出單看總結數字不容易發現的問題。
+
+## 快速操作
+
+底部浮動操作列包含：
+
+- **Run Again**
+- **Compare**
+
+## 下一步
+
+- [比較多個回測](/zh-hant/guides/tutorials/compare-backtests)
+- [執行第一次回測](/zh-hant/guides/tutorials/first-backtest)
+- [使用系統模板快速上手](/zh-hant/guides/tutorials/system-templates)

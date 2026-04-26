@@ -1,0 +1,58 @@
+---
+title: Member Roles and Permissions
+description: Understand workspace roles, what each role can do, and how seats work.
+---
+
+Every workspace member has a role that determines what they can access and do.
+
+## Roles
+
+| Role       | Description                                               |
+| ---------- | --------------------------------------------------------- |
+| **Owner**  | The workspace creator — has full control over everything  |
+| **Admin**  | Can manage members, settings, and do all research work    |
+| **Member** | Can create strategies, run backtests, and manage blocks   |
+| **Viewer** | Can view strategies and results, but can't create or edit |
+
+## Permissions matrix
+
+| Action                        | Owner | Admin | Member | Viewer |
+| ----------------------------- | :---: | :---: | :----: | :----: |
+| View strategies and backtests |  ✅   |  ✅   |   ✅   |   ✅   |
+| Create and edit strategies    |  ✅   |  ✅   |   ✅   |   ❌   |
+| Run backtests                 |  ✅   |  ✅   |   ✅   |   ❌   |
+| Manage blocks                 |  ✅   |  ✅   |   ✅   |   ❌   |
+| Invite members                |  ✅   |  ✅   |   ❌   |   ❌   |
+| Change member roles           |  ✅   |  ✅   |   ❌   |   ❌   |
+| Remove members                |  ✅   |  ✅   |   ❌   |   ❌   |
+| Manage billing                |  ✅   |  ❌   |   ❌   |   ❌   |
+| Modify workspace settings     |  ✅   |  ✅   |   ❌   |   ❌   |
+| Delete the workspace          |  ✅   |  ❌   |   ❌   |   ❌   |
+
+## How seats work
+
+- **Owner**, **Admin**, and **Member** each use one research seat.
+- **Viewer** does not use a seat.
+- To promote a Viewer to a higher role, you need an available seat.
+
+## Seat limits
+
+| Plan    | Active Research Seats | Viewer Access |
+| ------- | --------------------- | ------------- |
+| Free    | Owner only            | Not available |
+| Pro     | 1                     | Included      |
+| Team    | 3                     | Included      |
+
+## Change a member's role
+
+1. Go to **Settings > Members**.
+2. Find the member you want to update.
+3. Open the role dropdown next to their name.
+4. Select the new role.
+
+> Warning: Only the Owner can transfer or modify the Owner role.
+
+## Next steps
+
+- [Invitations](/guides/workspace/invitations)
+- [Workspace Settings](/guides/workspace/settings)

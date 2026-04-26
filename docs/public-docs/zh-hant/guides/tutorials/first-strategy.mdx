@@ -1,0 +1,79 @@
+---
+title: 建立你的第一個策略
+description: 在 Traseq canvas editor 中從零開始建立交易策略。
+---
+本教學會帶你完成策略建立、積木組合與定案流程。
+
+## 在 App 中繼續
+
+- [免費開始，直接在 Traseq 建立第一個策略][first-strategy-start-free-zh]
+
+## 進入策略編輯器
+
+1. 點選左側的 **Strategies**
+2. 點選 **New Strategy**
+3. 開啟 canvas editor
+
+## 命名策略
+
+用簡潔又能辨識邏輯的名稱，例如：
+
+- `RSI 超賣 + EMA 順勢`
+- `MACD 策略 v2 - 加入 ADX 過濾`
+
+## 從積木庫選擇積木
+
+積木庫包含釘選區與分類列表。
+
+| 分類 | 說明 | 範例 |
+| --- | --- | --- |
+| **Signals** | 複合訊號 | Golden Cross、Death Cross |
+| **Trend** | 趨勢判斷 | MACD Bullish、SuperTrend Up |
+| **Momentum** | 動量超買超賣 | RSI Oversold、Stoch Oversold |
+| **Volatility** | 波動率條件 | BB Squeeze、ATR Breakout |
+| **Volume** | 成交量異常 | Volume Spike、OBV Rising |
+| **Market** | 市場結構 | Higher High、Support Test |
+
+## 合併積木
+
+1. 再加入第二個積木
+2. 將一個積木拖曳靠近另一個
+3. 出現合併指示後放開
+4. 兩者會形成條件群組
+
+> Note: 合併後代表 AND 邏輯，所有條件都要同時成立。
+
+## 放到進場區
+
+Canvas 下方有：
+
+- **Entry**：定義開倉條件
+- **Exit**：定義平倉條件
+
+將積木群組拖進 **Entry**。要定案至少需要一個進場條件。
+
+## 設定進場動作
+
+1. 點選進場動作設定
+2. 設定：
+   - **方向**
+   - **倉位大小**
+3. 完成後關閉面板
+
+> Note: 出場條件是選填。如果不設，策略會在反向訊號時平倉。
+
+## 定案策略
+
+1. 點選 **Finalize**
+2. 系統驗證版本
+3. 狀態從 Draft 變成 Ready
+
+> Warning: 定案後此版本不能修改。如需調整，請建立新版本。
+
+## 下一步
+
+- [執行第一次回測](/zh-hant/guides/tutorials/first-backtest)
+- [快速開始](/zh-hant/guides/quickstart)
+- [介面總覽](/zh-hant/guides/interface-overview)
+
+[first-strategy-start-free-zh]: https://app.traseq.com/login?redirectTo=%2Fhome&entry_surface=docs&entry_source=docs_first_strategy_primary_cta&content_id=guides_tutorials_first_strategy&content_type=docs_page&cta_id=first_strategy_start_free&source_page_path=%2Fzh-hant%2Fguides%2Ftutorials%2Ffirst-strategy

@@ -1,0 +1,73 @@
+---
+title: API Overview
+description: Introduction to the Traseq Management API and Public Agent API.
+---
+
+Traseq provides two API surfaces, each designed for a different use case.
+
+## Management API
+
+The Management API is for signed-in workspace users who need to manage
+workspace resources directly — such as creating API keys, managing members, or
+updating settings.
+
+Authentication:
+
+```http
+Authorization: Bearer <your_jwt_token>
+```
+
+## Public Agent API
+
+The Public Agent API is for external integrations and AI agents that need
+workspace-scoped access. This is the API you'll use to build automated
+workflows. API keys are available on every plan; Free and Plus usage is still
+bounded by lower key quotas, research credits, and workspace limits.
+
+Base path:
+
+```text
+/public/v1
+```
+
+With the Public Agent API you can:
+
+- read workspace context and subscription details
+- browse system strategy templates
+- discover supported indicators and authoring capabilities
+- validate, create, and finalize strategies
+- queue backtests and poll for results
+
+### Strategy payload formats
+
+The API accepts two strategy formats:
+
+- **SignalGraph** — a higher-level authoring format, recommended for AI agents
+  and external integrations. The backend compiles it into the canonical format
+  automatically.
+- **StrategyAst** — the canonical format, for agents that produce it directly.
+
+Always validate your payload with `POST /public/v1/strategies/validate` before
+creating or finalizing a strategy.
+
+Authentication:
+
+```http
+x-api-key: trsq_live_<keyId>_<secret>
+```
+
+## Recommended sequence for agents
+
+1. Authenticate with an API key.
+2. Call `GET /public/v1` to discover the workflow contract.
+3. Call `GET /public/v1/workspace` to check your role, scopes, and plan limits.
+4. Call `GET /public/v1/usage` before write or backtest work to check current
+   budget and hard limits.
+5. Call `GET /public/v1/capabilities` to learn which indicators, operators, and
+   settings are available before composing a payload.
+6. Build a `signalGraph` or `strategyAst` payload, then validate and create.
+7. When reading backtest results, check `result.summaryJson.strategyTrace` and
+   `result.summaryJson.ruleStatsSummary` before fetching larger artifacts.
+
+For a complete end-to-end walkthrough, see the
+[AI Agent Integration Guide](./ai-agent-integration).

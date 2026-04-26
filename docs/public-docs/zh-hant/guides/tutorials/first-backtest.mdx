@@ -1,0 +1,151 @@
+---
+title: 執行第一次回測
+description: 配置 QuickRun 面板並替 Ready 版本建立第一次回測。
+---
+
+策略定案後，你可以透過 QuickRun 面板立即執行回測。
+
+## 在 App 中繼續
+
+- [免費開始，直接照這個流程跑第一次回測][first-backtest-start-free-zh]
+
+## 開啟 QuickRun 面板
+
+定案後會自動出現 QuickRun。你也可以在策略詳情頁手動打開。
+
+## 設定回測參數
+
+### 選擇策略版本
+
+確認目前選到的是你要測試的 Ready 版本。
+
+### 選擇交易對
+
+目前支援：
+
+| 交易對      | 說明          |
+| ----------- | ------------- |
+| **BTCUSDT** | 比特幣 / USDT |
+| **ETHUSDT** | 以太坊 / USDT |
+| **SOLUSDT** | Solana / USDT |
+
+### 設定時間框架
+
+| 時間框架 | 適用場景       | 方案限制   |
+| -------- | -------------- | ---------- |
+| **1d**   | 中長線趨勢策略 | 全方案可用 |
+| **4h**   | 波段交易策略   | 全方案可用 |
+| **1h**   | 日內至短波段   | 全方案可用 |
+| **15m**  | 短線策略       | 全方案可用 |
+
+> 注意：所有方案都可使用目前支援的 timeframe，也都能選擇完整可用歷史；每月 research credits 控制總用量。
+
+### 設定回測區間
+
+快速選項包含：
+
+- `1M`
+- `3M`
+- `6M`
+- `1Y`
+- `2Y`
+- `YTD`
+
+也可以自訂日期範圍。所有目前方案都能選擇完整可用歷史；每月 research credits 會控制一個 billing cycle 內可執行的總研究量。
+
+| 方案    | 回測深度               | 每月 research credits |
+| ------- | ---------------------- | --------------------- |
+| Free    | Full available history | 10                    |
+| Plus    | Full available history | 120                   |
+| Pro     | Full available history | 400                   |
+| Team    | Full available history | 1,500                 |
+
+### 設定初始資金
+
+預設為 `$10,000 USD`，範圍為 `$100` 到 `$1,000,000,000`。
+
+### 選擇 execution preset
+
+展開 **Advanced** 後，先從這三個 preset 開始：
+
+- **Workspace**: 套用你儲存的工作空間回測預設。新工作空間一開始會是 `0` maker / `0` taker 與 `None` 滑價
+- **Market Baseline**: 套用平台定義的較真實 crypto spot 情境，使用 taker routing、`6 bps` maker / `10 bps` taker 手續費，以及上限 `2-20 bps` 的 `ATR x0.25` 滑價
+- **Stress Test**: 保持同樣的手續費結構，但改用更嚴格、上限 `4-30 bps` 的 `ATR x0.40` 滑價模型
+
+這樣的設計是為了讓研究流程先決定基準情境，再視需要調整細節。新回測現在會先以
+你儲存的 `Workspace` 設定開啟。對全新的工作空間來說，這代表會先以零摩擦基線開始，
+直到你在 **Settings -> Backtest Defaults** 調整它。
+
+### 了解 fill 假設
+
+Traseq 會固定 fill 規則，只把使用者真正需要操作的摩擦成本暴露出來。
+
+- 訊號單在 **下一根 bar 開盤** 成交
+- 止盈使用 **limit / gap fill**
+- 止損與 trailing stop 使用 **stop / gap fill**
+- 手續費與滑價會在理論 fill 價之後再套用
+
+### Trading Fees
+
+**Trading Fees** 摘要會直接來自工作空間的 backtest defaults。
+
+新工作空間預設是 `0% / 0%` 的 maker/taker 基線。多數團隊會先到
+**Settings -> Backtest Defaults** 設定自己的研究摩擦成本。
+
+### 滑價
+
+主畫面會提供三種滑價模型：
+
+- **None**
+- **Fixed**: 使用 `bps`，或在該標的有 tick metadata 時使用 `ticks`
+- **Volatility Scaled**: 綁定 `ATR %` 或 `Bar Range %`
+
+滑價預設取決於工作空間的 backtest defaults。新工作空間的預設是 `None`。
+
+> 注意：滑價只會套用在 market 類成交。Limit fill 會維持在 limit 或 gap
+> 價，不會再被往更差的價格推。
+
+### Expert Settings
+
+需要更細的控制時，再展開 **Expert Settings**：
+
+- 調整 entry / exit / risk 的 execution routing
+- 編輯 tiered maker / taker fee schedule
+- 設定 volatility-scaled slippage 的 ATR 週期與 min / max cap
+- 加上 max drawdown、max daily loss 等 portfolio guardrail
+
+## 執行回測
+
+確認後點選 **Run Backtest**。
+
+系統會：
+
+1. 驗證策略規則
+2. 將任務加入佇列
+3. 顯示即時進度
+
+## 成本估算
+
+面板會顯示估算的 research credit 成本與掃描 bars。可近似理解為：
+
+```text
+Estimated research credits ≈ 掃描 bars / 100,000
+```
+
+小型回測仍會套用 `0.1` research credit 的最低消耗，所以很短的掃描通常會在執行前顯示 `0.1` credits。
+
+## 回測完成
+
+回測成功後會自動跳轉到結果頁。常見失敗原因包括：
+
+- research credits 不足
+- 市場資料不足
+- 策略條件未被觸發
+
+## 下一步
+
+- [解讀回測結果](/zh-hant/guides/tutorials/read-backtest-results)
+- [比較多個回測](/zh-hant/guides/tutorials/compare-backtests)
+- [使用系統模板快速上手](/zh-hant/guides/tutorials/system-templates)
+
+[first-backtest-start-free-zh]: https://app.traseq.com/login?redirectTo=%2Fhome&entry_surface=docs&entry_source=docs_first_backtest_primary_cta&content_id=guides_tutorials_first_backtest&content_type=docs_page&cta_id=first_backtest_start_free&source_page_path=%2Fzh-hant%2Fguides%2Ftutorials%2Ffirst-backtest

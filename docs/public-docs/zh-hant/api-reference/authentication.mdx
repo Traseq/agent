@@ -1,0 +1,53 @@
+---
+title: 驗證方式
+description: Traseq management APIs 與 Public Agent API 的驗證模型。
+---
+
+Traseq 目前有兩種主要驗證模型。
+
+## Management APIs 使用 JWT
+
+已登入使用者在管理工作空間資源時，應使用 JWT。
+
+```http
+Authorization: Bearer <supabase_jwt>
+```
+
+這適用於像是以下端點：
+
+- `POST /workspaces/:workspaceId/api-keys`
+- `GET /workspaces/:workspaceId/api-keys`
+- `DELETE /workspaces/:workspaceId/api-keys/:apiKeyId`
+
+## Public Agent API 使用 API key
+
+外部整合與 AI agent 存取 Public Agent API 時，應使用 API key。
+所有方案都可以在 Traseq app 的 **Settings > API Keys** 建立 workspace API key；
+active-key quota 依 subscription tier 不同。
+
+建議 header：
+
+```http
+x-api-key: trsq_live_<keyId>_<secret>
+```
+
+替代方式：
+
+```http
+Authorization: Bearer trsq_live_<keyId>_<secret>
+```
+
+## 給 agents 的建議規則
+
+先呼叫 `GET /public/v1/workspace`，確認：
+
+- workspace context
+- 可用 scopes
+- 有效 role
+- 方案限制
+
+## 操作建議
+
+- JWT 只用在已登入的管理流程。
+- API key 用在 server-to-server integration 與 AI agent。
+- 明文 API key 只會在建立當下顯示一次，必須當作 secret 保存。

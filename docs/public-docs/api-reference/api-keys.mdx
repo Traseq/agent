@@ -1,0 +1,423 @@
+---
+title: API Keys
+description: Create, manage, and use API keys to connect external tools and AI agents to your Traseq workspace.
+---
+
+API keys let you connect external integrations and AI agents to your Traseq
+workspace. This page covers how to create, manage, and use them.
+
+## Quick facts
+
+- API keys are workspace scoped, not global credentials.
+- API key management uses JWT-authenticated workspace APIs.
+- Public Agent API calls use the API key itself.
+- All plans can create API keys; active-key quota varies by subscription tier.
+- Plaintext key material is returned only once at creation time.
+- Expired keys no longer authorize requests and do not count toward the
+  active-key quota.
+- If the key creator is no longer an active workspace member, the key becomes
+  invalid.
+
+## Key format and transport
+
+Format:
+
+```text
+trsq_live_<keyId>_<secret>
+```
+
+Preferred header:
+
+```http
+x-api-key: trsq_live_<keyId>_<secret>
+```
+
+Alternative transport:
+
+```http
+Authorization: Bearer trsq_live_<keyId>_<secret>
+```
+
+## Create a key in the app
+
+For agent setup, create the key from the Traseq app:
+
+1. Open **Settings > API Keys** in the workspace that the agent should access.
+2. Select **New API Key**.
+3. Name the key for one agent or environment, such as `agent-prod`.
+4. Select the minimum role and scopes required for that workflow.
+5. Set an expiration date when possible.
+6. Copy the plaintext key while it is shown and store it in a secret manager or
+   environment variable such as `TRASEQ_API_KEY`.
+
+Plaintext key material cannot be retrieved later. If it is lost, revoke the old
+key and create a replacement.
+
+Do not use wallet private keys, exchange secrets, or other asset-control
+credentials as Traseq API keys. A Traseq agent should receive only the scoped
+workspace API key needed for Public Agent API requests.
+
+## Status model
+
+| Status    | Meaning                                            |
+| --------- | -------------------------------------------------- |
+| `active`  | Not revoked and not expired                        |
+| `expired` | Not revoked, but `expiresAt` is in the past        |
+| `revoked` | Revoked; this wins even if the key is also expired |
+
+## Role and scope model
+
+### Accepted roles
+
+The current create-key flow accepts:
+
+- `viewer`
+- `member`
+
+| Role     | Typical use case                                      | Can call write-capable public endpoints? |
+| -------- | ----------------------------------------------------- | ---------------------------------------- |
+| `viewer` | Read-only agents and reporting flows                  | No                                       |
+| `member` | Agents that validate, create, finalize, or queue work | Yes                                      |
+
+Important rule:
+
+- `scope` controls which API surfaces are available
+- `role` controls effective permissions inside the workspace
+- a `viewer` key can still be rejected on write endpoints even if write scopes
+  were requested
+
+### Scopes
+
+| Scope                    | Purpose                                                           | Typical endpoints                                                                                                       |
+| ------------------------ | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `workspace_read`         | Read workspace context and subscription information               | `GET /public/v1/workspace`                                                                                              |
+| `system_strategies_read` | Read system strategy templates                                    | `GET /public/v1/system-strategies`                                                                                      |
+| `strategies_read`        | Read workspace strategies                                         | `GET /public/v1/strategies`                                                                                             |
+| `strategies_write`       | Validate and create strategies, copy templates, finalize versions | `POST /public/v1/strategies/validate`, `POST /public/v1/strategies`, `POST /public/v1/strategies/:id/versions/finalize` |
+| `backtests_read`         | Read backtests and results                                        | `GET /public/v1/backtests`, `GET /public/v1/backtests/:id`                                                              |
+| `backtests_write`        | Queue backtest jobs                                               | `POST /public/v1/backtests`                                                                                             |
+
+## Active-key quota
+
+The current active-key quota is tier based:
+
+| Tier   | Active key limit |
+| ------ | ---------------- |
+| `free` | 1                |
+| `plus` | 3                |
+| `pro`  | 24               |
+| `team` | 50               |
+
+An active key means:
+
+- `revokedAt = null`
+- and `expiresAt` is either `null` or still in the future
+
+That means:
+
+- expired keys do not block replacement keys
+- revoked keys do not count toward the quota
+
+## Management API for API keys
+
+These endpoints are for signed-in workspace `owner` or `admin` users.
+
+Authentication:
+
+```http
+Authorization: Bearer <supabase_jwt>
+```
+
+Base path:
+
+```text
+/workspaces/:workspaceId/api-keys
+```
+
+### List API keys
+
+```http
+GET /workspaces/:workspaceId/api-keys
+```
+
+Use this to show key metadata. The plaintext secret is never returned here.
+
+Response shape:
+
+```json
+{
+  "data": [
+    {
+      "id": "api_key_123",
+      "name": "agent-prod",
+      "description": "Production key for autonomous research agent",
+      "role": "member",
+      "scopes": [
+        "workspace_read",
+        "system_strategies_read",
+        "strategies_read",
+        "strategies_write",
+        "backtests_read",
+        "backtests_write"
+      ],
+      "keyPrefix": "trsq_live_abcd1234",
+      "tokenPreview": "trsq_live_abcd1234_...",
+      "status": "active",
+      "lastUsedAt": "2026-03-19T08:20:00.000Z",
+      "expiresAt": "2026-12-31T23:59:59.000Z",
+      "revokedAt": null,
+      "createdAt": "2026-03-19T08:00:00.000Z",
+      "createdBy": {
+        "id": "user_123",
+        "email": "owner@example.com",
+        "name": "Workspace Owner"
+      }
+    }
+  ]
+}
+```
+
+### Create an API key
+
+```http
+POST /workspaces/:workspaceId/api-keys
+```
+
+Request body:
+
+```json
+{
+  "name": "agent-prod",
+  "description": "Production key for autonomous research agent",
+  "role": "member",
+  "scopes": [
+    "workspace_read",
+    "system_strategies_read",
+    "strategies_read",
+    "strategies_write",
+    "backtests_read",
+    "backtests_write"
+  ],
+  "expiresAt": "2026-12-31T23:59:59.000Z"
+}
+```
+
+Validation rules:
+
+- `name`: required, 1-100 chars
+- `description`: optional, up to 500 chars
+- `role`: optional, `member` or `viewer`
+- `scopes`: optional, but if provided it must contain at least one scope
+- `expiresAt`: optional, but must be a future datetime
+
+Default behavior:
+
+- default `role` is `member`
+- default scopes are the core write-capable agent workflow:
+  `workspace_read`, `strategies_read`, `strategies_write`, `backtests_read`,
+  and `backtests_write`
+
+Create response:
+
+```json
+{
+  "id": "api_key_123",
+  "name": "agent-prod",
+  "description": "Production key for autonomous research agent",
+  "role": "member",
+  "scopes": [
+    "workspace_read",
+    "system_strategies_read",
+    "strategies_read",
+    "strategies_write",
+    "backtests_read",
+    "backtests_write"
+  ],
+  "keyPrefix": "trsq_live_abcd1234",
+  "expiresAt": "2026-12-31T23:59:59.000Z",
+  "createdAt": "2026-03-19T08:00:00.000Z",
+  "apiKey": "trsq_live_abcd1234_super_secret_value"
+}
+```
+
+Important notes:
+
+- `apiKey` is returned once, at creation time only
+- the database stores a hash, not the plaintext secret
+
+### Revoke an API key
+
+```http
+DELETE /workspaces/:workspaceId/api-keys/:apiKeyId
+```
+
+Response shape:
+
+```json
+{
+  "success": true,
+  "revokedAt": "2026-03-19T09:00:00.000Z"
+}
+```
+
+Behavior:
+
+- revoke takes effect immediately
+- repeated revoke calls are idempotent and still return success
+
+## Using an API key with the Public Agent API
+
+Base path:
+
+```text
+/public/v1
+```
+
+### Recommended first request
+
+For both developers and AI agents, the first request should be:
+
+```http
+GET /public/v1/workspace
+```
+
+That lets the caller confirm:
+
+- which workspace the key belongs to
+- the effective `role`
+- granted `scopes`
+- subscription-tier constraints that may affect behavior
+
+Example:
+
+```bash
+curl -s \
+  -H "x-api-key: $TRASEQ_API_KEY" \
+  https://api.traseq.com/public/v1/workspace
+```
+
+### Minimal workflows
+
+#### Read-only agent
+
+Recommended for `viewer` keys.
+
+1. `GET /public/v1/workspace`
+2. `GET /public/v1/system-strategies`
+3. `GET /public/v1/strategies`
+4. `GET /public/v1/backtests`
+
+Recommended scopes:
+
+```json
+[
+  "workspace_read",
+  "system_strategies_read",
+  "strategies_read",
+  "backtests_read"
+]
+```
+
+#### Write-capable agent
+
+Recommended for `member` keys.
+
+1. `GET /public/v1/workspace`
+2. `POST /public/v1/strategies/validate`
+3. `POST /public/v1/strategies`
+4. `POST /public/v1/strategies/:id/versions/finalize`
+5. `POST /public/v1/backtests`
+6. `GET /public/v1/backtests/:id` to poll for results
+
+Recommended scopes:
+
+```json
+[
+  "workspace_read",
+  "strategies_write",
+  "strategies_read",
+  "backtests_write",
+  "backtests_read"
+]
+```
+
+## Common failures
+
+### 401 Unauthorized
+
+Typical causes:
+
+- missing `x-api-key`
+- malformed `Authorization: Bearer ...`
+- invalid key format
+- revoked key
+- expired key
+- key creator is no longer a workspace member
+
+Typical messages:
+
+```text
+Missing API key. Provide x-api-key or Authorization: Bearer <api_key>.
+```
+
+```text
+Invalid API key
+```
+
+```text
+API key has been revoked
+```
+
+```text
+API key has expired
+```
+
+```text
+API key creator is no longer a workspace member
+```
+
+### 403 Forbidden
+
+Typical causes:
+
+- insufficient scopes
+- insufficient role, such as a `viewer` key calling a write endpoint
+- active-key quota reached during key creation
+
+Quota error example:
+
+```text
+API key quota reached for the current plan (1 active key). Revoke unused keys or upgrade your plan.
+```
+
+### 404 Not Found
+
+Typical management case:
+
+- `DELETE /workspaces/:workspaceId/api-keys/:apiKeyId` points to a missing key
+
+## Best practices
+
+### For developers
+
+- Store API keys in a secret manager — treat them like passwords.
+- Create one key per agent or environment; don't share keys.
+- Use `viewer` role with read scopes for read-only workflows.
+- Use `member` role for agents that create strategies or run backtests.
+- Set an expiration date when possible instead of leaving keys open-ended.
+- Revoke keys you're no longer using.
+
+### For AI agents
+
+- Always call `GET /public/v1/workspace` first to confirm your context.
+- Validate payloads with `POST /public/v1/strategies/validate` before writing.
+- Don't assume backtests finish synchronously — poll with
+  `GET /public/v1/backtests/:id`.
+- Use only `/public/v1` endpoints for agent workflows.
+- When handling errors, check the HTTP status code first, then the response
+  message.
+
+## Related docs
+
+- [API Overview](/api-reference/overview)
+- [Authentication](/api-reference/authentication)

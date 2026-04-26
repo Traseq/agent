@@ -1,0 +1,86 @@
+---
+title: Build Your First Strategy
+description: Create a trading strategy from scratch in the Traseq canvas editor.
+---
+In this tutorial, you'll build a strategy step by step — from picking blocks
+to finalizing a version that's ready to backtest.
+
+## Try it now
+
+- [Start free and build your first strategy in Traseq][first-strategy-start-free]
+
+## Open the strategy editor
+
+1. Click **Strategies** in the left navigation bar.
+2. Click **New Strategy**.
+3. The canvas editor opens.
+
+## Name your strategy
+
+Pick a name that makes the logic easy to recognize — especially when you have
+multiple versions. For example:
+
+- `RSI Oversold + EMA Trend Follow`
+- `MACD Strategy v2 - Added ADX Filter`
+
+## Choose blocks from the block library
+
+The block library is organized with a pinned section at the top and categories
+below.
+
+| Category | Description | Examples |
+| --- | --- | --- |
+| **Signals** | Composite signals | Golden Cross, Death Cross |
+| **Trend** | Trend detection | MACD Bullish, SuperTrend Up |
+| **Momentum** | Overbought and oversold momentum | RSI Oversold, Stoch Oversold |
+| **Volatility** | Volatility conditions | BB Squeeze, ATR Breakout |
+| **Volume** | Volume anomalies | Volume Spike, OBV Rising |
+| **Market** | Market structure | Higher High, Support Test |
+
+## Merge blocks
+
+1. Add a second block.
+2. Drag one block close to the other.
+3. Release when the merge indicator appears.
+4. The result becomes a condition group.
+
+> Note: A merged group represents AND logic. All grouped conditions must be
+> true.
+
+## Place blocks in the entry zone
+
+At the bottom of the canvas you'll see two zones:
+
+- **Entry** — defines when to open a position
+- **Exit** — defines when to close a position
+
+Drag your block group into **Entry**. You need at least one entry condition
+before you can finalize.
+
+## Configure the entry action
+
+1. Click the entry action settings.
+2. Set your preferences:
+   - **Side** — Long or Short
+   - **Position Size** — how much capital to use
+3. Close the panel when you're done.
+
+> Note: Exit conditions are optional. If you don't set any, the strategy will
+> close positions when a reverse signal fires.
+
+## Finalize the strategy
+
+1. Click **Finalize**.
+2. Traseq validates your version.
+3. The status changes from Draft to Ready — you can now run backtests.
+
+> Warning: A finalized version can't be edited. If you need to make changes,
+> create a new version.
+
+## Next steps
+
+- [Run Your First Backtest](/guides/tutorials/first-backtest)
+- [Quickstart](/guides/quickstart)
+- [Interface Overview](/guides/interface-overview)
+
+[first-strategy-start-free]: https://app.traseq.com/login?redirectTo=%2Fhome&entry_surface=docs&entry_source=docs_first_strategy_primary_cta&content_id=guides_tutorials_first_strategy&content_type=docs_page&cta_id=first_strategy_start_free&source_page_path=%2Fguides%2Ftutorials%2Ffirst-strategy

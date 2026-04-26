@@ -1,0 +1,96 @@
+---
+title: Quickstart
+description: Create your first strategy and run your first backtest in about five minutes.
+---
+In this guide, you'll create a trading strategy and run your first backtest in
+about five minutes.
+
+## Try it now
+
+- [Start free and follow along in Traseq][quickstart-start-free]
+
+## Before you begin
+
+- Sign up for a Traseq account and log in.
+- Make sure you're inside a workspace.
+
+## Step 1: Create a new strategy
+
+1. Click **Strategies** in the left navigation bar.
+2. Click **New Strategy** in the upper right corner.
+3. Enter a strategy name, for example `RSI Oversold Bounce`.
+
+> Note: Pick a name that describes the logic — it helps when you're comparing
+> multiple versions later.
+
+## Step 2: Add a block from the library
+
+1. Open the **Block Library** panel on the left side of the editor.
+2. Browse blocks by category — for example, Trend or Momentum.
+3. Click a block to add it to the canvas, such as `RSI Oversold`.
+
+## Step 3: Merge blocks
+
+1. Add a second block, for example `EMA Bullish Cross`.
+2. Drag one block close to the other.
+3. Release when the merge prompt appears.
+
+This creates a condition group — both conditions must be true at the same time
+for the signal to fire.
+
+## Step 4: Drag the group into the entry zone
+
+1. At the bottom of the canvas, you'll see **Entry** and **Exit** zones.
+2. Drag your merged group into **Entry**.
+3. This tells the strategy when to open a position.
+
+## Step 5: Configure the entry action
+
+1. Click the **entry action** row in the Entry zone.
+2. Set your preferences:
+   - **Side** — Long or Short
+   - **Position Size** — percentage of total capital
+3. Close the panel when you're done.
+
+## Step 6: Finalize the strategy
+
+1. Review your strategy logic.
+2. Click **Finalize** in the upper right corner.
+3. The version changes from Draft to Ready and is now locked for backtesting.
+
+> Warning: A finalized version can't be edited. If you need to make changes,
+> create a new version.
+
+## Step 7: Run a backtest
+
+After finalization, the **QuickRun** panel opens automatically.
+
+1. Choose a backtest period.
+2. Pick a timeframe — `15m`, `1h`, `4h`, or `1d`.
+3. Confirm the initial capital (default is `$10,000 USD`).
+4. Click **Run Backtest**.
+
+> Note: Traseq currently supports USDT spot pairs including `BTCUSDT`,
+> `ETHUSDT`, and `SOLUSDT`. All plans can use every supported timeframe — plan
+> differences mainly limit how far back you can test.
+
+## Step 8: Review the results
+
+When the backtest finishes, you'll see the results page with these tabs:
+
+| Tab | Description |
+| --- | --- |
+| **Summary** | Key performance metrics such as return, max drawdown, and total trades |
+| **Rules** | The strategy rules used in this run |
+| **Trades** | Trade-level records for every position |
+| **Analytics** | Charts such as P&L distribution and monthly returns |
+| **Charts** | Price candles, equity curve, and drawdown in one view |
+
+## Next steps
+
+- [Core Concepts](/guides/core-concepts)
+- [Interface Overview](/guides/interface-overview)
+- [Reading Backtest Results](/guides/tutorials/read-backtest-results)
+- [Comparing Multiple Backtests](/guides/tutorials/compare-backtests)
+
+[quickstart-start-free]: https://app.traseq.com/login?redirectTo=%2Fhome&entry_surface=docs&entry_source=docs_quickstart_primary_cta&content_id=guides_quickstart&content_type=docs_page&cta_id=quickstart_start_free&source_page_path=%2Fguides%2Fquickstart
