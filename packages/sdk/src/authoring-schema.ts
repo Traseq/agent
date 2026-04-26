@@ -1836,6 +1836,7 @@ function resolveNestedObjectPath(
       };
     }
 
+    // nosemgrep: prototype-pollution-loop -- guarded above: __proto__/constructor/prototype are rejected, isPlainObject + hasOwnProperty checked
     currentValue = (currentValue as Record<string, unknown>)[segment];
   }
 

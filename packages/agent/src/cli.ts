@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 import { getAgentContext } from './assembler.js';
 import { readEnv, requireEnv } from './env.js';
-import { OPERATION_REGISTRY, type OperationName } from './generated/operation-registry.js';
+import {
+  OPERATION_REGISTRY,
+  type OperationName,
+} from './generated/operation-registry.js';
 import { references } from './references/index.js';
 import { templates } from './templates/index.js';
 import { runPlatformTool, TraseqClient } from './client/index.js';
@@ -36,9 +39,24 @@ const REFERENCE_DESCRIPTIONS: Record<string, string> = {
 
 const ENV_VARS = [
   { name: 'TRASEQ_API_KEY', required: true, desc: 'Traseq API key' },
-  { name: 'TRASEQ_BASE_URL', required: false, desc: 'Traseq API base URL', fallback: 'https://api.traseq.com' },
-  { name: 'TRASEQ_TIMEOUT_MS', required: false, desc: 'Backtest timeout (ms)', fallback: '240000' },
-  { name: 'TRASEQ_POLL_INTERVAL_MS', required: false, desc: 'Backtest poll interval (ms)', fallback: '3000' },
+  {
+    name: 'TRASEQ_BASE_URL',
+    required: false,
+    desc: 'Traseq API base URL',
+    fallback: 'https://api.traseq.com',
+  },
+  {
+    name: 'TRASEQ_TIMEOUT_MS',
+    required: false,
+    desc: 'Backtest timeout (ms)',
+    fallback: '240000',
+  },
+  {
+    name: 'TRASEQ_POLL_INTERVAL_MS',
+    required: false,
+    desc: 'Backtest poll interval (ms)',
+    fallback: '3000',
+  },
 ];
 
 const args = process.argv.slice(2);
@@ -110,7 +128,9 @@ function parseJsonInput(raw: string): JsonObject {
   try {
     return JSON.parse(raw) as JsonObject;
   } catch {
-    throw new Error('Invalid JSON input. Ensure the value is a valid JSON object.');
+    throw new Error(
+      'Invalid JSON input. Ensure the value is a valid JSON object.',
+    );
   }
 }
 
@@ -131,9 +151,7 @@ function runContext(): void {
   const sections =
     sectionArg !== undefined ? [sectionArg as SectionName] : undefined;
 
-  process.stdout.write(
-    getAgentContext(sections ? { sections } : undefined),
-  );
+  process.stdout.write(getAgentContext(sections ? { sections } : undefined));
   process.stdout.write('\n');
 }
 
@@ -207,7 +225,9 @@ function runTemplateCommand(): void {
 // ---------------------------------------------------------------------------
 
 function runReferencesCommand(): void {
-  const maxKey = Math.max(...Object.keys(REFERENCE_DESCRIPTIONS).map((k) => k.length));
+  const maxKey = Math.max(
+    ...Object.keys(REFERENCE_DESCRIPTIONS).map((k) => k.length),
+  );
   for (const [key, desc] of Object.entries(REFERENCE_DESCRIPTIONS)) {
     process.stdout.write(`${key.padEnd(maxKey + 2)}${desc}\n`);
   }
@@ -252,7 +272,9 @@ function runCheckEnvCommand(): void {
     if (value) {
       process.stdout.write(`  + ${v.name.padEnd(26)} set\n`);
     } else if (v.fallback) {
-      process.stdout.write(`  - ${v.name.padEnd(26)} not set (default: ${v.fallback})\n`);
+      process.stdout.write(
+        `  - ${v.name.padEnd(26)} not set (default: ${v.fallback})\n`,
+      );
     } else {
       process.stdout.write(`  x ${v.name.padEnd(26)} not set\n`);
       if (v.required) {
@@ -262,7 +284,9 @@ function runCheckEnvCommand(): void {
   }
 
   if (!allGood) {
-    process.stderr.write('\nSome required environment variables are missing.\n');
+    process.stderr.write(
+      '\nSome required environment variables are missing.\n',
+    );
     process.exit(1);
   }
 }
@@ -272,7 +296,9 @@ function runCheckEnvCommand(): void {
 // ---------------------------------------------------------------------------
 
 function runToolsCommand(): void {
-  const maxName = Math.max(...OPERATION_REGISTRY.map((tool) => tool.name.length));
+  const maxName = Math.max(
+    ...OPERATION_REGISTRY.map((tool) => tool.name.length),
+  );
   for (const tool of OPERATION_REGISTRY) {
     const flags = [
       tool.destructive ? 'destructive' : '',
@@ -294,11 +320,14 @@ async function runToolCommand(): Promise<void> {
 
   const operation = OPERATION_REGISTRY.find((item) => item.name === toolName);
   if (!operation) {
-    process.stderr.write(`Unknown tool: "${toolName}". Run "traseq-agent tools" to list tools.\n`);
+    process.stderr.write(
+      `Unknown tool: "${toolName}". Run "traseq-agent tools" to list tools.\n`,
+    );
     process.exit(1);
   }
 
-  const rawInput = getFlag('input') ?? (hasFlag('stdin') ? await readStdinText() : '{}');
+  const rawInput =
+    getFlag('input') ?? (hasFlag('stdin') ? await readStdinText() : '{}');
   const input = parseJsonInput(rawInput);
   const result = await runPlatformTool(
     createPlatformClient(),
@@ -344,7 +373,9 @@ async function runScoreCommand(): Promise<void> {
   const normalized = normalizeBacktest(backtest);
   const score = buildScoreBreakdown(normalized.summary);
 
-  process.stdout.write(JSON.stringify({ backtest: normalized, score }, null, 2));
+  process.stdout.write(
+    JSON.stringify({ backtest: normalized, score }, null, 2),
+  );
   process.stdout.write('\n');
 }
 
@@ -398,8 +429,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  const message =
-    error instanceof Error ? error.message : String(error);
+  const message = error instanceof Error ? error.message : String(error);
   process.stderr.write(`Error: ${message}\n`);
   process.exit(1);
 });

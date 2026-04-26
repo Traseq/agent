@@ -70,7 +70,9 @@ export function buildScoreBreakdown(
   if (profitFactor >= 1.4) {
     notes.push('Profit factor shows a positive profit/loss structure.');
   } else if (profitFactor > 0 && profitFactor < 1) {
-    notes.push('Profit factor is below 1 — trade structure is not yet positive.');
+    notes.push(
+      'Profit factor is below 1 — trade structure is not yet positive.',
+    );
   }
 
   return {

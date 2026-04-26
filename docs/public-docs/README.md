@@ -50,4 +50,4 @@ Local preview includes the docs consent UI, but GA4 event delivery is restricted
 ## What is not included yet
 
 - Full product/reference parity beyond the current migrated batch
-- Brand assets and custom domain settings 
+- Brand assets and custom domain settings

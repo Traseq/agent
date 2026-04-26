@@ -36,11 +36,11 @@ If we materially change which optional technologies are active on a surface, we 
 
 These technologies may be used across Traseq surfaces where relevant:
 
-| Category | Typical purpose | Examples |
-|---|---|---|
-| Necessary cookies or equivalent state | Authentication, session continuity, security protections, payment return handling | Sign-in sessions, CSRF protection, return-state after checkout |
-| Browser storage | Product preferences and continuity between views | Theme, panel state, workspace selection, pending invitation context |
-| Server and security telemetry | Reliability, abuse prevention, auditability | Request logs, timestamps, device/browser metadata, abuse signals |
+| Category                              | Typical purpose                                                                   | Examples                                                            |
+| ------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Necessary cookies or equivalent state | Authentication, session continuity, security protections, payment return handling | Sign-in sessions, CSRF protection, return-state after checkout      |
+| Browser storage                       | Product preferences and continuity between views                                  | Theme, panel state, workspace selection, pending invitation context |
+| Server and security telemetry         | Reliability, abuse prevention, auditability                                       | Request logs, timestamps, device/browser metadata, abuse signals    |
 
 These technologies are used to provide the requested service and are not treated as optional analytics.
 
@@ -54,11 +54,11 @@ As of **2026-04-07**, Traseq separates its public surfaces into two tracking bas
 
 The public marketing site may use the following technologies:
 
-| Category | Provider or system | Purpose | When active | Notes |
-|---|---|---|---|---|
-| Necessary site state | Traseq application storage | Preserve consent choice, CTA flow continuity, and authentication handoff context | Always, as needed | Includes attribution context needed to continue a user-initiated journey into the app |
-| Optional analytics | Google Analytics 4 | Measure pageviews, acquisition paths, and CTA performance on marketing pages | Only after the user allows optional tracking | Advertising-related settings remain disabled |
-| Optional session replay | Microsoft Clarity | Review click behavior and investigate UX friction on selected public pages | Only after the user allows optional tracking | Intended for marketing UX analysis, not advertising |
+| Category                | Provider or system         | Purpose                                                                          | When active                                  | Notes                                                                                 |
+| ----------------------- | -------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Necessary site state    | Traseq application storage | Preserve consent choice, CTA flow continuity, and authentication handoff context | Always, as needed                            | Includes attribution context needed to continue a user-initiated journey into the app |
+| Optional analytics      | Google Analytics 4         | Measure pageviews, acquisition paths, and CTA performance on marketing pages     | Only after the user allows optional tracking | Advertising-related settings remain disabled                                          |
+| Optional session replay | Microsoft Clarity          | Review click behavior and investigate UX friction on selected public pages       | Only after the user allows optional tracking | Intended for marketing UX analysis, not advertising                                   |
 
 When optional tracking is declined on the marketing site, Traseq intends to keep these technologies off and continue serving only essential functionality.
 
@@ -66,11 +66,11 @@ When optional tracking is declined on the marketing site, Traseq intends to keep
 
 The documentation site may use the following technologies:
 
-| Category | Provider or system | Purpose | When active | Notes |
-|---|---|---|---|---|
-| Necessary site state | Traseq browser storage | Preserve consent choice and support user-initiated navigation into the app | Always, as needed | Includes content context parameters added to outbound docs CTA links |
-| Optional analytics | Google Analytics 4 | Measure documentation pageviews and docs-to-app CTA performance | Only after the user allows optional tracking | Advertising-related settings remain disabled |
-| Optional session replay | Microsoft Clarity | Review CTA clicks, scroll depth, and UX friction on selected article-style documentation pages | Only after the user allows optional tracking, only on selected article pages, and only when the docs deployment is configured with a Clarity project ID | Intended for guide and learn-center style content, not API reference, legal, changelog, or other non-article docs surfaces |
+| Category                | Provider or system     | Purpose                                                                                        | When active                                                                                                                                             | Notes                                                                                                                      |
+| ----------------------- | ---------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Necessary site state    | Traseq browser storage | Preserve consent choice and support user-initiated navigation into the app                     | Always, as needed                                                                                                                                       | Includes content context parameters added to outbound docs CTA links                                                       |
+| Optional analytics      | Google Analytics 4     | Measure documentation pageviews and docs-to-app CTA performance                                | Only after the user allows optional tracking                                                                                                            | Advertising-related settings remain disabled                                                                               |
+| Optional session replay | Microsoft Clarity      | Review CTA clicks, scroll depth, and UX friction on selected article-style documentation pages | Only after the user allows optional tracking, only on selected article pages, and only when the docs deployment is configured with a Clarity project ID | Intended for guide and learn-center style content, not API reference, legal, changelog, or other non-article docs surfaces |
 
 As of **2026-04-07**, the documentation runtime supports optional Microsoft Clarity on selected article pages, but it remains inactive unless the docs deployment is configured with a Clarity project ID. PostHog session replay and other optional analytics providers are **not** enabled on the documentation site.
 
@@ -80,12 +80,12 @@ As of **2026-04-07**, the documentation runtime supports optional Microsoft Clar
 
 The authenticated Traseq App may use the following technologies:
 
-| Category | Provider or system | Purpose | When active | Notes |
-|---|---|---|---|---|
-| Necessary product state | Traseq application storage | Preserve product state and critical settings | Always, as needed | Used for interface state, workspace context, and other requested functionality |
-| Optional analytics | Google Analytics 4 | Understand aggregate product usage and navigation | Only after the user allows optional tracking | Advertising-related settings remain disabled |
-| Optional product analytics | PostHog | Understand feature usage, product adoption, and UX friction | Only after the user allows optional tracking | Used for product measurement and improvement |
-| Optional session replay | PostHog Session Replay | Investigate UX issues and diagnose selected product flows | Only after the user allows optional tracking | Configured to suppress form inputs and mask designated sensitive areas |
+| Category                   | Provider or system         | Purpose                                                     | When active                                  | Notes                                                                          |
+| -------------------------- | -------------------------- | ----------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------ |
+| Necessary product state    | Traseq application storage | Preserve product state and critical settings                | Always, as needed                            | Used for interface state, workspace context, and other requested functionality |
+| Optional analytics         | Google Analytics 4         | Understand aggregate product usage and navigation           | Only after the user allows optional tracking | Advertising-related settings remain disabled                                   |
+| Optional product analytics | PostHog                    | Understand feature usage, product adoption, and UX friction | Only after the user allows optional tracking | Used for product measurement and improvement                                   |
+| Optional session replay    | PostHog Session Replay     | Investigate UX issues and diagnose selected product flows   | Only after the user allows optional tracking | Configured to suppress form inputs and mask designated sensitive areas         |
 
 Optional tracking in the authenticated app is controlled through a single user-facing preference today. When that preference is declined, optional analytics and session replay are intended to remain off.
 

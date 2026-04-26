@@ -18,9 +18,18 @@ describe('buildScoreBreakdown', () => {
     assert.ok(score.total > 0, `expected positive total, got ${score.total}`);
     assert.ok(score.returnScore > 0, 'return score should be positive');
     assert.ok(score.sharpeScore > 0, 'sharpe score should be positive');
-    assert.ok(score.profitFactorScore > 0, 'profit factor score should be positive');
-    assert.ok(score.drawdownPenalty >= 0, 'drawdown penalty should be non-negative');
-    assert.ok(score.consistencyScore > 0, 'consistency score should be positive');
+    assert.ok(
+      score.profitFactorScore > 0,
+      'profit factor score should be positive',
+    );
+    assert.ok(
+      score.drawdownPenalty >= 0,
+      'drawdown penalty should be non-negative',
+    );
+    assert.ok(
+      score.consistencyScore > 0,
+      'consistency score should be positive',
+    );
     assert.ok(score.activityScore > 0, 'activity score should be positive');
   });
 
@@ -38,7 +47,10 @@ describe('buildScoreBreakdown', () => {
     const score = buildScoreBreakdown(summary);
     assert.ok(score.total < 0, `expected negative total, got ${score.total}`);
     assert.ok(score.returnScore < 0, 'return score should be negative');
-    assert.ok(score.drawdownPenalty > 0, 'drawdown penalty should be positive for large DD');
+    assert.ok(
+      score.drawdownPenalty > 0,
+      'drawdown penalty should be positive for large DD',
+    );
   });
 
   it('handles undefined summary gracefully', () => {
@@ -56,7 +68,9 @@ describe('buildScoreBreakdown', () => {
   it('generates appropriate notes for low trade count', () => {
     const score = buildScoreBreakdown({ totalPositions: 3 });
     assert.ok(
-      score.notes.some((n) => n.includes('limited confidence') || n.includes('small')),
+      score.notes.some(
+        (n) => n.includes('limited confidence') || n.includes('small'),
+      ),
       'should note low sample size',
     );
   });
@@ -80,7 +94,9 @@ describe('buildScoreBreakdown', () => {
   it('generates notes for excessive drawdown', () => {
     const score = buildScoreBreakdown({ maxDrawdown: 0.3 });
     assert.ok(
-      score.notes.some((n) => n.includes('excessive') || n.includes('priority')),
+      score.notes.some(
+        (n) => n.includes('excessive') || n.includes('priority'),
+      ),
       'should note excessive drawdown',
     );
   });

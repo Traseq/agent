@@ -207,7 +207,13 @@ export interface AutoAgentResearchResult {
 
 export type ResearchStreamEvent =
   | { type: 'meta'; runId: string; startedAt: string; input: AutoAgentRequest }
-  | { type: 'status'; at: string; round?: number; phase: string; message: string }
+  | {
+      type: 'status';
+      at: string;
+      round?: number;
+      phase: string;
+      message: string;
+    }
   | { type: 'step'; log: AgentStepLog }
   | { type: 'round_completed'; round: ResearchRound }
   | { type: 'completed'; result: AutoAgentResearchResult }

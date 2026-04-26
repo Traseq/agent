@@ -7,10 +7,19 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..', '..', '..');
 
 const domainConstants = JSON.parse(
-  readFileSync(resolve(root, 'docs/public-docs/domain-constants.json'), 'utf-8'),
+  readFileSync(
+    resolve(root, 'docs/public-docs/domain-constants.json'),
+    'utf-8',
+  ),
 );
 
-const constantsOut = resolve(__dirname, '..', 'src', 'generated', 'constants.ts');
+const constantsOut = resolve(
+  __dirname,
+  '..',
+  'src',
+  'generated',
+  'constants.ts',
+);
 const toolSchemaSnapshotOut = resolve(
   root,
   'docs/public-docs/reference/traseq-agent-tool-schema.json',

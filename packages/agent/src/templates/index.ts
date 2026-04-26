@@ -60,7 +60,7 @@ export const templates = {
       '# Strategy Templates',
       '',
       'Each template is a complete, valid signalGraph strategy draft.',
-      'Use as a starting point and adapt to the user\'s specific thesis.',
+      "Use as a starting point and adapt to the user's specific thesis.",
       '',
       ...ALL_TEMPLATES.map(templateToMarkdown),
     ].join('\n');

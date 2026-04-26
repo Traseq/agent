@@ -1,5 +1,8 @@
 import type { TraseqClient } from '@traseq/sdk';
-import { getOperationDefinition, type OperationName } from '../generated/operation-registry.js';
+import {
+  getOperationDefinition,
+  type OperationName,
+} from '../generated/operation-registry.js';
 import { asJsonObject, asNumber, asString } from '../normalize.js';
 
 type ToolInput = Record<string, unknown>;
@@ -144,16 +147,25 @@ export async function runPlatformTool(
         omit(input, ['backtestId']) as any,
       );
     case 'get_backtest_price_preview':
-      return client.getBacktestPricePreview(requiredString(input, 'backtestId'));
+      return client.getBacktestPricePreview(
+        requiredString(input, 'backtestId'),
+      );
     case 'set_primary_backtest':
       return client.setPrimaryBacktest(requiredString(input, 'backtestId'));
     case 'delete_backtest':
       return client.deleteBacktest(requiredString(input, 'backtestId'));
     case 'wait_backtest':
-      return client.waitForBacktestCompletion(requiredString(input, 'backtestId'), {
-        intervalMs: clamp(asNumber(input.intervalMs) ?? 3_000, 1_000, 30_000),
-        timeoutMs: clamp(asNumber(input.timeoutMs) ?? 240_000, 5_000, 600_000),
-      });
+      return client.waitForBacktestCompletion(
+        requiredString(input, 'backtestId'),
+        {
+          intervalMs: clamp(asNumber(input.intervalMs) ?? 3_000, 1_000, 30_000),
+          timeoutMs: clamp(
+            asNumber(input.timeoutMs) ?? 240_000,
+            5_000,
+            600_000,
+          ),
+        },
+      );
     case 'preview_robustness_analysis':
       return client.previewRobustnessAnalysis(input as any);
     case 'create_robustness_analysis':
@@ -186,7 +198,9 @@ export async function runPlatformTool(
         omit(input, ['comparisonSetId']) as any,
       );
     case 'delete_comparison_set':
-      return client.deleteComparisonSet(requiredString(input, 'comparisonSetId'));
+      return client.deleteComparisonSet(
+        requiredString(input, 'comparisonSetId'),
+      );
     case 'list_blocks':
       return client.listBlocks(input as any);
     case 'get_block':

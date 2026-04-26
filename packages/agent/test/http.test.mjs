@@ -10,7 +10,9 @@ describe('fetchWithRetry', () => {
     );
 
     try {
-      const res = await fetchWithRetry('https://example.com', { method: 'GET' });
+      const res = await fetchWithRetry('https://example.com', {
+        method: 'GET',
+      });
       assert.equal(res.status, 200);
       assert.equal(globalThis.fetch.mock.callCount(), 1);
     } finally {
@@ -25,7 +27,9 @@ describe('fetchWithRetry', () => {
     );
 
     try {
-      const res = await fetchWithRetry('https://example.com', { method: 'GET' });
+      const res = await fetchWithRetry('https://example.com', {
+        method: 'GET',
+      });
       assert.equal(res.status, 400);
       assert.equal(globalThis.fetch.mock.callCount(), 1);
     } finally {
@@ -45,9 +49,13 @@ describe('fetchWithRetry', () => {
     });
 
     try {
-      const res = await fetchWithRetry('https://example.com', { method: 'GET' }, {
-        baseDelayMs: 10,
-      });
+      const res = await fetchWithRetry(
+        'https://example.com',
+        { method: 'GET' },
+        {
+          baseDelayMs: 10,
+        },
+      );
       assert.equal(res.status, 200);
       assert.equal(globalThis.fetch.mock.callCount(), 2);
     } finally {
@@ -72,9 +80,13 @@ describe('fetchWithRetry', () => {
     });
 
     try {
-      const res = await fetchWithRetry('https://example.com', { method: 'GET' }, {
-        baseDelayMs: 10,
-      });
+      const res = await fetchWithRetry(
+        'https://example.com',
+        { method: 'GET' },
+        {
+          baseDelayMs: 10,
+        },
+      );
       assert.equal(res.status, 200);
       assert.equal(globalThis.fetch.mock.callCount(), 2);
     } finally {
@@ -89,10 +101,14 @@ describe('fetchWithRetry', () => {
     );
 
     try {
-      const res = await fetchWithRetry('https://example.com', { method: 'GET' }, {
-        maxAttempts: 2,
-        baseDelayMs: 10,
-      });
+      const res = await fetchWithRetry(
+        'https://example.com',
+        { method: 'GET' },
+        {
+          maxAttempts: 2,
+          baseDelayMs: 10,
+        },
+      );
       assert.equal(res.status, 502);
       assert.equal(globalThis.fetch.mock.callCount(), 2);
     } finally {
@@ -108,10 +124,15 @@ describe('fetchWithRetry', () => {
 
     try {
       await assert.rejects(
-        () => fetchWithRetry('https://example.com', { method: 'GET' }, {
-          maxAttempts: 2,
-          baseDelayMs: 10,
-        }),
+        () =>
+          fetchWithRetry(
+            'https://example.com',
+            { method: 'GET' },
+            {
+              maxAttempts: 2,
+              baseDelayMs: 10,
+            },
+          ),
         { message: 'network failure' },
       );
       assert.equal(globalThis.fetch.mock.callCount(), 2);

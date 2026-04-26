@@ -107,9 +107,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "key"
-      ],
+      "required": ["key"],
       "properties": {
         "key": {
           "type": "string"
@@ -127,9 +125,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "key"
-      ],
+      "required": ["key"],
       "properties": {
         "key": {
           "type": "string"
@@ -153,9 +149,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "settings"
-      ],
+      "required": ["settings"],
       "properties": {
         "strategyAst": {
           "type": "object",
@@ -211,10 +205,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "name",
-        "settings"
-      ],
+      "required": ["name", "settings"],
       "properties": {
         "name": {
           "type": "string"
@@ -247,9 +238,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "strategyId"
-      ],
+      "required": ["strategyId"],
       "properties": {
         "strategyId": {
           "type": "string"
@@ -267,9 +256,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "strategyId"
-      ],
+      "required": ["strategyId"],
       "properties": {
         "strategyId": {
           "type": "string"
@@ -300,10 +287,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "strategyId",
-        "settings"
-      ],
+      "required": ["strategyId", "settings"],
       "properties": {
         "strategyId": {
           "type": "string"
@@ -336,10 +320,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "strategyId",
-        "version"
-      ],
+      "required": ["strategyId", "version"],
       "properties": {
         "strategyId": {
           "type": "string"
@@ -360,10 +341,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "strategyId",
-        "version"
-      ],
+      "required": ["strategyId", "version"],
       "properties": {
         "strategyId": {
           "type": "string"
@@ -396,10 +374,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "strategyId",
-        "settings"
-      ],
+      "required": ["strategyId", "settings"],
       "properties": {
         "strategyId": {
           "type": "string"
@@ -438,11 +413,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "strategyId",
-        "version",
-        "confirm"
-      ],
+      "required": ["strategyId", "version", "confirm"],
       "properties": {
         "strategyId": {
           "type": "string"
@@ -467,10 +438,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "strategyId",
-        "version"
-      ],
+      "required": ["strategyId", "version"],
       "properties": {
         "strategyId": {
           "type": "string"
@@ -491,10 +459,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "strategyId",
-        "version"
-      ],
+      "required": ["strategyId", "version"],
       "properties": {
         "strategyId": {
           "type": "string"
@@ -515,10 +480,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "strategyId",
-        "version"
-      ],
+      "required": ["strategyId", "version"],
       "properties": {
         "strategyId": {
           "type": "string"
@@ -528,10 +490,7 @@
         },
         "validationMode": {
           "type": "string",
-          "enum": [
-            "compatible",
-            "exact_only"
-          ]
+          "enum": ["compatible", "exact_only"]
         },
         "strategyName": {
           "type": "string"
@@ -549,9 +508,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "blocks"
-      ],
+      "required": ["blocks"],
       "properties": {
         "blocks": {
           "type": "array",
@@ -591,10 +548,7 @@
         },
         "order": {
           "type": "string",
-          "enum": [
-            "asc",
-            "desc"
-          ]
+          "enum": ["asc", "desc"]
         },
         "page": {
           "type": "integer"
@@ -615,10 +569,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "strategyVersionId",
-        "config"
-      ],
+      "required": ["strategyVersionId", "config"],
       "properties": {
         "strategyVersionId": {
           "type": "string"
@@ -641,9 +592,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "backtestId"
-      ],
+      "required": ["backtestId"],
       "properties": {
         "backtestId": {
           "type": "string"
@@ -661,9 +610,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "backtestId"
-      ],
+      "required": ["backtestId"],
       "properties": {
         "backtestId": {
           "type": "string"
@@ -681,9 +628,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": true,
-      "required": [
-        "backtestId"
-      ],
+      "required": ["backtestId"],
       "properties": {
         "backtestId": {
           "type": "string"
@@ -701,9 +646,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "backtestId"
-      ],
+      "required": ["backtestId"],
       "properties": {
         "backtestId": {
           "type": "string"
@@ -721,9 +664,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "backtestId"
-      ],
+      "required": ["backtestId"],
       "properties": {
         "backtestId": {
           "type": "string"
@@ -741,10 +682,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "backtestId",
-        "confirm"
-      ],
+      "required": ["backtestId", "confirm"],
       "properties": {
         "backtestId": {
           "type": "string"
@@ -766,9 +704,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "backtestId"
-      ],
+      "required": ["backtestId"],
       "properties": {
         "backtestId": {
           "type": "string"
@@ -793,18 +729,14 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "sourceBacktestId"
-      ],
+      "required": ["sourceBacktestId"],
       "properties": {
         "sourceBacktestId": {
           "type": "string"
         },
         "preset": {
           "type": "string",
-          "enum": [
-            "core_v1"
-          ]
+          "enum": ["core_v1"]
         }
       }
     }
@@ -819,18 +751,14 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "sourceBacktestId"
-      ],
+      "required": ["sourceBacktestId"],
       "properties": {
         "sourceBacktestId": {
           "type": "string"
         },
         "preset": {
           "type": "string",
-          "enum": [
-            "core_v1"
-          ]
+          "enum": ["core_v1"]
         }
       }
     },
@@ -869,9 +797,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "analysisRunId"
-      ],
+      "required": ["analysisRunId"],
       "properties": {
         "analysisRunId": {
           "type": "string"
@@ -889,9 +815,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "analysisRunId"
-      ],
+      "required": ["analysisRunId"],
       "properties": {
         "analysisRunId": {
           "type": "string"
@@ -922,10 +846,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "analysisRunId",
-        "confirm"
-      ],
+      "required": ["analysisRunId", "confirm"],
       "properties": {
         "analysisRunId": {
           "type": "string"
@@ -947,9 +868,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "analysisRunId"
-      ],
+      "required": ["analysisRunId"],
       "properties": {
         "analysisRunId": {
           "type": "string"
@@ -1003,9 +922,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "comparisonSetId"
-      ],
+      "required": ["comparisonSetId"],
       "properties": {
         "comparisonSetId": {
           "type": "string"
@@ -1023,10 +940,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "name",
-        "backtestIds"
-      ],
+      "required": ["name", "backtestIds"],
       "properties": {
         "name": {
           "type": "string"
@@ -1053,9 +967,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "comparisonSetId"
-      ],
+      "required": ["comparisonSetId"],
       "properties": {
         "comparisonSetId": {
           "type": "string"
@@ -1092,10 +1004,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "comparisonSetId",
-        "confirm"
-      ],
+      "required": ["comparisonSetId", "confirm"],
       "properties": {
         "comparisonSetId": {
           "type": "string"
@@ -1152,9 +1061,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "blockId"
-      ],
+      "required": ["blockId"],
       "properties": {
         "blockId": {
           "type": "string"
@@ -1172,10 +1079,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "name",
-        "tokens"
-      ],
+      "required": ["name", "tokens"],
       "properties": {
         "name": {
           "type": "string"
@@ -1227,9 +1131,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "blockId"
-      ],
+      "required": ["blockId"],
       "properties": {
         "blockId": {
           "type": "string"
@@ -1284,10 +1186,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "blockId",
-        "confirm"
-      ],
+      "required": ["blockId", "confirm"],
       "properties": {
         "blockId": {
           "type": "string"
@@ -1309,9 +1208,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "blockId"
-      ],
+      "required": ["blockId"],
       "properties": {
         "blockId": {
           "type": "string"
@@ -1329,9 +1226,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "blockId"
-      ],
+      "required": ["blockId"],
       "properties": {
         "blockId": {
           "type": "string"

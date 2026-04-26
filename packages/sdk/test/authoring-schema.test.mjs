@@ -67,20 +67,24 @@ test('validateStrategyDraft accepts a structurally valid draft', () => {
 
   assert.equal(result.ok, true);
   if (result.ok) {
-    assert.equal(result.draft.signalGraph.strategy.entry.trigger.ref, 'trend_ok');
+    assert.equal(
+      result.draft.signalGraph.strategy.entry.trigger.ref,
+      'trend_ok',
+    );
   }
 });
 
 test('STRATEGY_DRAFT_JSON_SCHEMA exposes node-level signalGraph union', () => {
   const nodeUnion =
-    STRATEGY_DRAFT_JSON_SCHEMA.schema.properties.signalGraph.properties.nodes.items
-      .oneOf;
+    STRATEGY_DRAFT_JSON_SCHEMA.schema.properties.signalGraph.properties.nodes
+      .items.oneOf;
 
   assert.ok(Array.isArray(nodeUnion));
   assert.equal(nodeUnion.length, 22);
   assert.equal(
-    STRATEGY_DRAFT_JSON_SCHEMA.schema.properties.signalGraph.properties.strategy
-      .properties.entry.required.includes('trigger'),
+    STRATEGY_DRAFT_JSON_SCHEMA.schema.properties.signalGraph.properties.strategy.properties.entry.required.includes(
+      'trigger',
+    ),
     true,
   );
 });
@@ -171,7 +175,11 @@ test('buildStrategyDraftJsonSchema promotes indicator output from args into top-
 
   assert.ok(macdSchema);
   assert.equal(macdSchema.required.includes('output'), true);
-  assert.deepEqual(macdSchema.properties.output.enum, ['macd', 'signal', 'hist']);
+  assert.deepEqual(macdSchema.properties.output.enum, [
+    'macd',
+    'signal',
+    'hist',
+  ]);
   assert.equal('output' in macdSchema.properties.args.properties, false);
   assert.match(macdSchema.description, /oscillator_operand/);
 });
@@ -227,7 +235,9 @@ test('validateStrategyDraft rejects bool/value/series ref mismatches', () => {
 
   assert.equal(result.ok, false);
   if (!result.ok) {
-    const messages = result.issues.map((issue) => `${issue.path}:${issue.message}`);
+    const messages = result.issues.map(
+      (issue) => `${issue.path}:${issue.message}`,
+    );
     assert.ok(
       messages.some((message) =>
         message.includes('signalGraph.strategy.entry.trigger'),
@@ -283,14 +293,18 @@ test('validateStrategyDraft enforces capability-derived indicator output contrac
 
   assert.equal(result.ok, false);
   if (!result.ok) {
-    const messages = result.issues.map((issue) => `${issue.path}:${issue.message}`);
+    const messages = result.issues.map(
+      (issue) => `${issue.path}:${issue.message}`,
+    );
     assert.ok(
       messages.some((message) =>
         message.includes('signalGraph.nodes[2].args.output'),
       ),
     );
     assert.ok(
-      messages.some((message) => message.includes('signalGraph.nodes[2].output')),
+      messages.some((message) =>
+        message.includes('signalGraph.nodes[2].output'),
+      ),
     );
   }
 });

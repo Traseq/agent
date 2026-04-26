@@ -259,7 +259,8 @@ export async function runResearch(
     type: 'status',
     at: toIsoNow(),
     phase: 'live_context',
-    message: 'Reading Traseq workspace context, usage, manifest, and capabilities.',
+    message:
+      'Reading Traseq workspace context, usage, manifest, and capabilities.',
   });
 
   const [manifest, workspace, usage, capabilities] = await Promise.all([

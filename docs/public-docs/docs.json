@@ -70,9 +70,7 @@
             "groups": [
               {
                 "group": "Reference",
-                "pages": [
-                  "reference/faq"
-                ]
+                "pages": ["reference/faq"]
               },
               {
                 "group": "Legal",
@@ -136,9 +134,7 @@
               },
               {
                 "group": "學習中心",
-                "pages": [
-                  "zh-hant/learn/content-factory-acceptance-20260420"
-                ]
+                "pages": ["zh-hant/learn/content-factory-acceptance-20260420"]
               }
             ]
           },
@@ -164,9 +160,7 @@
             "groups": [
               {
                 "group": "參考資料",
-                "pages": [
-                  "zh-hant/reference/faq"
-                ]
+                "pages": ["zh-hant/reference/faq"]
               },
               {
                 "group": "法律",

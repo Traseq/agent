@@ -29,7 +29,9 @@ export function asString(value: unknown, fallback = ''): string {
 }
 
 export function asNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 export function asStringArray(value: unknown, limit = 4): string[] {
@@ -125,7 +127,9 @@ export function normalizeDraft(draft: unknown): StrategyDraftLike {
       ? { description: asString(source.description) }
       : {}),
     signalGraph: asJsonObject(source.signalGraph) ?? {},
-    settings: normalizeNextSettings(source.settings) ?? { positionStyle: 'single' },
+    settings: normalizeNextSettings(source.settings) ?? {
+      positionStyle: 'single',
+    },
     backtest: (asJsonObject(source.backtest) ?? {
       timeframe: '4h',
       signalInstrument: { symbol: 'BTCUSDT' },
@@ -161,32 +165,44 @@ function normalizeValidationIssues(
           ? source.severity
           : undefined;
 
-      const issue: NonNullable<ValidationSummaryLike['issues']['tokens']>[number] = {
+      const issue: NonNullable<
+        ValidationSummaryLike['issues']['tokens']
+      >[number] = {
         message,
       };
 
       const code = asString(source.code);
-      if (code) { issue.code = code; }
+      if (code) {
+        issue.code = code;
+      }
 
       const path = asString(source.path);
-      if (path) { issue.path = path; }
+      if (path) {
+        issue.path = path;
+      }
 
       const suggestion = asString(source.suggestion);
-      if (suggestion) { issue.suggestion = suggestion; }
+      if (suggestion) {
+        issue.suggestion = suggestion;
+      }
 
       const details = asString(source.details);
-      if (details) { issue.details = details; }
+      if (details) {
+        issue.details = details;
+      }
 
-      if (severity) { issue.severity = severity; }
+      if (severity) {
+        issue.severity = severity;
+      }
 
       return issue;
     })
-    .filter(
-      (item): item is NonNullable<typeof item> => item !== null,
-    );
+    .filter((item): item is NonNullable<typeof item> => item !== null);
 }
 
-export function normalizeValidation(validation: unknown): ValidationSummaryLike {
+export function normalizeValidation(
+  validation: unknown,
+): ValidationSummaryLike {
   const source = asJsonObject(validation) ?? {};
   const issues = asJsonObject(source.issues) ?? {};
 
@@ -227,8 +243,7 @@ export function normalizeBacktest(backtest: unknown): NormalizedBacktestResult {
   const source = asJsonObject(backtest) ?? {};
   const nestedResult = asJsonObject(source.result);
   const summary =
-    asJsonObject(source.summaryJson) ??
-    asJsonObject(nestedResult?.summaryJson);
+    asJsonObject(source.summaryJson) ?? asJsonObject(nestedResult?.summaryJson);
 
   const result: NormalizedBacktestResult = {
     id: asString(source.id, 'unknown-backtest'),
@@ -355,7 +370,9 @@ export function normalizeNextBacktest(
 
   const portfolioRisk = asJsonObject(source.portfolioRisk);
   if (portfolioRisk) {
-    next.portfolioRisk = portfolioRisk as NonNullable<typeof next.portfolioRisk>;
+    next.portfolioRisk = portfolioRisk as NonNullable<
+      typeof next.portfolioRisk
+    >;
   }
 
   const ambiguityResolution = asString(source.ambiguityResolution);
