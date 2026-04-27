@@ -8,6 +8,13 @@ import {
 import { references } from './references/index.js';
 import { templates } from './templates/index.js';
 import { runPlatformTool, TraseqClient } from './client/index.js';
+import { asJsonObject } from './normalize.js';
+import {
+  AGENT_TOOL_REGISTRY,
+  getAgentToolDefinition,
+  runAgentTool,
+  type AgentToolName,
+} from './semantics/index.js';
 import type { JsonObject, SectionName, ResearchStreamEvent } from './types.js';
 
 const VALID_SECTIONS = new Set<string>([
@@ -83,8 +90,8 @@ function printUsage(): void {
       '  references                                     List all reference documents',
       '  reference --type <name>                         Show a specific reference',
       '  check-env                                      Check required environment variables',
-      '  tools                                          List platform MCP/SDK tools',
-      '  run --tool <name> [--input <json>]              Run a platform tool',
+      '  tools                                          List platform and agent-local tools',
+      '  run --tool <name> [--input <json>]              Run a platform or agent-local tool',
       '  score --backtest-id <id>                        Score a completed backtest',
       '  score --json                                    Score from stdin JSON summary',
       '  research --prompt "..." [options]               Create a tool-first research brief',
@@ -298,9 +305,16 @@ function runCheckEnvCommand(): void {
 function runToolsCommand(): void {
   const maxName = Math.max(
     ...OPERATION_REGISTRY.map((tool) => tool.name.length),
+    ...AGENT_TOOL_REGISTRY.map((tool) => tool.name.length),
   );
+  for (const tool of AGENT_TOOL_REGISTRY) {
+    process.stdout.write(
+      `${tool.name.padEnd(maxName + 2)}local agent-tool [agent-local]\n`,
+    );
+  }
   for (const tool of OPERATION_REGISTRY) {
     const flags = [
+      'platform',
       tool.destructive ? 'destructive' : '',
       tool.longRunning ? 'long-running' : '',
     ].filter(Boolean);
@@ -319,7 +333,8 @@ async function runToolCommand(): Promise<void> {
   }
 
   const operation = OPERATION_REGISTRY.find((item) => item.name === toolName);
-  if (!operation) {
+  const agentTool = getAgentToolDefinition(toolName);
+  if (!operation && !agentTool) {
     process.stderr.write(
       `Unknown tool: "${toolName}". Run "traseq-agent tools" to list tools.\n`,
     );
@@ -329,6 +344,23 @@ async function runToolCommand(): Promise<void> {
   const rawInput =
     getFlag('input') ?? (hasFlag('stdin') ? await readStdinText() : '{}');
   const input = parseJsonInput(rawInput);
+  if (agentTool) {
+    const needsClient =
+      agentTool.name === 'resolve_strategy_semantics' &&
+      asJsonObject(input.capabilities) === undefined;
+    const result = await runAgentTool(agentTool.name as AgentToolName, input, {
+      ...(needsClient ? { client: createPlatformClient() } : {}),
+    });
+
+    process.stdout.write(JSON.stringify(result, null, 2));
+    process.stdout.write('\n');
+    return;
+  }
+
+  if (!operation) {
+    throw new Error(`Unknown platform tool: ${toolName}`);
+  }
+
   const result = await runPlatformTool(
     createPlatformClient(),
     operation.name as OperationName,

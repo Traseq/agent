@@ -27,6 +27,13 @@
   var APP_HOSTS = {
     'app.traseq.com': true,
   };
+  var UTM_PARAM_KEYS = [
+    'utm_source',
+    'utm_medium',
+    'utm_campaign',
+    'utm_term',
+    'utm_content',
+  ];
   var DEFAULT_CONSENT = {
     version: CONSENT_VERSION,
     consent: CONSENT_STATES.UNDECIDED,
@@ -778,6 +785,21 @@
     return text ? 'docs_link_' + toIdentifier(text).slice(0, 60) : undefined;
   }
 
+  function applyIncomingUtmToDestination(destination) {
+    var currentParams = new URLSearchParams(window.location.search || '');
+    var changed = false;
+
+    UTM_PARAM_KEYS.forEach(function (key) {
+      var value = currentParams.get(key);
+      if (value) {
+        destination.searchParams.set(key, value);
+        changed = true;
+      }
+    });
+
+    return changed;
+  }
+
   function handleDocumentClick(event) {
     if (!event.target || typeof event.target.closest !== 'function') {
       return;
@@ -791,6 +813,10 @@
     var destination = resolveUrl(anchor.getAttribute('href'));
     if (!destination || !APP_HOSTS[destination.hostname]) {
       return;
+    }
+
+    if (applyIncomingUtmToDestination(destination)) {
+      anchor.setAttribute('href', destination.toString());
     }
 
     var currentPage = buildPageContext();

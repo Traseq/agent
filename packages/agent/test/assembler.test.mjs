@@ -7,6 +7,7 @@ import { validateStrategyDraft } from '@traseq/sdk';
 import {
   getAgentContext,
   OPERATION_REGISTRY,
+  AGENT_TOOL_REGISTRY,
   SKILL_CONTENT,
   references,
   runPlatformTool,
@@ -89,6 +90,7 @@ describe('SKILL_CONTENT', () => {
     assert.ok(SKILL_CONTENT.includes('Phase 4: Create and Backtest'));
     assert.ok(SKILL_CONTENT.includes('Phase 5: Results Analysis'));
     assert.ok(SKILL_CONTENT.includes('Phase 6: Iteration'));
+    assert.ok(SKILL_CONTENT.includes('resolve_strategy_semantics'));
   });
 });
 
@@ -227,6 +229,13 @@ describe('tools', () => {
     assert.ok(defs.length >= 7);
   });
 
+  it('has local agent tool definitions', () => {
+    const defs = tools.agentDefinitions();
+    const names = defs.map((d) => d.name);
+    assert.ok(names.includes('get_semantics'));
+    assert.ok(names.includes('resolve_strategy_semantics'));
+  });
+
   it('includes expected tools', () => {
     const defs = tools.definitions();
     const names = defs.map((d) => d.name);
@@ -240,6 +249,9 @@ describe('tools', () => {
   it('asMarkdown() includes workflow order', () => {
     const md = tools.asMarkdown();
     assert.ok(md.includes('## Workflow Order'));
+    assert.ok(md.includes('## Agent-Local Tools'));
+    assert.ok(md.includes('resolve_strategy_semantics'));
+    assert.ok(md.includes('## Platform Tools'));
     assert.ok(md.includes('get_manifest'));
     assert.ok(md.includes('run_backtest'));
   });
@@ -278,6 +290,13 @@ describe('tools', () => {
     }
 
     assert.deepEqual(uncovered, []);
+  });
+
+  it('keeps local agent tools out of the platform operation registry', () => {
+    const platformNames = new Set(OPERATION_REGISTRY.map((tool) => tool.name));
+    for (const tool of AGENT_TOOL_REGISTRY) {
+      assert.equal(platformNames.has(tool.name), false);
+    }
   });
 });
 

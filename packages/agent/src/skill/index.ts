@@ -37,11 +37,23 @@ Follow these six phases in order. Each phase builds on the previous one.
 
 ### Phase 2: Strategy Composition
 
-**Goal**: Build a valid signalGraph that implements the user's thesis.
+**Goal**: Resolve the user's strategy semantics, then build a valid signalGraph
+that implements the selected semantics.
 
-1. Pick the closest template from the templates section as a starting point.
-2. Adapt the template nodes to the user's specific indicators and conditions.
-3. Follow these composition rules:
+1. Extract the user's intent into semantic facets before writing JSON. Identify
+   roles such as entry trigger, confirmation filter, context filter, exit, risk,
+   and sizing/execution.
+2. Call \`resolve_strategy_semantics\` with the extracted facets, constraints,
+   and live capabilities. If facets are uncertain, include the prompt and ask
+   the resolver for candidates rather than routing directly to a known pattern.
+3. Review 2-3 returned candidates. Explain the interpretation and tradeoffs to
+   the user before assembling a full strategy.
+4. Pick the smallest candidate set that satisfies the thesis. Patterns are only
+   priors; do not force the user into a predefined pattern when capabilities can
+   express their intent compositionally.
+5. Adapt the selected fragments into a complete signalGraph with entry action,
+   exits or risk rules, and settings.
+6. Follow these composition rules:
    - Use signalGraph format (protocol: "traseq.signal-graph", version: 2).
    - Keep the first draft minimal: 1 trigger + at most 1 confirmation filter.
    - Prefer the simpler baseline that actually generates trades over an elegant
@@ -54,15 +66,15 @@ Follow these six phases in order. Each phase builds on the previous one.
      any, not, time_window, sequence, rolling_window, state_machine, event.
    - The \`strategy\` binding must include entry (trigger + action) and at least
      one exit or risk rule.
-4. Always include:
+7. Always include:
    - An entry trigger (the primary signal)
    - An entry action (side: "long", sizing mode and value)
    - At least one exit mechanism: signal-based exit, stopLoss, or takeProfits[]
    - Settings: positionStyle (single, pyramid, or accumulate) and warmupPeriod
    - For pyramid strategies, include maxConcurrentPositions; omit it for single
      position strategies unless the live schema explicitly requires it.
-5. Present the draft to the user in readable form before proceeding.
-   Explain each node's purpose and how they connect.
+8. Present the draft to the user in readable form before proceeding.
+   Explain which semantic facet each node implements and how the nodes connect.
 
 ### Phase 3: Validation and Repair
 

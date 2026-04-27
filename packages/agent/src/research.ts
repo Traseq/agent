@@ -149,7 +149,9 @@ function buildAuthoringPrompt(input: AutoAgentRequest): string {
     'Optimization objective:',
     input.objective,
     '',
-    'Use get_capabilities before authoring. Validate with validate_strategy before create/finalize.',
+    'Use get_capabilities before authoring. Resolve intent with resolve_strategy_semantics before writing signalGraph JSON.',
+    'Explain the semantic facets you inferred, compare 2-3 resolver candidates, then assemble the smallest complete signalGraph.',
+    'Validate with validate_strategy before create/finalize.',
     'Prefer a few strong conditions over many weak filters.',
   ].join('\n');
 }
@@ -162,6 +164,7 @@ function buildRevisionPromptTemplate(input: AutoAgentRequest): string {
     'Use these inputs:',
     '- previous draft',
     '- validate_strategy issues',
+    '- resolve_strategy_semantics output when changing strategy semantics',
     '- get_backtest summary/result',
     '- get_backtest_chart_data or get_backtest_price_preview when visual evidence is useful',
     '- score output from traseq-agent score when available',
@@ -179,8 +182,9 @@ function buildWorkflow(): ResearchWorkflowStep[] {
         'get_workspace_context',
         'get_usage',
         'get_capabilities',
+        'resolve_strategy_semantics',
       ],
-      goal: 'Understand auth scopes, limits, live authoring contract, and workspace budget before writes.',
+      goal: 'Understand auth scopes, limits, live authoring contract, semantic implementation candidates, and workspace budget before writes.',
     },
     {
       phase: 'seed',
@@ -189,8 +193,12 @@ function buildWorkflow(): ResearchWorkflowStep[] {
     },
     {
       phase: 'author',
-      tools: ['validate_strategy', 'validate_conflicts'],
-      goal: 'Draft signalGraph/settings locally and repair all blocking validation issues before persisting.',
+      tools: [
+        'resolve_strategy_semantics',
+        'validate_strategy',
+        'validate_conflicts',
+      ],
+      goal: 'Resolve intent into fragments, draft signalGraph/settings locally, and repair all blocking validation issues before persisting.',
     },
     {
       phase: 'persist',

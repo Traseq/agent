@@ -5,6 +5,18 @@ export { references } from './references/index.js';
 export { templates } from './templates/index.js';
 export { tools } from './tools/index.js';
 export {
+  AGENT_TOOL_REGISTRY,
+  SEMANTIC_FACETS,
+  SEMANTIC_IMPLEMENTATIONS,
+  buildSemanticCapabilityGraph,
+  getAgentToolDefinition,
+  getSemanticOntology,
+  getSemantics,
+  missingRequiredCapabilities,
+  resolveStrategySemantics,
+  runAgentTool,
+} from './semantics/index.js';
+export {
   OPERATION_REGISTRY,
   getOperationDefinition,
 } from './generated/operation-registry.js';
@@ -80,3 +92,23 @@ export type {
   OperationDefinition,
   OperationName,
 } from './generated/operation-registry.js';
+export type {
+  AgentToolDefinition,
+  AgentToolName,
+  GetSemanticsInput,
+  ResolveStrategySemanticsInput,
+  ResolvedSemanticFacet,
+  SemanticCandidateStatus,
+  SemanticComplexity,
+  SemanticFacetDefinition,
+  SemanticFacetInput,
+  SemanticImplementationCandidate,
+  SemanticImplementationDefinition,
+  SemanticOntologyDocument,
+  SemanticResolutionResult,
+  SemanticResolveConstraints,
+  SemanticRequiredCapabilities,
+  SemanticRole,
+  SemanticTradeoffs,
+  SignalGraphFragment,
+} from './semantics/index.js';

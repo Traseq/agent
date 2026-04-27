@@ -50,6 +50,10 @@
       "types": "./dist/tools/index.d.ts",
       "import": "./dist/tools/index.js"
     },
+    "./semantics": {
+      "types": "./dist/semantics/index.d.ts",
+      "import": "./dist/semantics/index.js"
+    },
     "./client": {
       "types": "./dist/client/index.d.ts",
       "import": "./dist/client/index.js"

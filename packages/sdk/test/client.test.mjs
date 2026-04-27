@@ -132,7 +132,7 @@ test('TraseqClient.finalizeStrategyVersion encodes strategyId in URL', async () 
   const client = new TraseqClient({
     baseUrl: 'https://api.traseq.test',
     apiKey: 'key',
-    fetch: async (input, init) => {
+    fetch: async (input, _init) => {
       const url = typeof input === 'string' ? input : input.toString();
       capturedPath = new URL(url).pathname;
       return jsonResponse({ id: 'v-1', version: 1, status: 'ready' });
