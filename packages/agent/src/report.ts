@@ -53,23 +53,23 @@ function lineList(items: readonly string[]): string[] {
   return items.length > 0 ? items.map((item) => `- ${item}`) : ['- None'];
 }
 
-function roundSection(round: ResearchRoundEvaluation): string[] {
+function roundEvidenceSection(round: ResearchRoundEvaluation): string[] {
   return [
-    `## Round ${round.round}`,
+    `### Round ${round.round}`,
     '',
-    `- **Confidence:** ${humanizeConfidence(round.confidence)}`,
-    `- **Decision:** ${humanizeDecision(round.decision)}`,
-    `- **Score:** ${number(round.score.total)}`,
-    `- **Return:** ${pct(round.metrics.returnPct)}`,
-    `- **Sharpe:** ${number(round.metrics.sharpeRatio)}`,
-    `- **Profit factor:** ${number(round.metrics.profitFactor)}`,
-    `- **Max drawdown:** ${pct(round.metrics.maxDrawdown)}`,
-    `- **Trades:** ${round.metrics.totalPositions}`,
+    `- Confidence: ${humanizeConfidence(round.confidence)}`,
+    `- Decision: ${humanizeDecision(round.decision)}`,
+    `- Score: ${number(round.score.total)}`,
+    `- Return: ${pct(round.metrics.returnPct)}`,
+    `- Sharpe: ${number(round.metrics.sharpeRatio)}`,
+    `- Profit factor: ${number(round.metrics.profitFactor)}`,
+    `- Max drawdown: ${pct(round.metrics.maxDrawdown)}`,
+    `- Trades: ${round.metrics.totalPositions}`,
     '',
-    'Strengths:',
+    'Strengths',
     ...lineList(round.strengths),
     '',
-    'Weaknesses:',
+    'Weaknesses',
     ...lineList(round.weaknesses.map((item) => item.message)),
   ];
 }
@@ -79,26 +79,36 @@ export function formatResearchReport(
   evaluation: ResearchResultEvaluation = evaluateResearchResult(result),
 ): string {
   const input = result.input;
+  const evidenceLines =
+    evaluation.rounds.length > 0
+      ? evaluation.rounds.flatMap((round) => [
+          ...roundEvidenceSection(round),
+          '',
+        ])
+      : ['- No completed rounds produced backtest evidence.', ''];
   const lines = [
-    '# Traseq Research Report',
+    '# Traseq Guided Research Memo',
     '',
-    '## Summary',
+    'This memo summarizes historical research evidence only. It is not investment advice, trade execution guidance, or live-trading approval.',
+    '',
+    '## Executive Verdict',
     '',
     `- **Run ID:** ${result.runId}`,
-    `- **Prompt:** ${input.prompt}`,
-    `- **Instrument:** ${input.instrument}`,
-    `- **Timeframe:** ${input.timeframe}`,
     `- **Runner status:** ${result.status}`,
     `- **Evaluation confidence:** ${humanizeConfidence(evaluation.confidence)}`,
     `- **Champion round:** ${evaluation.championRound ?? 'none'}`,
     '',
-    '## Verdict',
+    '## What We Tested',
     '',
-    `- **Confidence:** ${humanizeConfidence(evaluation.confidence)}`,
-    `- **Decision:** ${humanizeDecision(evaluation.verdict.decision)}`,
-    `- **Summary:** ${evaluation.verdict.summary}`,
-    `- **Next action:** ${evaluation.verdict.nextAction}`,
+    `- **Prompt:** ${input.prompt}`,
+    `- **Instrument:** ${input.instrument}`,
+    `- **Timeframe:** ${input.timeframe}`,
+    `- **Position style:** ${input.positionStyle}`,
+    `- **Objective:** ${input.objective}`,
     '',
+    '## Evidence',
+    '',
+    ...evidenceLines,
     '## Risk Flags',
     '',
     ...lineList(
@@ -110,7 +120,14 @@ export function formatResearchReport(
       ),
     ),
     '',
-    ...evaluation.rounds.flatMap((round) => [...roundSection(round), '']),
+    '## Decision',
+    '',
+    `- **Decision:** ${humanizeDecision(evaluation.verdict.decision)}`,
+    `- **Summary:** ${evaluation.verdict.summary}`,
+    '',
+    '## Recommended Next Step',
+    '',
+    evaluation.verdict.nextAction,
   ];
 
   return `${lines.join('\n').trim()}\n`;

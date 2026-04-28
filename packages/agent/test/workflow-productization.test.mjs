@@ -5,8 +5,11 @@ import {
   AGENT_TOOL_REGISTRY,
   buildResearchArtifactBundle,
   evaluateResearchResult,
+  formatResearchEngagementBrief,
   formatResearchReport,
   runAgentTool,
+  runGuidedResearchRound,
+  startResearchEngagement,
 } from '../dist/index.js';
 
 const VALIDATION_OK = {
@@ -74,6 +77,7 @@ function completedRound(round = 1) {
 
 function researchResult() {
   return {
+    schemaVersion: 1,
     runId: 'run-1',
     startedAt: '2026-01-01T00:00:00.000Z',
     completedAt: '2026-01-01T00:01:00.000Z',
@@ -194,48 +198,59 @@ function runCli(args, { env, input } = {}) {
   });
 }
 
-const EXPECTED_REPORT_SNAPSHOT = `# Traseq Research Report
+const EXPECTED_REPORT_SNAPSHOT = `# Traseq Guided Research Memo
 
-## Summary
+This memo summarizes historical research evidence only. It is not investment advice, trade execution guidance, or live-trading approval.
+
+## Executive Verdict
 
 - **Run ID:** run-1
-- **Prompt:** Research a BTCUSDT trend strategy.
-- **Instrument:** BTCUSDT
-- **Timeframe:** 4h
 - **Runner status:** completed
 - **Evaluation confidence:** Robust (\`robust\`)
 - **Champion round:** 1
 
-## Verdict
+## What We Tested
 
-- **Confidence:** Robust (\`robust\`)
-- **Decision:** Keep candidate (\`keep_candidate\`)
-- **Summary:** Champion round meets the first-pass research robustness bar.
-- **Next action:** Keep this candidate and move to baseline or robustness evaluation next.
+- **Prompt:** Research a BTCUSDT trend strategy.
+- **Instrument:** BTCUSDT
+- **Timeframe:** 4h
+- **Position style:** single
+- **Objective:** Improve risk-adjusted returns.
 
-## Risk Flags
+## Evidence
 
-- None
+### Round 1
 
-## Round 1
+- Confidence: Robust (\`robust\`)
+- Decision: Keep candidate (\`keep_candidate\`)
+- Score: 24.00
+- Return: 14.00%
+- Sharpe: 0.90
+- Profit factor: 1.50
+- Max drawdown: 16.00%
+- Trades: 24
 
-- **Confidence:** Robust (\`robust\`)
-- **Decision:** Keep candidate (\`keep_candidate\`)
-- **Score:** 24.00
-- **Return:** 14.00%
-- **Sharpe:** 0.90
-- **Profit factor:** 1.50
-- **Max drawdown:** 16.00%
-- **Trades:** 24
-
-Strengths:
+Strengths
 - Round meets the research robustness threshold.
 - Trade sample is large enough for first-pass comparison.
 - Profit factor shows a constructive profit/loss structure.
 - Risk-adjusted return is usable for early research.
 
-Weaknesses:
+Weaknesses
 - No major first-pass evidence risks were detected.
+
+## Risk Flags
+
+- None
+
+## Decision
+
+- **Decision:** Keep candidate (\`keep_candidate\`)
+- **Summary:** Champion round meets the first-pass research robustness bar.
+
+## Recommended Next Step
+
+Keep this candidate and move to baseline or robustness evaluation next.
 `;
 
 describe('research report formatting', () => {
@@ -250,7 +265,7 @@ describe('research report formatting', () => {
   it('humanizes confidence and decision enums while preserving the raw value', () => {
     const report = formatResearchReport(researchResult());
 
-    assert.match(report, /Confidence:\*\* Robust \(`robust`\)/);
+    assert.match(report, /Evaluation confidence:\*\* Robust \(`robust`\)/);
     assert.match(report, /Decision:\*\* Keep candidate \(`keep_candidate`\)/);
   });
 
@@ -272,13 +287,99 @@ describe('research report formatting', () => {
   });
 });
 
+describe('guided research service', () => {
+  it('starts a service engagement with explicit defaults and no AI provider requirement', async () => {
+    const client = makeClient();
+    const brief = await startResearchEngagement(
+      { prompt: 'Research a BTCUSDT trend strategy.' },
+      { client },
+    );
+    const rendered = formatResearchEngagementBrief(brief);
+
+    assert.equal(brief.input.instrument, 'BTCUSDT');
+    assert.equal(brief.input.timeframe, '4h');
+    assert.equal(brief.input.positionStyle, 'single');
+    assert.equal(brief.riskTolerance, 'moderate');
+    assert.ok(
+      brief.assumptions.some((item) =>
+        item.includes('Instrument defaults to BTCUSDT'),
+      ),
+    );
+    assert.ok(
+      brief.assumptions.some((item) =>
+        item.includes('Timeframe defaults to 4h'),
+      ),
+    );
+    assert.ok(
+      brief.assumptions.some((item) =>
+        item.includes('Risk tolerance defaults to moderate'),
+      ),
+    );
+    assert.doesNotMatch(rendered, /get_manifest|validate_strategy|run_backtest/);
+    assert.doesNotMatch(
+      brief.serviceMessages.map((message) => message.message).join('\n'),
+      /get_manifest|validate_strategy|run_backtest/,
+    );
+    assert.ok(brief.authoringInstructions.includes('external AI agent'));
+  });
+
+  it('runs a guided research round and returns service messages plus a memo', async () => {
+    const client = makeClient();
+    const output = await runGuidedResearchRound(
+      {
+        prompt: 'Research a BTCUSDT trend strategy.',
+        draft: draft(),
+        instrument: 'BTCUSDT',
+        timeframe: '4h',
+      },
+      { client },
+    );
+
+    assert.equal(output.status, 'completed');
+    assert.equal(output.result.rounds[0].backtest.id, 'bt-1');
+    assert.equal(output.evaluation.confidence, 'robust');
+    assert.equal(output.verdict.decision, 'keep_candidate');
+    assert.match(output.report, /Traseq Guided Research Memo/);
+    assert.ok(
+      output.serviceMessages.some(
+        (message) => message.title === 'Candidate passed the first evidence bar',
+      ),
+    );
+  });
+});
+
 describe('agent workflow MCP tools', () => {
   it('registers runner, evaluator, and report tools for MCP clients', () => {
     const names = AGENT_TOOL_REGISTRY.map((tool) => tool.name);
 
+    assert.ok(names.includes('start_research_engagement'));
+    assert.ok(names.includes('run_guided_research_round'));
+    assert.ok(names.includes('summarize_research_engagement'));
     assert.ok(names.includes('run_research_draft'));
     assert.ok(names.includes('evaluate_research_result'));
     assert.ok(names.includes('format_research_report'));
+  });
+
+  it('publishes schemas for guided research tools', () => {
+    const start = AGENT_TOOL_REGISTRY.find(
+      (entry) => entry.name === 'start_research_engagement',
+    );
+    const run = AGENT_TOOL_REGISTRY.find(
+      (entry) => entry.name === 'run_guided_research_round',
+    );
+
+    assert.ok(start, 'start_research_engagement tool must be registered');
+    assert.ok(run, 'run_guided_research_round tool must be registered');
+    assert.deepEqual(start.input_schema.required, ['prompt']);
+    assert.deepEqual(run.input_schema.required, ['prompt', 'draft']);
+    assert.deepEqual(start.input_schema.properties.timeframe, {
+      type: 'string',
+      enum: ['15m', '1h', '4h', '1d'],
+    });
+    assert.deepEqual(run.input_schema.properties.riskTolerance, {
+      type: 'string',
+      enum: ['conservative', 'moderate', 'aggressive'],
+    });
   });
 
   it('publishes typed enum and minLength constraints for run_research_draft inputs', () => {
@@ -368,8 +469,39 @@ describe('agent workflow MCP tools', () => {
       result: researchResult(),
     });
 
-    assert.match(output.report, /Traseq Research Report/);
+    assert.match(output.report, /Traseq Guided Research Memo/);
     assert.match(output.report, /Verdict/);
+  });
+
+  it('runs guided tools through the local tool registry', async () => {
+    const client = makeClient();
+    const brief = await runAgentTool(
+      'start_research_engagement',
+      { prompt: 'Research a BTCUSDT trend strategy.' },
+      { client },
+    );
+
+    assert.equal(brief.input.instrument, 'BTCUSDT');
+
+    const output = await runAgentTool(
+      'run_guided_research_round',
+      {
+        prompt: 'Research a BTCUSDT trend strategy.',
+        draft: draft(),
+        instrument: 'BTCUSDT',
+        timeframe: '4h',
+      },
+      { client },
+    );
+
+    assert.equal(output.status, 'completed');
+    assert.match(output.report, /Traseq Guided Research Memo/);
+
+    const summary = await runAgentTool('summarize_research_engagement', {
+      result: output.result,
+      evaluation: output.evaluation,
+    });
+    assert.match(summary.report, /Recommended Next Step/);
   });
 
   it('runs run_research_draft through the research runner using the supplied client', async () => {
@@ -388,7 +520,7 @@ describe('agent workflow MCP tools', () => {
     assert.equal(output.status, 'completed');
     assert.equal(output.result.rounds[0].backtest.id, 'bt-1');
     assert.equal(output.evaluation.confidence, 'robust');
-    assert.match(output.report, /Traseq Research Report/);
+    assert.match(output.report, /Traseq Guided Research Memo/);
     assert.ok(client.calls.includes('runBacktest'));
   });
 
@@ -422,7 +554,7 @@ describe('agent workflow MCP tools', () => {
     const parsed = JSON.parse(result.stdout);
     assert.equal(parsed.status, 'completed');
     assert.equal(parsed.result.rounds[0].backtest.id, 'bt-1');
-    assert.match(parsed.report, /Traseq Research Report/);
+    assert.match(parsed.report, /Traseq Guided Research Memo/);
   });
 });
 
@@ -433,8 +565,8 @@ describe('report CLI', () => {
     });
 
     assert.equal(result.code, 0, result.stderr);
-    assert.match(result.stdout, /^# Traseq Research Report/);
-    assert.match(result.stdout, /Verdict/);
+    assert.match(result.stdout, /^# Traseq Guided Research Memo/);
+    assert.match(result.stdout, /Executive Verdict/);
   });
 
   it('exits non-zero for invalid JSON input', async () => {
@@ -452,7 +584,118 @@ describe('report CLI', () => {
     });
 
     assert.notEqual(result.code, 0);
-    assert.match(result.stderr, /schemaVersion mismatch/);
+    assert.match(
+      result.stderr,
+      /does not look like a research-run result.*got 999.*expected schemaVersion=1/s,
+    );
     assert.equal(result.stdout, '');
+  });
+});
+
+describe('guided CLI', () => {
+  it('prints a service-style engagement brief by default', async () => {
+    const result = await runCli(
+      [
+        'guide',
+        '--prompt',
+        'Research a BTCUSDT trend strategy.',
+        '--instrument',
+        'BTCUSDT',
+      ],
+      {
+        env: {
+          NODE_OPTIONS: '--import ./test/mock-cli-fetch.mjs',
+          TRASEQ_API_KEY: 'test-key',
+          TRASEQ_BASE_URL: 'https://api.test.local',
+        },
+      },
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /^# Traseq Research Engagement Brief/);
+    assert.match(result.stdout, /Assumptions/);
+    assert.doesNotMatch(result.stdout, /get_manifest|validate_strategy/);
+  });
+
+  it('prints guided engagement JSON with defaults when requested', async () => {
+    const result = await runCli(
+      [
+        'guide',
+        '--prompt',
+        'Research a BTCUSDT trend strategy.',
+        '--json',
+      ],
+      {
+        env: {
+          NODE_OPTIONS: '--import ./test/mock-cli-fetch.mjs',
+          TRASEQ_API_KEY: 'test-key',
+          TRASEQ_BASE_URL: 'https://api.test.local',
+        },
+      },
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.input.instrument, 'BTCUSDT');
+    assert.equal(parsed.input.timeframe, '4h');
+    assert.equal(parsed.riskTolerance, 'moderate');
+    assert.ok(Array.isArray(parsed.decisionPoints));
+  });
+
+  it('prints a guided service memo for guide-run', async () => {
+    const result = await runCli(
+      [
+        'guide-run',
+        '--prompt',
+        'Research a BTCUSDT trend strategy.',
+        '--draft',
+        JSON.stringify(draft()),
+        '--report',
+      ],
+      {
+        env: {
+          NODE_OPTIONS: '--import ./test/mock-cli-fetch.mjs',
+          TRASEQ_AGENT_TEST_VALIDATION: 'ok',
+          TRASEQ_API_KEY: 'test-key',
+          TRASEQ_BASE_URL: 'https://api.test.local',
+        },
+      },
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /^# Traseq Guided Research Memo/);
+    assert.match(result.stdout, /Executive Verdict/);
+  });
+
+  it('returns guided JSON and exits non-zero when validation stops the round', async () => {
+    const result = await runCli(
+      [
+        'guide-run',
+        '--prompt',
+        'Research a BTCUSDT trend strategy.',
+        '--draft',
+        JSON.stringify(draft()),
+        '--json',
+      ],
+      {
+        env: {
+          NODE_OPTIONS: '--import ./test/mock-cli-fetch.mjs',
+          TRASEQ_AGENT_TEST_VALIDATION: 'fail',
+          TRASEQ_API_KEY: 'test-key',
+          TRASEQ_BASE_URL: 'https://api.test.local',
+        },
+      },
+    );
+
+    assert.notEqual(result.code, 0);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.status, 'failed');
+    assert.equal(parsed.result.stopReason, 'validation_failed');
+    assert.equal(parsed.result.rounds[0].backtest, undefined);
+    assert.ok(
+      parsed.serviceMessages.some(
+        (message) => message.title === 'Research stopped before usable evidence',
+      ),
+    );
   });
 });

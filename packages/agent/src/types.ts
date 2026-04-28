@@ -182,7 +182,58 @@ export interface AutoAgentRequest {
   maxConcurrentPositions: number;
 }
 
+export type ResearchRiskTolerance = 'conservative' | 'moderate' | 'aggressive';
+
+export interface ResearchEngagementInput {
+  prompt: string;
+  instrument?: string;
+  timeframe?: Timeframe;
+  rounds?: number;
+  objective?: string;
+  initialBalance?: number;
+  warmupPeriod?: number;
+  positionStyle?: 'single' | 'pyramid' | 'accumulate';
+  maxConcurrentPositions?: number;
+  riskTolerance?: ResearchRiskTolerance;
+}
+
+export interface ServiceMessage {
+  level: 'info' | 'success' | 'warning' | 'critical';
+  title: string;
+  message: string;
+  nextAction?: string;
+}
+
+export interface ResearchDecisionPoint {
+  id: string;
+  question: string;
+  recommended: string;
+  options: string[];
+  required: boolean;
+  rationale: string;
+}
+
+export interface ResearchEngagementBrief {
+  runId: string;
+  startedAt: string;
+  completedAt: string;
+  input: AutoAgentRequest;
+  riskTolerance: ResearchRiskTolerance;
+  assumptions: string[];
+  serviceMessages: ServiceMessage[];
+  decisionPoints: ResearchDecisionPoint[];
+  authoringInstructions: string;
+  live: AutoAgentResearchResult['live'];
+  recommendedWorkflow: ResearchWorkflowStep[];
+  evidenceBoundaries: string[];
+}
+
 export type ResearchRunnerStatus = 'completed' | 'partial' | 'failed';
+
+export type ResearchContextClient = Pick<
+  SdkTraseqClient,
+  'getManifest' | 'getWorkspaceContext' | 'getUsage' | 'getCapabilities'
+>;
 
 export type ResearchRunnerClient = Pick<
   SdkTraseqClient,
@@ -236,6 +287,31 @@ export interface ResearchRunnerOptions {
   pollIntervalMs?: number;
   timeoutMs?: number;
   producerTimeoutMs?: number;
+}
+
+export interface GuidedResearchRoundInput extends ResearchEngagementInput {
+  draft: StrategyDraftLike;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+  producerTimeoutMs?: number;
+}
+
+export interface GuidedResearchEvidence {
+  completedRounds: number;
+  totalRounds: number;
+  championRound?: number;
+  riskFlagCount: number;
+  headline: string;
+}
+
+export interface GuidedResearchRoundResult {
+  status: ResearchRunnerStatus;
+  serviceMessages: ServiceMessage[];
+  evidence: GuidedResearchEvidence;
+  verdict: ResearchVerdict;
+  result: ResearchRunnerResult;
+  evaluation: ResearchResultEvaluation;
+  report: string;
 }
 
 export interface ResearchRunnerRound {

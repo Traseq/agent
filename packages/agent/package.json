@@ -66,6 +66,10 @@
       "types": "./dist/research.d.ts",
       "import": "./dist/research.js"
     },
+    "./guided-research": {
+      "types": "./dist/guided-research.d.ts",
+      "import": "./dist/guided-research.js"
+    },
     "./research-runner": {
       "types": "./dist/research-runner.d.ts",
       "import": "./dist/research-runner.js"

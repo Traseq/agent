@@ -1,10 +1,18 @@
 import type { CapabilityDocument, TraseqClient } from '../client/index.js';
 import { asJsonObject } from '../normalize.js';
 import { evaluateResearchResult } from '../evaluation.js';
+import {
+  runGuidedResearchRound,
+  startResearchEngagement,
+  summarizeResearchEngagement,
+} from '../guided-research.js';
 import { formatResearchReport } from '../report.js';
 import { runResearchRunner } from '../research-runner.js';
 import { getSemantics, resolveStrategySemantics } from './resolver.js';
 import type {
+  GuidedResearchRoundInput,
+  ResearchContextClient,
+  ResearchEngagementInput,
   ResearchResultEvaluation,
   ResearchRunnerClient,
   ResearchRunnerResult,
@@ -20,6 +28,9 @@ export interface AgentToolDefinition {
   readonly name:
     | 'get_semantics'
     | 'resolve_strategy_semantics'
+    | 'start_research_engagement'
+    | 'run_guided_research_round'
+    | 'summarize_research_engagement'
     | 'run_research_draft'
     | 'evaluate_research_result'
     | 'format_research_report';
@@ -37,6 +48,11 @@ const numberProp = { type: 'number' } as const;
 
 const TIMEFRAME_VALUES = ['15m', '1h', '4h', '1d'] as const;
 const POSITION_STYLE_VALUES = ['single', 'pyramid', 'accumulate'] as const;
+const RISK_TOLERANCE_VALUES = [
+  'conservative',
+  'moderate',
+  'aggressive',
+] as const;
 
 const PROMPT_MIN_LENGTH = 12;
 
@@ -91,6 +107,63 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
       capabilities: objectProp,
       includeUnavailable: booleanProp,
     }),
+  },
+  {
+    name: 'start_research_engagement',
+    description:
+      'Start a service-style Traseq research engagement. Reads live workspace context, usage, and capabilities, then returns assumptions, decision points, evidence boundaries, and provider-agnostic authoring instructions.',
+    local: true,
+    input_schema: objectSchema(
+      {
+        prompt: { type: 'string', minLength: PROMPT_MIN_LENGTH },
+        instrument: stringProp,
+        timeframe: enumProp(TIMEFRAME_VALUES),
+        rounds: numberProp,
+        objective: stringProp,
+        initialBalance: numberProp,
+        warmupPeriod: numberProp,
+        positionStyle: enumProp(POSITION_STYLE_VALUES),
+        maxConcurrentPositions: numberProp,
+        riskTolerance: enumProp(RISK_TOLERANCE_VALUES),
+      },
+      ['prompt'],
+    ),
+  },
+  {
+    name: 'run_guided_research_round',
+    description:
+      'Run one externally-authored strategy draft as a guided research service round: validate, create/finalize only after validation, backtest, evaluate evidence, and return a service memo. Provider-agnostic; caller authors the draft.',
+    local: true,
+    input_schema: objectSchema(
+      {
+        prompt: { type: 'string', minLength: PROMPT_MIN_LENGTH },
+        draft: objectProp,
+        instrument: stringProp,
+        timeframe: enumProp(TIMEFRAME_VALUES),
+        initialBalance: numberProp,
+        warmupPeriod: numberProp,
+        positionStyle: enumProp(POSITION_STYLE_VALUES),
+        maxConcurrentPositions: numberProp,
+        riskTolerance: enumProp(RISK_TOLERANCE_VALUES),
+        pollIntervalMs: numberProp,
+        timeoutMs: numberProp,
+        producerTimeoutMs: numberProp,
+      },
+      ['prompt', 'draft'],
+    ),
+  },
+  {
+    name: 'summarize_research_engagement',
+    description:
+      'Render a guided research round or runResearchRunner result into a user-facing service memo. Pure local JSON tool.',
+    local: true,
+    input_schema: objectSchema(
+      {
+        result: objectProp,
+        evaluation: objectProp,
+      },
+      ['result'],
+    ),
   },
   {
     name: 'run_research_draft',
@@ -153,7 +226,10 @@ async function getCapabilitiesIfNeeded(
 
   if (!client) {
     throw new Error(
-      'resolve_strategy_semantics requires capabilities or a Traseq client that can call get_capabilities.',
+      [
+        'resolve_strategy_semantics needs capabilities to ground candidates.',
+        'Either pass `capabilities` in the tool input (offline mode), or supply a Traseq client (set TRASEQ_API_KEY) so it can call get_capabilities.',
+      ].join(' '),
     );
   }
 
@@ -175,11 +251,36 @@ function isResearchRunnerClient(
   );
 }
 
+function isResearchContextClient(
+  client: unknown,
+): client is ResearchContextClient {
+  if (typeof client !== 'object' || client === null) {
+    return false;
+  }
+
+  const candidate = client as {
+    getManifest?: unknown;
+    getWorkspaceContext?: unknown;
+    getUsage?: unknown;
+    getCapabilities?: unknown;
+  };
+
+  return (
+    typeof candidate.getManifest === 'function' &&
+    typeof candidate.getWorkspaceContext === 'function' &&
+    typeof candidate.getUsage === 'function' &&
+    typeof candidate.getCapabilities === 'function'
+  );
+}
+
 export async function runAgentTool(
   name: AgentToolName,
   rawInput: unknown = {},
   options: {
-    client?: Pick<TraseqClient, 'getCapabilities'> | ResearchRunnerClient;
+    client?:
+      | Pick<TraseqClient, 'getCapabilities'>
+      | ResearchContextClient
+      | ResearchRunnerClient;
   } = {},
 ): Promise<unknown> {
   const input = asJsonObject(rawInput) ?? {};
@@ -197,6 +298,77 @@ export async function runAgentTool(
         ...resolveInput,
         capabilities,
       });
+    }
+    case 'start_research_engagement': {
+      if (!isResearchContextClient(options.client)) {
+        throw new Error(
+          'start_research_engagement requires a Traseq client with workspace context methods.',
+        );
+      }
+
+      return startResearchEngagement(
+        input as unknown as ResearchEngagementInput,
+        {
+          client: options.client,
+        },
+      );
+    }
+    case 'run_guided_research_round': {
+      if (!isResearchRunnerClient(options.client)) {
+        throw new Error(
+          'run_guided_research_round requires a Traseq client with research runner methods.',
+        );
+      }
+
+      const prompt = typeof input.prompt === 'string' ? input.prompt : '';
+      const draft = asJsonObject(input.draft);
+      if (prompt.trim().length < PROMPT_MIN_LENGTH) {
+        throw new Error(
+          `run_guided_research_round requires prompt of at least ${PROMPT_MIN_LENGTH} characters.`,
+        );
+      }
+      if (!draft) {
+        throw new Error('run_guided_research_round requires draft.');
+      }
+      if (
+        input.timeframe !== undefined &&
+        !TIMEFRAME_VALUES.includes(input.timeframe as Timeframe)
+      ) {
+        throw new Error(
+          `run_guided_research_round timeframe must be one of: ${TIMEFRAME_VALUES.join(', ')}.`,
+        );
+      }
+      if (
+        input.positionStyle !== undefined &&
+        !POSITION_STYLE_VALUES.includes(
+          input.positionStyle as (typeof POSITION_STYLE_VALUES)[number],
+        )
+      ) {
+        throw new Error(
+          `run_guided_research_round positionStyle must be one of: ${POSITION_STYLE_VALUES.join(', ')}.`,
+        );
+      }
+
+      return runGuidedResearchRound(
+        input as unknown as GuidedResearchRoundInput,
+        {
+          client: options.client,
+        },
+      );
+    }
+    case 'summarize_research_engagement': {
+      const result = asJsonObject(input.result);
+      if (!result) {
+        throw new Error('summarize_research_engagement requires result.');
+      }
+
+      const evaluation = asJsonObject(input.evaluation);
+      return {
+        report: summarizeResearchEngagement(
+          result as unknown as ResearchRunnerResult,
+          evaluation as ResearchResultEvaluation | undefined,
+        ),
+      };
     }
     case 'run_research_draft': {
       if (!isResearchRunnerClient(options.client)) {

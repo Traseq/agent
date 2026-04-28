@@ -1,11 +1,15 @@
 # @traseq/agent
 
-Tool-first agent kit for Traseq strategy research.
+Guided strategy research service kit for Traseq.
 
-`@traseq/agent` packages the Traseq public agent API into a Node SDK wrapper,
-CLI commands, MCP tools, strategy templates, semantic intent resolution,
-reference material, and scoring helpers. It is designed for external agents
-that already have a workspace-scoped Traseq API key.
+`@traseq/agent` helps external agents guide users through a professional Traseq
+strategy research engagement: clarify the thesis, state assumptions, validate
+drafts, run backtests, evaluate evidence, and produce a user-facing decision
+memo.
+
+It also packages the Traseq public agent API into a Node SDK wrapper, CLI
+commands, MCP tools, strategy templates, semantic intent resolution, reference
+material, and scoring helpers for lower-level automation.
 
 This package does not call an AI provider and does not place live orders. Your
 agent is responsible for reasoning and authoring strategy payloads; Traseq
@@ -44,7 +48,35 @@ pnpm --dir packages/agent build
 node packages/agent/dist/cli.js check-env
 ```
 
-## SDK
+## Guided SDK
+
+```ts
+import { startResearchEngagement, runGuidedResearchRound } from '@traseq/agent';
+
+const brief = await startResearchEngagement({
+  prompt: 'Research a BTCUSDT 4h trend-following strategy',
+});
+
+console.log(brief.assumptions);
+console.log(brief.decisionPoints);
+
+// After an external agent authors a StrategyDraftLike:
+const guided = await runGuidedResearchRound({
+  prompt: brief.input.prompt,
+  draft,
+  instrument: brief.input.instrument,
+  timeframe: brief.input.timeframe,
+});
+
+console.log(guided.verdict.decision);
+console.log(guided.report);
+```
+
+The guided layer is provider-agnostic. Your external agent still authors the
+draft; Traseq handles the research service loop around validation, persistence,
+backtesting, evidence evaluation, and reporting.
+
+## Low-Level SDK
 
 ```ts
 import { TraseqClient, runPlatformTool } from '@traseq/agent';
@@ -89,8 +121,13 @@ console.log(resolved.assemblyPlan.recommendedCandidateIds);
 ## CLI
 
 ```sh
-traseq-agent context --section skill
-traseq-agent tools
+traseq-agent guide --prompt "Research a BTCUSDT 4h trend-following strategy"
+traseq-agent guide --prompt "Research a BTC trend strategy" --json
+traseq-agent guide-run \
+  --prompt "Research a BTC trend strategy" \
+  --draft '{"name":"...","signalGraph":{},"settings":{"positionStyle":"single"},"backtest":{"timeframe":"4h","signalInstrument":{"symbol":"BTCUSDT"}}}'
+
+# Lower-level automation remains available:
 traseq-agent run --tool get_workspace_context
 traseq-agent run --tool get_capabilities
 traseq-agent run --tool get_semantics
@@ -103,6 +140,15 @@ traseq-agent research-run \
   --prompt "Research a BTC trend strategy" \
   --draft '{"name":"...","signalGraph":{},"settings":{"positionStyle":"single"},"backtest":{"timeframe":"4h","signalInstrument":{"symbol":"BTCUSDT"}}}'
 ```
+
+The `guide` command creates a service-style research engagement brief. It reads
+workspace context, usage, manifest, and capabilities, then returns assumptions,
+decision points, evidence boundaries, and provider-agnostic authoring
+instructions. Use `--json` when another agent should consume the brief.
+
+The `guide-run` command executes one externally-authored draft as a guided
+research round and prints a Markdown service memo by default. Use `--json` for
+the full machine-readable result.
 
 The `research` command creates a live, tool-first research brief. It reads
 workspace context, usage, manifest, and capabilities, then returns prompts and a
@@ -152,8 +198,9 @@ Example MCP server configuration for **Claude Desktop** (`claude_desktop_config.
 }
 ```
 
-The MCP server exposes platform tools plus agent-local semantic and research
-workflow tools.
+The MCP server exposes guided research tools, semantic tools, and platform
+tools. Prefer `start_research_engagement` first, then
+`run_guided_research_round` once an external agent has authored a draft.
 Destructive platform tools require `confirm: true` before the local runner will
 call the API.
 When Traseq returns structured Public Agent errors, the server formats the
@@ -265,8 +312,9 @@ whether the verdict is keep, iterate, or reject; consumers should branch on
 
 ## Research Reports
 
-Use the report helper when the external agent needs a user-facing artifact in
-addition to machine-readable JSON.
+Use the report helper when the external agent needs a service memo in addition
+to machine-readable JSON. Reports are structured as Executive Verdict, What We
+Tested, Evidence, Risk Flags, Decision, and Recommended Next Step.
 
 ```ts
 import {
@@ -304,15 +352,18 @@ to a PR, or keep them in the current agent conversation.
 For Claude Code, Codex, or another MCP-capable agent, the higher-level local
 tools provide the smoother first path:
 
-1. `resolve_strategy_semantics`: map the user's thesis to capability-grounded
+1. `start_research_engagement`: return assumptions, decision points, evidence
+   boundaries, and authoring instructions.
+2. `resolve_strategy_semantics`: map the user's thesis to capability-grounded
    fragments.
-2. Author a complete `StrategyDraftLike` outside of `@traseq/agent`.
-3. `run_research_draft`: validate, create, finalize, backtest, evaluate, and
-   return a Markdown report in one auditable tool call.
-4. `evaluate_research_result`: re-evaluate saved runner JSON without network
-   calls.
-5. `format_research_report`: render saved runner JSON as Markdown without
-   network calls.
+3. Author a complete `StrategyDraftLike` outside of `@traseq/agent`.
+4. `run_guided_research_round`: validate, create, finalize, backtest, evaluate,
+   and return a service memo in one auditable call.
+5. `summarize_research_engagement`: render saved runner JSON or guided results
+   as a memo without network calls.
+
+The older `run_research_draft`, `evaluate_research_result`, and
+`format_research_report` tools remain available for automation compatibility.
 
 ## API Key Scopes
 

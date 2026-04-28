@@ -8,6 +8,7 @@ import type {
   AutoAgentResearchResult,
   EmitResearchEvent,
   JsonObject,
+  ResearchContextClient,
   ResearchWorkflowStep,
   Timeframe,
 } from './types.js';
@@ -250,11 +251,12 @@ function buildWorkflow(): ResearchWorkflowStep[] {
 export async function runResearch(
   rawInput: unknown,
   emit: EmitResearchEvent = () => undefined,
+  options: { client?: ResearchContextClient } = {},
 ): Promise<AutoAgentResearchResult> {
   const input = normalizeRequest(rawInput);
   const runId = randomUUID();
   const startedAt = toIsoNow();
-  const client = createClient();
+  const client = options.client ?? createClient();
 
   await emit({
     type: 'meta',

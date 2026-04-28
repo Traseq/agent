@@ -1,13 +1,23 @@
 #!/usr/bin/env node
 import { getAgentContext } from './assembler.js';
-import { readEnv, requireEnv, TRASEQ_API_KEY_SETUP_HELP } from './env.js';
+import {
+  readEnv,
+  requireEnv,
+  TRASEQ_API_KEY_SETUP_HELP,
+  TRASEQ_API_KEY_SETUP_URL,
+} from './env.js';
 import {
   OPERATION_REGISTRY,
   type OperationName,
 } from './generated/operation-registry.js';
 import { references } from './references/index.js';
 import { templates } from './templates/index.js';
-import { runPlatformTool, TraseqClient } from './client/index.js';
+import {
+  runPlatformTool,
+  TraseqClient,
+  TraseqApiError,
+  formatTraseqAgentError,
+} from './client/index.js';
 import { asJsonObject } from './normalize.js';
 import {
   AGENT_TOOL_REGISTRY,
@@ -17,6 +27,8 @@ import {
 } from './semantics/index.js';
 import type {
   JsonObject,
+  GuidedResearchRoundInput,
+  ResearchEngagementInput,
   SectionName,
   ResearchStreamEvent,
   ResearchRunnerResult,
@@ -95,13 +107,15 @@ function printUsage(): void {
       '  template --id <id>                              Show template details',
       '  references                                     List all reference documents',
       '  reference --type <name>                         Show a specific reference',
-      '  check-env                                      Check required environment variables',
+      '  check-env [--probe]                             Check env vars; --probe also validates the key against the API',
       '  tools                                          List platform and agent-local tools',
       '  run --tool <name> [--input <json>]              Run a platform or agent-local tool',
       '  score --backtest-id <id>                        Score a completed backtest',
       '  score --json                                    Score from stdin JSON summary',
       '  evaluate --stdin                                Evaluate a research runner JSON result',
       '  report --stdin                                  Format a research runner JSON result as Markdown',
+      '  guide --prompt "..." [--json]                    Start a guided research engagement',
+      '  guide-run --prompt "..." --draft <json>          Run a guided research round and print a service memo',
       '  research --prompt "..." [options]               Create a tool-first research brief',
       '  research-run --prompt "..." --draft <json>      Execute a single research draft (single-round)',
       '  research-run --prompt "..." --stdin             Execute a single research draft from stdin (single-round)',
@@ -161,12 +175,21 @@ function parseJsonInput(raw: string): JsonObject {
 async function assertRunnerSchemaVersion(input: JsonObject): Promise<void> {
   const { RUNNER_SCHEMA_VERSION } = await import('./research-runner.js');
   const schemaVersion = input.schemaVersion;
-  if (schemaVersion !== undefined && schemaVersion !== RUNNER_SCHEMA_VERSION) {
-    process.stderr.write(
-      `Error: research runner schemaVersion mismatch (got ${String(schemaVersion)}, expected ${RUNNER_SCHEMA_VERSION}).\n`,
-    );
-    process.exit(1);
+  if (schemaVersion === RUNNER_SCHEMA_VERSION) {
+    return;
   }
+
+  const got =
+    schemaVersion === undefined ? 'missing' : `got ${String(schemaVersion)}`;
+  process.stderr.write(
+    [
+      `Error: input does not look like a research-run result (${got}, expected schemaVersion=${RUNNER_SCHEMA_VERSION}).`,
+      'Pipe `traseq-agent research-run` output, or pass a saved result.json from a prior run.',
+      'Required top-level fields: schemaVersion, runId, status, rounds.',
+      '',
+    ].join('\n'),
+  );
+  process.exit(1);
 }
 
 function agentToolNeedsPlatformClient(
@@ -175,9 +198,74 @@ function agentToolNeedsPlatformClient(
 ): boolean {
   return (
     agentToolName === 'run_research_draft' ||
+    agentToolName === 'start_research_engagement' ||
+    agentToolName === 'run_guided_research_round' ||
     (agentToolName === 'resolve_strategy_semantics' &&
       asJsonObject(input.capabilities) === undefined)
   );
+}
+
+function optionalNumberFlag(name: string): number | undefined {
+  const raw = getFlag(name);
+  if (raw === undefined) {
+    return undefined;
+  }
+
+  const value = Number(raw);
+  if (!Number.isFinite(value)) {
+    process.stderr.write(`Error: --${name} must be a number.\n`);
+    process.exit(1);
+  }
+  return value;
+}
+
+function buildEngagementInput(prompt: string): ResearchEngagementInput {
+  const instrument = getFlag('instrument');
+  const timeframe = getFlag('timeframe');
+  const objective = getFlag('objective');
+  const rounds = optionalNumberFlag('rounds');
+  const initialBalance = optionalNumberFlag('initial-balance');
+  const warmupPeriod = optionalNumberFlag('warmup-period');
+  const positionStyle = getFlag('position-style');
+  const maxConcurrentPositions = optionalNumberFlag('max-concurrent-positions');
+  const riskTolerance = getFlag('risk-tolerance');
+
+  const input: ResearchEngagementInput = { prompt };
+  if (instrument) {
+    input.instrument = instrument;
+  }
+  if (timeframe) {
+    input.timeframe = timeframe as NonNullable<
+      ResearchEngagementInput['timeframe']
+    >;
+  }
+  if (objective) {
+    input.objective = objective;
+  }
+  if (rounds !== undefined) {
+    input.rounds = rounds;
+  }
+  if (initialBalance !== undefined) {
+    input.initialBalance = initialBalance;
+  }
+  if (warmupPeriod !== undefined) {
+    input.warmupPeriod = warmupPeriod;
+  }
+  if (positionStyle) {
+    input.positionStyle = positionStyle as NonNullable<
+      ResearchEngagementInput['positionStyle']
+    >;
+  }
+  if (maxConcurrentPositions !== undefined) {
+    input.maxConcurrentPositions = maxConcurrentPositions;
+  }
+  if (riskTolerance) {
+    input.riskTolerance = riskTolerance as NonNullable<
+      ResearchEngagementInput['riskTolerance']
+    >;
+  }
+
+  return input;
 }
 
 // ---------------------------------------------------------------------------
@@ -231,6 +319,80 @@ async function runResearchCommand(): Promise<void> {
 
   process.stdout.write(JSON.stringify(result, null, 2));
   process.stdout.write('\n');
+}
+
+async function runGuideCommand(): Promise<void> {
+  const { formatResearchEngagementBrief, startResearchEngagement } =
+    await import('./guided-research.js');
+
+  const prompt = getFlag('prompt');
+  if (!prompt) {
+    process.stderr.write('Error: --prompt is required for guide.\n');
+    process.exit(1);
+  }
+
+  const brief = await startResearchEngagement(buildEngagementInput(prompt), {
+    client: createPlatformClient(),
+  });
+
+  if (hasFlag('json')) {
+    process.stdout.write(JSON.stringify(brief, null, 2));
+  } else {
+    process.stdout.write(formatResearchEngagementBrief(brief));
+  }
+  process.stdout.write('\n');
+}
+
+async function runGuideRunCommand(): Promise<void> {
+  const { runGuidedResearchRound } = await import('./guided-research.js');
+
+  const prompt = getFlag('prompt');
+  if (!prompt) {
+    process.stderr.write('Error: --prompt is required for guide-run.\n');
+    process.exit(1);
+  }
+
+  if (hasFlag('json') && hasFlag('report')) {
+    process.stderr.write('Error: choose either --json or --report.\n');
+    process.exit(1);
+  }
+
+  const rawDraft =
+    getFlag('draft') ?? (hasFlag('stdin') ? await readStdinText() : undefined);
+  if (!rawDraft) {
+    process.stderr.write(
+      'Error: --draft <json> or --stdin is required for guide-run.\n',
+    );
+    process.exit(1);
+  }
+
+  const draft = parseJsonInput(rawDraft);
+  const engagementInput = buildEngagementInput(prompt);
+  const pollIntervalMs = optionalNumberFlag('poll-interval-ms');
+  const timeoutMs = optionalNumberFlag('timeout-ms');
+  const producerTimeoutMs = optionalNumberFlag('producer-timeout-ms');
+  const input: GuidedResearchRoundInput = {
+    ...engagementInput,
+    draft: draft as unknown as StrategyDraftLike,
+    ...(pollIntervalMs !== undefined ? { pollIntervalMs } : {}),
+    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+    ...(producerTimeoutMs !== undefined ? { producerTimeoutMs } : {}),
+  };
+
+  const result = await runGuidedResearchRound(input, {
+    client: createPlatformClient(),
+  });
+
+  if (hasFlag('json')) {
+    process.stdout.write(JSON.stringify(result, null, 2));
+  } else {
+    process.stdout.write(result.report);
+  }
+  process.stdout.write('\n');
+
+  if (result.status !== 'completed') {
+    process.exitCode = 1;
+  }
 }
 
 async function runResearchRunCommand(): Promise<void> {
@@ -359,7 +521,33 @@ function runReferenceCommand(): void {
 // check-env subcommand
 // ---------------------------------------------------------------------------
 
-function runCheckEnvCommand(): void {
+function describeWorkspaceContext(context: unknown): string {
+  const ctx = asJsonObject(context) ?? {};
+  const workspace = asJsonObject(ctx.workspace) ?? {};
+  const apiKey = asJsonObject(ctx.apiKey) ?? {};
+  const subscription = asJsonObject(ctx.subscription) ?? {};
+
+  const workspaceName =
+    typeof workspace.name === 'string' && workspace.name.length > 0
+      ? workspace.name
+      : typeof workspace.id === 'string'
+        ? workspace.id
+        : 'unknown';
+  const tier =
+    typeof subscription.plan === 'string'
+      ? subscription.plan
+      : typeof subscription.tier === 'string'
+        ? subscription.tier
+        : 'unknown';
+  const scopes = Array.isArray(apiKey.scopes)
+    ? apiKey.scopes.filter((s): s is string => typeof s === 'string')
+    : [];
+
+  const scopesText = scopes.length > 0 ? scopes.join(', ') : 'none reported';
+  return `workspace "${workspaceName}" · tier ${tier} · scopes [${scopesText}]`;
+}
+
+async function runCheckEnvCommand(): Promise<void> {
   let allGood = true;
   for (const v of ENV_VARS) {
     const value = readEnv(v.name);
@@ -383,6 +571,33 @@ function runCheckEnvCommand(): void {
     );
     if (!readEnv('TRASEQ_API_KEY')) {
       process.stderr.write(`${TRASEQ_API_KEY_SETUP_HELP}\n`);
+    }
+    process.exit(1);
+  }
+
+  if (!hasFlag('probe')) {
+    return;
+  }
+
+  process.stdout.write('\nProbing Traseq API ...\n');
+  try {
+    const client = createPlatformClient();
+    const context = await client.getWorkspaceContext();
+    process.stdout.write(
+      `  ✓ key valid · ${describeWorkspaceContext(context)}\n`,
+    );
+  } catch (error) {
+    if (error instanceof TraseqApiError) {
+      process.stderr.write(`  ✗ key rejected (HTTP ${error.status})\n\n`);
+      process.stderr.write(`${formatTraseqAgentError(error)}\n`);
+      if (error.status === 401 || error.status === 403) {
+        process.stderr.write(
+          `\nGet or rotate a workspace API key: ${TRASEQ_API_KEY_SETUP_URL}\n`,
+        );
+      }
+    } else {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`  ✗ probe failed: ${message}\n`);
     }
     process.exit(1);
   }
@@ -436,6 +651,24 @@ async function runToolCommand(): Promise<void> {
   const input = parseJsonInput(rawInput);
   if (agentTool) {
     const needsClient = agentToolNeedsPlatformClient(agentTool.name, input);
+    if (
+      agentTool.name === 'resolve_strategy_semantics' &&
+      needsClient &&
+      !readEnv('TRASEQ_API_KEY')
+    ) {
+      process.stderr.write(
+        [
+          'Error: resolve_strategy_semantics needs capabilities to ground candidates.',
+          'Choose one of:',
+          '  • Pass `capabilities` directly in --input (offline mode).',
+          '  • Set TRASEQ_API_KEY so the CLI can fetch live capabilities.',
+          '',
+          `Get a key: ${TRASEQ_API_KEY_SETUP_URL}`,
+          '',
+        ].join('\n'),
+      );
+      process.exit(1);
+    }
     const result = await runAgentTool(agentTool.name as AgentToolName, input, {
       ...(needsClient ? { client: createPlatformClient() } : {}),
     });
@@ -559,7 +792,7 @@ async function main(): Promise<void> {
       runReferenceCommand();
       break;
     case 'check-env':
-      runCheckEnvCommand();
+      await runCheckEnvCommand();
       break;
     case 'tools':
       runToolsCommand();
@@ -568,6 +801,12 @@ async function main(): Promise<void> {
       await runToolCommand();
       break;
     case 'research':
+    case 'guide':
+      await runGuideCommand();
+      break;
+    case 'guide-run':
+      await runGuideRunCommand();
+      break;
       await runResearchCommand();
       break;
     case 'research-run':
@@ -589,8 +828,24 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
+function formatFatalError(error: unknown): string {
+  if (error instanceof TraseqApiError) {
+    const lines = [formatTraseqAgentError(error)];
+    if (error.status === 401 || error.status === 403) {
+      lines.push(
+        '',
+        `Get or rotate a workspace API key: ${TRASEQ_API_KEY_SETUP_URL}`,
+        'Run `traseq-agent check-env --probe` to verify your key end-to-end.',
+      );
+    }
+    return lines.join('\n');
+  }
+
   const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`Error: ${message}\n`);
+  return `Error: ${message}`;
+}
+
+main().catch((error: unknown) => {
+  process.stderr.write(`${formatFatalError(error)}\n`);
   process.exit(1);
 });

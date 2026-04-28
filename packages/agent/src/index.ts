@@ -42,6 +42,12 @@ export {
 export { buildResearchArtifactBundle, formatResearchReport } from './report.js';
 export { runResearch, normalizeRequest } from './research.js';
 export {
+  formatResearchEngagementBrief,
+  runGuidedResearchRound,
+  startResearchEngagement,
+  summarizeResearchEngagement,
+} from './guided-research.js';
+export {
   RUNNER_SCHEMA_VERSION,
   buildBacktestConfig,
   buildDefaultStrategySettings,
@@ -89,6 +95,12 @@ export type {
   ResearchSummary,
   AutoAgentRequest,
   AutoAgentResearchResult,
+  ResearchRiskTolerance,
+  ResearchEngagementInput,
+  ServiceMessage,
+  ResearchDecisionPoint,
+  ResearchEngagementBrief,
+  ResearchContextClient,
   ResearchDraftContext,
   ResearchRepairContext,
   ResearchRunnerClient,
@@ -109,6 +121,9 @@ export type {
   ResearchArtifactBundle,
   ResearchArtifactFile,
   ResearchWorkflowStep,
+  GuidedResearchRoundInput,
+  GuidedResearchEvidence,
+  GuidedResearchRoundResult,
   ResearchStreamEvent,
   EmitResearchEvent,
   AnalyzeRoundArgs,

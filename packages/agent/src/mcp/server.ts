@@ -34,10 +34,7 @@ function createClient(): TraseqClient {
 }
 
 function writeFrame(payload: unknown): void {
-  const text = JSON.stringify(payload);
-  process.stdout.write(
-    `Content-Length: ${Buffer.byteLength(text, 'utf8')}\r\n\r\n${text}`,
-  );
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
 }
 
 function writeResult(id: JsonRpcId, result: unknown): void {
@@ -129,7 +126,7 @@ async function handleRequest(client: TraseqClient, request: JsonRpcRequest) {
             version: '0.1.0',
           },
           instructions:
-            'Use Traseq tools with a workspace-scoped TRASEQ_API_KEY. Destructive tools require confirm=true.',
+            'Use start_research_engagement first for service-style strategy research. @traseq/agent guides validation, backtesting, evidence review, and reporting with a workspace-scoped TRASEQ_API_KEY; it does not call an AI provider or place live orders. Destructive platform tools require confirm=true.',
         });
         return;
       case 'tools/list':
@@ -208,31 +205,20 @@ async function handleRequest(client: TraseqClient, request: JsonRpcRequest) {
 
 function processBuffer(client: TraseqClient, state: { buffer: Buffer }): void {
   for (;;) {
-    const headerEnd = state.buffer.indexOf('\r\n\r\n');
-    if (headerEnd === -1) {
+    const newlineIdx = state.buffer.indexOf(0x0a);
+    if (newlineIdx === -1) {
       return;
     }
 
-    const header = state.buffer.subarray(0, headerEnd).toString('utf8');
-    const match = /content-length:\s*(\d+)/i.exec(header);
-    if (!match) {
-      state.buffer = state.buffer.subarray(headerEnd + 4);
-      writeError(null, -32700, 'Missing Content-Length header.');
+    const line = state.buffer.subarray(0, newlineIdx).toString('utf8').trim();
+    state.buffer = state.buffer.subarray(newlineIdx + 1);
+
+    if (line.length === 0) {
       continue;
     }
 
-    const length = Number(match[1]);
-    const bodyStart = headerEnd + 4;
-    const bodyEnd = bodyStart + length;
-    if (state.buffer.length < bodyEnd) {
-      return;
-    }
-
-    const body = state.buffer.subarray(bodyStart, bodyEnd).toString('utf8');
-    state.buffer = state.buffer.subarray(bodyEnd);
-
     try {
-      const parsed = JSON.parse(body) as JsonRpcRequest;
+      const parsed = JSON.parse(line) as JsonRpcRequest;
       void handleRequest(client, parsed);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
