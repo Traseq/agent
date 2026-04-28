@@ -1,5 +1,6 @@
 import type {
   BacktestConfig as SdkBacktestConfig,
+  TraseqClient as SdkTraseqClient,
   StrategySettings as SdkStrategySettings,
 } from '@traseq/sdk';
 
@@ -131,7 +132,8 @@ export interface AgentStepLog {
   source: 'system' | 'agent';
   step: string;
   message: string;
-  attempt?: number;
+  validationAttempt?: number;
+  repairAttempt?: number;
 }
 
 export interface NormalizedBacktestResult {
@@ -178,6 +180,178 @@ export interface AutoAgentRequest {
   warmupPeriod: number;
   positionStyle: 'single' | 'pyramid' | 'accumulate';
   maxConcurrentPositions: number;
+}
+
+export type ResearchRunnerStatus = 'completed' | 'partial' | 'failed';
+
+export type ResearchRunnerClient = Pick<
+  SdkTraseqClient,
+  | 'getManifest'
+  | 'getWorkspaceContext'
+  | 'getUsage'
+  | 'getCapabilities'
+  | 'validateStrategy'
+  | 'createStrategy'
+  | 'createStrategyVersion'
+  | 'finalizeStrategyVersion'
+  | 'runBacktest'
+  | 'waitForBacktestCompletion'
+>;
+
+export interface ResearchRunnerLiveContext {
+  manifest: unknown;
+  workspace: unknown;
+  usage: unknown;
+  capabilities: unknown;
+  capabilitySummary: JsonObject;
+}
+
+export interface ResearchDraftContext {
+  runId: string;
+  round: number;
+  input: AutoAgentRequest;
+  live: ResearchRunnerLiveContext;
+  previousRounds: ResearchRunnerRound[];
+  previousRound?: ResearchRunnerRound;
+}
+
+export interface ResearchRepairContext extends ResearchDraftContext {
+  attempt: number;
+  draft: StrategyDraftLike;
+  validation: ValidationSummaryLike;
+}
+
+export interface ResearchRunnerOptions {
+  input: unknown;
+  client?: ResearchRunnerClient;
+  draftProducer: (
+    context: ResearchDraftContext,
+    signal: AbortSignal,
+  ) => StrategyDraftLike | Promise<StrategyDraftLike>;
+  repairProducer?: (
+    context: ResearchRepairContext,
+    signal: AbortSignal,
+  ) => StrategyDraftLike | Promise<StrategyDraftLike>;
+  maxRepairAttempts?: number;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+  producerTimeoutMs?: number;
+}
+
+export interface ResearchRunnerRound {
+  round: number;
+  label: string;
+  objective: string;
+  inputPrompt: string;
+  status: ResearchRunnerStatus;
+  draft: StrategyDraftLike;
+  validation: ValidationSummaryLike;
+  validationAttempts: number;
+  createdStrategyId?: string;
+  createdStrategyVersionId?: string;
+  finalizedStrategyVersionId?: string;
+  forkedFromVersionId?: string;
+  backtest?: NormalizedBacktestResult;
+  score?: ScoreBreakdown;
+  analysis?: RoundAnalysis;
+  logs: AgentStepLog[];
+  stopReason?: string;
+  errors?: string[];
+}
+
+export interface ResearchRunnerSummary {
+  headline: string;
+  completedRounds: number;
+  totalRounds: number;
+  championRound?: number;
+  championReason?: string;
+  topStrengths: string[];
+  nextFocus: string[];
+}
+
+export interface ResearchRunnerResult {
+  schemaVersion: number;
+  runId: string;
+  startedAt: string;
+  completedAt: string;
+  input: AutoAgentRequest;
+  live: Omit<ResearchRunnerLiveContext, 'capabilities'>;
+  rounds: ResearchRunnerRound[];
+  summary: ResearchRunnerSummary;
+  championRound?: number;
+  status: ResearchRunnerStatus;
+  stopReason?: string;
+  errors?: string[];
+}
+
+export type ResearchConfidence = 'robust' | 'promising' | 'weak' | 'reject';
+
+export type ResearchDecision =
+  | 'continue_iterating'
+  | 'keep_candidate'
+  | 'rethink_thesis'
+  | 'reject_candidate';
+
+export interface ResearchRiskFlag {
+  code: string;
+  severity: 'info' | 'warning' | 'blocker';
+  message: string;
+  round?: number;
+}
+
+export interface ResearchEvidenceMetrics {
+  returnPct: number;
+  sharpeRatio: number;
+  sortinoRatio: number;
+  maxDrawdown: number;
+  profitFactor: number;
+  totalPositions: number;
+}
+
+export interface ResearchWeakness {
+  code: string;
+  message: string;
+}
+
+export interface ResearchRoundEvaluation {
+  round: number;
+  status: ResearchRunnerStatus;
+  confidence: ResearchConfidence;
+  decision: ResearchDecision;
+  metrics: ResearchEvidenceMetrics;
+  score: ScoreBreakdown;
+  riskFlags: ResearchRiskFlag[];
+  strengths: string[];
+  weaknesses: ResearchWeakness[];
+}
+
+export interface ResearchVerdict {
+  decision: ResearchDecision;
+  summary: string;
+  nextAction: string;
+}
+
+export interface ResearchResultEvaluation {
+  schemaVersion: number;
+  runId?: string;
+  status: ResearchRunnerStatus;
+  confidence: ResearchConfidence;
+  championRound?: number;
+  rounds: ResearchRoundEvaluation[];
+  riskFlags: ResearchRiskFlag[];
+  stopReasons: string[];
+  verdict: ResearchVerdict;
+}
+
+export interface ResearchArtifactFile {
+  readonly path: string;
+  readonly mediaType: 'application/json' | 'text/markdown';
+  readonly contents: string;
+}
+
+export interface ResearchArtifactBundle {
+  readonly root: string;
+  readonly files: readonly ResearchArtifactFile[];
 }
 
 export interface ResearchWorkflowStep {

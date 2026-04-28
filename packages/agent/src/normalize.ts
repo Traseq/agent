@@ -327,6 +327,14 @@ export function normalizeNextSettings(
       ? Math.round(warmupPeriod)
       : undefined;
 
+  if (style === 'accumulate') {
+    return {
+      ...(source as unknown as StrategySettings),
+      positionStyle: 'accumulate',
+      ...(roundedWarmup !== undefined ? { warmupPeriod: roundedWarmup } : {}),
+    } as StrategySettings;
+  }
+
   if (style === 'pyramid' || (maxConcurrentPositions ?? 1) > 1) {
     return {
       positionStyle: 'pyramid',

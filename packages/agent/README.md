@@ -94,11 +94,32 @@ traseq-agent run --tool get_semantics
 traseq-agent run --tool resolve_strategy_semantics --input '{"prompt":"RSI oversold rebound"}'
 traseq-agent score --backtest-id <backtest-id>
 traseq-agent research --prompt "Research a BTCUSDT 4h trend-following strategy"
+traseq-agent evaluate --stdin < research-result.json
+traseq-agent report --stdin < research-result.json > research-report.md
+traseq-agent research-run \
+  --prompt "Research a BTC trend strategy" \
+  --draft '{"name":"...","signalGraph":{},"settings":{"positionStyle":"single"},"backtest":{"timeframe":"4h","signalInstrument":{"symbol":"BTCUSDT"}}}'
 ```
 
 The `research` command creates a live, tool-first research brief. It reads
 workspace context, usage, manifest, and capabilities, then returns prompts and a
 recommended workflow for the external agent.
+
+The `research-run` command executes one externally-authored draft through the
+platform workflow: validate, create, finalize, backtest, score, and report. It
+does not generate or repair strategy JSON by itself. For stdin-based workflows:
+
+```sh
+cat draft.json | traseq-agent research-run \
+  --prompt "Research a BTCUSDT 4h trend-following strategy" \
+  --stdin
+```
+
+The `evaluate` command reads a `runResearchRunner` JSON result from stdin and
+returns a pure JSON evidence evaluation. It does not call Traseq APIs, run
+backtests, create robustness analyses, create comparison sets, or produce
+Markdown reports. Use `report --stdin` when a human-readable Markdown summary is
+needed for Codex, Claude Code, PR comments, or saved research notes.
 
 `traseq-agent run` supports both platform tools and agent-local tools. If
 `resolve_strategy_semantics` is called without a `capabilities` object, the CLI
@@ -128,7 +149,8 @@ Example MCP server configuration for **Claude Desktop** (`claude_desktop_config.
 }
 ```
 
-The MCP server exposes platform tools plus agent-local semantic tools.
+The MCP server exposes platform tools plus agent-local semantic and research
+workflow tools.
 Destructive platform tools require `confirm: true` before the local runner will
 call the API.
 When Traseq returns structured Public Agent errors, the server formats the
@@ -167,6 +189,100 @@ Your agent should assemble the selected fragments into a complete
 `signalGraph`, add entry action, exits or risk rules, then call
 `validate_strategy` before any create or finalize operation.
 
+## Research Runner
+
+Use the SDK runner when an external agent can produce strategy drafts from the
+Traseq context. The runner keeps the operational loop deterministic and
+auditable while leaving reasoning and authoring to the caller.
+
+```ts
+import { runResearchRunner } from '@traseq/agent';
+
+const result = await runResearchRunner({
+  input: {
+    prompt: 'Research a BTCUSDT 4h trend-following strategy',
+    instrument: 'BTCUSDT',
+    timeframe: '4h',
+    rounds: 3,
+  },
+  producerTimeoutMs: 120_000,
+  draftProducer: async (context, signal) => {
+    // Your agent reads context.live.capabilities and returns StrategyDraftLike.
+    // Honor the AbortSignal to cancel cleanly when the runner times out.
+    return buildDraftSomewhereElse(context, signal);
+  },
+  repairProducer: async ({ draft, validation }, signal) => {
+    // Optional: repair validation issues. The runner caps repairs at 4 attempts.
+    return repairDraftSomewhereElse(draft, validation, signal);
+  },
+});
+
+console.log(result.schemaVersion, result.status, result.championRound);
+```
+
+Each producer call is bounded by `producerTimeoutMs` (default 120s). When the
+deadline elapses the runner aborts the supplied `AbortSignal` and rejects with
+`ProducerTimeoutError`. Results carry a `schemaVersion` (currently `1`); the
+`evaluate` CLI rejects mismatched schemas, so bump the version when the result
+shape changes.
+
+The runner does not call an AI provider, does not place live orders, and does
+not call destructive tools. CLI `research-run` is intentionally single-round;
+passing `--rounds` is rejected. Use the SDK callbacks for multi-round research.
+
+## Research Evaluator
+
+Use the evaluator after a runner result exists. It classifies each completed
+round as `robust`, `promising`, `weak`, or `reject`, then returns risk flags and
+a next decision for external agents.
+
+```ts
+import { evaluateResearchResult } from '@traseq/agent/evaluation';
+
+const evaluation = evaluateResearchResult(result);
+console.log(evaluation.confidence, evaluation.verdict.decision);
+for (const round of evaluation.rounds) {
+  for (const weakness of round.weaknesses) {
+    console.log(weakness.code, weakness.message);
+  }
+}
+```
+
+The evaluator is intentionally pure and JSON-only. It does not calculate
+buy-and-hold baselines, run out-of-sample tests, call robustness APIs, or write
+platform resources. Treat its output as early research triage, not live-trading
+approval.
+
+Top-level `confidence` is authoritative; the verdict carries `decision`,
+`summary`, and `nextAction`. Round-level `weaknesses` are `{code, message}`
+pairs and align 1:1 with `riskFlags`. A `blocker` severity always forces a
+`reject` confidence — these two views never disagree. The CLI exits zero
+whether the verdict is keep, iterate, or reject; consumers should branch on
+`verdict.decision`, not the exit code.
+
+## Research Reports
+
+Use the report helper when the external agent needs a user-facing artifact in
+addition to machine-readable JSON.
+
+```ts
+import {
+  buildResearchArtifactBundle,
+  formatResearchReport,
+} from '@traseq/agent/report';
+
+const markdown = formatResearchReport(result);
+const bundle = buildResearchArtifactBundle(result);
+
+console.log(markdown);
+console.log(bundle.root); // .traseq/research/<runId>
+```
+
+`buildResearchArtifactBundle` is intentionally pure. It returns deterministic
+`result.json`, `evaluation.json`, and `report.md` file payloads, but does not
+write them to disk. The caller decides whether to persist artifacts, attach them
+to a PR, or keep them in the current agent conversation.
+
 ## Agent Workflow
 
 1. `get_manifest`: discover the API contract.
@@ -181,6 +297,19 @@ Your agent should assemble the selected fragments into a complete
 10. `run_backtest` and `wait_backtest`: queue and poll results.
 11. `get_backtest_chart_data`, `preview_robustness_analysis`,
     `create_comparison_set`: inspect evidence and compare revisions.
+
+For Claude Code, Codex, or another MCP-capable agent, the higher-level local
+tools provide the smoother first path:
+
+1. `resolve_strategy_semantics`: map the user's thesis to capability-grounded
+   fragments.
+2. Author a complete `StrategyDraftLike` outside of `@traseq/agent`.
+3. `run_research_draft`: validate, create, finalize, backtest, evaluate, and
+   return a Markdown report in one auditable tool call.
+4. `evaluate_research_result`: re-evaluate saved runner JSON without network
+   calls.
+5. `format_research_report`: render saved runner JSON as Markdown without
+   network calls.
 
 ## API Key Scopes
 
@@ -222,6 +351,11 @@ Traseq app.
 pnpm --dir packages/sdk test
 pnpm --dir packages/agent test
 ```
+
+Runner changes should be developed test-first. Prefer fake `TraseqClient`
+fixtures for orchestration, validation gates, repair limits, lineage, champion
+selection, and CLI JSON behavior. Do not add AI provider environment
+requirements to these tests.
 
 ## See Also
 

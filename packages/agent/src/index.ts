@@ -33,7 +33,21 @@ export { startMcpServer } from './mcp/index.js';
 // Operational layer
 export { buildScoreBreakdown } from './scoring.js';
 export { analyzeRound } from './analysis.js';
+export {
+  EVALUATION_SCHEMA_VERSION,
+  buildResearchVerdict,
+  evaluateResearchResult,
+  evaluateResearchRound,
+} from './evaluation.js';
+export { buildResearchArtifactBundle, formatResearchReport } from './report.js';
 export { runResearch, normalizeRequest } from './research.js';
+export {
+  RUNNER_SCHEMA_VERSION,
+  buildBacktestConfig,
+  buildDefaultStrategySettings,
+  runResearchRunner,
+  selectChampionRound,
+} from './research-runner.js';
 export { fetchWithRetry, type RetryOptions } from './http.js';
 export { readEnv, readNumberEnv, requireEnv } from './env.js';
 export {
@@ -69,6 +83,25 @@ export type {
   ResearchSummary,
   AutoAgentRequest,
   AutoAgentResearchResult,
+  ResearchDraftContext,
+  ResearchRepairContext,
+  ResearchRunnerClient,
+  ResearchRunnerLiveContext,
+  ResearchRunnerOptions,
+  ResearchRunnerResult,
+  ResearchRunnerRound,
+  ResearchRunnerStatus,
+  ResearchRunnerSummary,
+  ResearchConfidence,
+  ResearchDecision,
+  ResearchEvidenceMetrics,
+  ResearchRiskFlag,
+  ResearchRoundEvaluation,
+  ResearchResultEvaluation,
+  ResearchWeakness,
+  ResearchVerdict,
+  ResearchArtifactBundle,
+  ResearchArtifactFile,
   ResearchWorkflowStep,
   ResearchStreamEvent,
   EmitResearchEvent,

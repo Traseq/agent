@@ -367,7 +367,11 @@ describe('semantic resolver', () => {
 describe('agent-local semantic tools', () => {
   it('registers the expected local tools', () => {
     const names = AGENT_TOOL_REGISTRY.map((tool) => tool.name).sort();
-    assert.deepEqual(names, ['get_semantics', 'resolve_strategy_semantics']);
+    assert.ok(names.includes('get_semantics'));
+    assert.ok(names.includes('resolve_strategy_semantics'));
+    assert.ok(names.includes('run_research_draft'));
+    assert.ok(names.includes('evaluate_research_result'));
+    assert.ok(names.includes('format_research_report'));
   });
 
   it('runs get_semantics without a platform client', async () => {

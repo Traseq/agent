@@ -15,7 +15,13 @@ import {
   runAgentTool,
   type AgentToolName,
 } from './semantics/index.js';
-import type { JsonObject, SectionName, ResearchStreamEvent } from './types.js';
+import type {
+  JsonObject,
+  SectionName,
+  ResearchStreamEvent,
+  ResearchRunnerResult,
+  StrategyDraftLike,
+} from './types.js';
 
 const VALID_SECTIONS = new Set<string>([
   'skill',
@@ -94,7 +100,11 @@ function printUsage(): void {
       '  run --tool <name> [--input <json>]              Run a platform or agent-local tool',
       '  score --backtest-id <id>                        Score a completed backtest',
       '  score --json                                    Score from stdin JSON summary',
+      '  evaluate --stdin                                Evaluate a research runner JSON result',
+      '  report --stdin                                  Format a research runner JSON result as Markdown',
       '  research --prompt "..." [options]               Create a tool-first research brief',
+      '  research-run --prompt "..." --draft <json>      Execute a single research draft (single-round)',
+      '  research-run --prompt "..." --stdin             Execute a single research draft from stdin (single-round)',
       '',
       'Research options:',
       '  --prompt <text>          Strategy brief (required)',
@@ -132,13 +142,42 @@ async function readStdinText(): Promise<string> {
 }
 
 function parseJsonInput(raw: string): JsonObject {
+  let parsed: unknown;
   try {
-    return JSON.parse(raw) as JsonObject;
+    parsed = JSON.parse(raw);
   } catch {
     throw new Error(
       'Invalid JSON input. Ensure the value is a valid JSON object.',
     );
   }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('Invalid JSON input. Expected an object at the top level.');
+  }
+
+  return parsed as JsonObject;
+}
+
+async function assertRunnerSchemaVersion(input: JsonObject): Promise<void> {
+  const { RUNNER_SCHEMA_VERSION } = await import('./research-runner.js');
+  const schemaVersion = input.schemaVersion;
+  if (schemaVersion !== undefined && schemaVersion !== RUNNER_SCHEMA_VERSION) {
+    process.stderr.write(
+      `Error: research runner schemaVersion mismatch (got ${String(schemaVersion)}, expected ${RUNNER_SCHEMA_VERSION}).\n`,
+    );
+    process.exit(1);
+  }
+}
+
+function agentToolNeedsPlatformClient(
+  agentToolName: AgentToolName,
+  input: JsonObject,
+): boolean {
+  return (
+    agentToolName === 'run_research_draft' ||
+    (agentToolName === 'resolve_strategy_semantics' &&
+      asJsonObject(input.capabilities) === undefined)
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -192,6 +231,54 @@ async function runResearchCommand(): Promise<void> {
 
   process.stdout.write(JSON.stringify(result, null, 2));
   process.stdout.write('\n');
+}
+
+async function runResearchRunCommand(): Promise<void> {
+  const { runResearchRunner } = await import('./research-runner.js');
+
+  const prompt = getFlag('prompt');
+  if (!prompt) {
+    process.stderr.write('Error: --prompt is required for research-run.\n');
+    process.exit(1);
+  }
+
+  if (getFlag('rounds') !== undefined) {
+    process.stderr.write(
+      'Error: research-run is single-round by design; use the SDK runResearchRunner() for multi-round research.\n',
+    );
+    process.exit(1);
+  }
+
+  const rawDraft =
+    getFlag('draft') ?? (hasFlag('stdin') ? await readStdinText() : undefined);
+  if (!rawDraft) {
+    process.stderr.write(
+      'Error: --draft <json> or --stdin is required for research-run.\n',
+    );
+    process.exit(1);
+  }
+
+  const draft = parseJsonInput(rawDraft);
+  const instrument = getFlag('instrument') ?? 'BTCUSDT';
+  const timeframe = getFlag('timeframe') ?? '4h';
+
+  const result = await runResearchRunner({
+    client: createPlatformClient(),
+    input: {
+      prompt,
+      instrument,
+      timeframe,
+      rounds: 1,
+    },
+    draftProducer: () => draft as unknown as StrategyDraftLike,
+  });
+
+  process.stdout.write(JSON.stringify(result, null, 2));
+  process.stdout.write('\n');
+
+  if (result.status !== 'completed') {
+    process.exitCode = 1;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -345,9 +432,7 @@ async function runToolCommand(): Promise<void> {
     getFlag('input') ?? (hasFlag('stdin') ? await readStdinText() : '{}');
   const input = parseJsonInput(rawInput);
   if (agentTool) {
-    const needsClient =
-      agentTool.name === 'resolve_strategy_semantics' &&
-      asJsonObject(input.capabilities) === undefined;
+    const needsClient = agentToolNeedsPlatformClient(agentTool.name, input);
     const result = await runAgentTool(agentTool.name as AgentToolName, input, {
       ...(needsClient ? { client: createPlatformClient() } : {}),
     });
@@ -411,6 +496,38 @@ async function runScoreCommand(): Promise<void> {
   process.stdout.write('\n');
 }
 
+async function runEvaluateCommand(): Promise<void> {
+  if (!hasFlag('stdin')) {
+    process.stderr.write('Error: --stdin is required for evaluate.\n');
+    process.exit(1);
+  }
+
+  const { evaluateResearchResult } = await import('./evaluation.js');
+  const input = parseJsonInput(await readStdinText());
+  await assertRunnerSchemaVersion(input);
+
+  const evaluation = evaluateResearchResult(
+    input as unknown as ResearchRunnerResult,
+  );
+
+  process.stdout.write(JSON.stringify(evaluation, null, 2));
+  process.stdout.write('\n');
+}
+
+async function runReportCommand(): Promise<void> {
+  if (!hasFlag('stdin')) {
+    process.stderr.write('Error: --stdin is required for report.\n');
+    process.exit(1);
+  }
+
+  const { formatResearchReport } = await import('./report.js');
+  const input = parseJsonInput(await readStdinText());
+  await assertRunnerSchemaVersion(input);
+  const report = formatResearchReport(input as unknown as ResearchRunnerResult);
+
+  process.stdout.write(report);
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -449,6 +566,15 @@ async function main(): Promise<void> {
       break;
     case 'research':
       await runResearchCommand();
+      break;
+    case 'research-run':
+      await runResearchRunCommand();
+      break;
+    case 'evaluate':
+      await runEvaluateCommand();
+      break;
+    case 'report':
+      await runReportCommand();
       break;
     case 'score':
       await runScoreCommand();

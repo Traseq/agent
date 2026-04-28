@@ -65,6 +65,18 @@
     "./research": {
       "types": "./dist/research.d.ts",
       "import": "./dist/research.js"
+    },
+    "./research-runner": {
+      "types": "./dist/research-runner.d.ts",
+      "import": "./dist/research-runner.js"
+    },
+    "./evaluation": {
+      "types": "./dist/evaluation.d.ts",
+      "import": "./dist/evaluation.js"
+    },
+    "./report": {
+      "types": "./dist/report.d.ts",
+      "import": "./dist/report.js"
     }
   },
   "scripts": {
