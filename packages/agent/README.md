@@ -26,6 +26,9 @@ export TRASEQ_BASE_URL="https://api.traseq.com"
 ```
 
 `TRASEQ_BASE_URL` is optional and defaults to `https://api.traseq.com`.
+If you do not have a key yet, start with the free tier and create a workspace
+API key:
+`https://app.traseq.com/login?redirectTo=%2Fsettings%2Fapi-keys&entry_surface=agent_cli&entry_source=missing_traseq_api_key&cta_id=start_with_free_tier`.
 
 ## Install
 

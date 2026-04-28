@@ -49,7 +49,13 @@ export {
   selectChampionRound,
 } from './research-runner.js';
 export { fetchWithRetry, type RetryOptions } from './http.js';
-export { readEnv, readNumberEnv, requireEnv } from './env.js';
+export {
+  readEnv,
+  readNumberEnv,
+  requireEnv,
+  TRASEQ_API_KEY_SETUP_HELP,
+  TRASEQ_API_KEY_SETUP_URL,
+} from './env.js';
 export {
   normalizeDraft,
   normalizeBacktest,

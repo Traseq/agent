@@ -53,11 +53,16 @@ export interface TraseqAgentErrorExplanation {
   usage?: TraseqPublicAgentMetadata['usage'];
 }
 
+export const TRASEQ_API_KEY_SETUP_URL =
+  'https://app.traseq.com/login?redirectTo=%2Fsettings%2Fapi-keys&entry_surface=agent_cli&entry_source=missing_traseq_api_key&cta_id=start_with_free_tier';
+
 export const TRASEQ_API_KEY_SETUP_HELP = [
   'Missing TRASEQ_API_KEY.',
-  'Create a workspace API key in the Traseq app from Settings > API Keys, copy it while it is shown once, and store it as an environment secret.',
-  'Do not paste API keys, wallet private keys, or exchange secrets into AI prompts.',
-].join(' ');
+  'Start with the free tier and create a workspace API key:',
+  TRASEQ_API_KEY_SETUP_URL,
+  'Set it as TRASEQ_API_KEY and run `traseq-agent check-env` again.',
+  'Do not paste API keys into AI prompts.',
+].join('\n');
 
 export const TRASEQ_API_KEY_AUTH_HELP = [
   'Check that TRASEQ_API_KEY is a Traseq workspace API key, not a wallet private key or exchange secret.',

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { getAgentContext } from './assembler.js';
-import { readEnv, requireEnv } from './env.js';
+import { readEnv, requireEnv, TRASEQ_API_KEY_SETUP_HELP } from './env.js';
 import {
   OPERATION_REGISTRY,
   type OperationName,
@@ -381,6 +381,9 @@ function runCheckEnvCommand(): void {
     process.stderr.write(
       '\nSome required environment variables are missing.\n',
     );
+    if (!readEnv('TRASEQ_API_KEY')) {
+      process.stderr.write(`${TRASEQ_API_KEY_SETUP_HELP}\n`);
+    }
     process.exit(1);
   }
 }
