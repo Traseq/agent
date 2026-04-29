@@ -30,6 +30,7 @@ export interface McpServerConfig {
 export interface McpServerConfigInput {
   serverName?: string;
   packageName?: string;
+  binaryName?: string;
   scope?: McpScope;
   apiKey?: string;
   baseUrl?: string;
@@ -83,6 +84,7 @@ export interface McpProbeResult {
 
 const DEFAULT_SERVER_NAME = 'traseq';
 const DEFAULT_PACKAGE_NAME = '@traseq/agent';
+const DEFAULT_BINARY_NAME = 'traseq-agent';
 const DEFAULT_BASE_URL = 'https://api.traseq.com';
 const REDACTED_SECRET = '<redacted>';
 const REQUIRED_GUIDED_SCOPES = [
@@ -128,6 +130,10 @@ function normalizedPackageName(value: string | undefined): string {
   return value?.trim() || DEFAULT_PACKAGE_NAME;
 }
 
+function normalizedBinaryName(value: string | undefined): string {
+  return value?.trim() || DEFAULT_BINARY_NAME;
+}
+
 function normalizedBaseUrl(value: string | undefined): string {
   return value?.trim() || DEFAULT_BASE_URL;
 }
@@ -159,12 +165,13 @@ export function buildMcpServerConfig(
 ): McpServerConfig {
   const serverName = normalizedServerName(input.serverName);
   const packageName = normalizedPackageName(input.packageName);
+  const binaryName = normalizedBinaryName(input.binaryName);
 
   return {
     mcpServers: {
       [serverName]: {
         command: 'npx',
-        args: ['-y', packageName, 'mcp'],
+        args: ['-y', '--package', packageName, binaryName, 'mcp'],
         env: buildEnv(input),
       },
     },

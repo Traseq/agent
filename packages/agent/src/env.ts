@@ -5,8 +5,13 @@ export const TRASEQ_API_KEY_SETUP_HELP = [
   'Missing TRASEQ_API_KEY.',
   'Start with the free tier and create a workspace API key:',
   TRASEQ_API_KEY_SETUP_URL,
-  'Set it as TRASEQ_API_KEY and run `traseq-agent check-env` again.',
-  'Do not paste API keys into AI prompts.',
+  'Set it in your current terminal:',
+  '  export TRASEQ_API_KEY="trsq_..."',
+  'Then verify it:',
+  '  traseq-agent check-env --probe',
+  'To persist for future shells, append the export to your shell rc',
+  '(e.g. ~/.zshrc for zsh, ~/.bashrc for bash) and source it.',
+  'Do not paste API keys into AI prompts or commit them to project config.',
 ].join('\n');
 
 export function readEnv(name: string): string | undefined {

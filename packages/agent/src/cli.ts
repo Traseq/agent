@@ -139,8 +139,10 @@ function printUsage(): void {
       '  report --stdin                                  Format a research runner JSON result as Markdown',
       '  guide --prompt "..." [--json]                    Start a guided research engagement',
       '  guide-run --prompt "..." --draft <json>          Run a guided research round and print a service memo',
-      '  setup-mcp --client <client> [--write]            Generate or install Claude/Codex MCP config',
-      '  mcp-doctor [--client <client>] [--probe]         Print the expected MCP install plan; --probe checks the Traseq API for required scopes',
+      '  setup-mcp --client <client> [--write] [--probe] [--api-key <key>]',
+      '                                                  Generate or install Claude/Codex MCP config (--api-key for one-shot local setup; prefer TRASEQ_API_KEY)',
+      '  mcp-doctor [--client <client>] [--probe] [--api-key <key>]',
+      '                                                  Print the expected MCP install plan; --probe validates the key and required scopes',
       '  mcp                                             Run the stdio MCP server',
       '  research --prompt "..." [options]               Create a tool-first research brief',
       '  research-run --prompt "..." --draft <json>      Execute a single research draft (single-round)',
@@ -159,10 +161,13 @@ function printUsage(): void {
   );
 }
 
-function createPlatformClient(): TraseqClient {
+function createPlatformClient(
+  options: { apiKey?: string; baseUrl?: string } = {},
+): TraseqClient {
   return new TraseqClient({
-    apiKey: requireEnv('TRASEQ_API_KEY'),
-    baseUrl: readEnv('TRASEQ_BASE_URL') ?? 'https://api.traseq.com',
+    apiKey: options.apiKey ?? requireEnv('TRASEQ_API_KEY'),
+    baseUrl:
+      options.baseUrl ?? readEnv('TRASEQ_BASE_URL') ?? 'https://api.traseq.com',
   });
 }
 
@@ -657,6 +662,119 @@ function parseMcpScopeFlag(): McpScope {
   process.exit(1);
 }
 
+function readSecretFlag(name: string): string | undefined {
+  const value = getFlag(name);
+  if (value === undefined) {
+    return undefined;
+  }
+  const normalized = value.trim();
+  if (normalized.length === 0) {
+    return undefined;
+  }
+  // Guard against `--api-key --probe` (forgotten value); the positional
+  // `getFlag` would otherwise swallow the next flag name as the secret.
+  if (normalized.startsWith('--')) {
+    throw new Error(
+      `--${name} expects a value but got "${normalized}". Pass it as: --${name} <value>`,
+    );
+  }
+  return normalized;
+}
+
+function resolveMcpCredentials(): {
+  apiKey: string | undefined;
+  apiKeyFromFlag: boolean;
+  baseUrl: string | undefined;
+} {
+  const apiKeyFromFlag = readSecretFlag('api-key');
+  return {
+    apiKey: apiKeyFromFlag ?? readEnv('TRASEQ_API_KEY'),
+    apiKeyFromFlag: apiKeyFromFlag !== undefined,
+    baseUrl: readEnv('TRASEQ_BASE_URL'),
+  };
+}
+
+function setupMcpCommandExample(input: {
+  client: McpClient;
+  scope: McpScope;
+  write: boolean;
+  probe: boolean;
+  printConfig: boolean;
+  claudeDesktopConfigPath?: string;
+}): string {
+  const args = [
+    'npx',
+    '-y',
+    '--package',
+    '@traseq/agent',
+    'traseq-agent',
+    'setup-mcp',
+    '--client',
+    input.client,
+  ];
+
+  if (input.scope !== 'user') {
+    args.push('--scope', input.scope);
+  }
+  if (input.write) {
+    args.push('--write');
+  }
+  if (input.probe) {
+    args.push('--probe');
+  }
+  if (input.printConfig) {
+    args.push('--print-config');
+  }
+  if (input.claudeDesktopConfigPath) {
+    args.push('--claude-desktop-config', input.claudeDesktopConfigPath);
+  }
+
+  return formatShellCommand(args);
+}
+
+function missingMcpApiKeyHelp(command: string): string {
+  return [
+    'Missing TRASEQ_API_KEY for MCP setup.',
+    '',
+    'Create or copy a workspace API key here:',
+    TRASEQ_API_KEY_SETUP_URL,
+    '',
+    'Then choose one of these options:',
+    '',
+    'Option 1: set it for the current terminal, then rerun setup',
+    '```sh',
+    'export TRASEQ_API_KEY="trsq_..."',
+    command,
+    '```',
+    '',
+    'Option 2: run setup once with the key inline',
+    '```sh',
+    `TRASEQ_API_KEY="trsq_..." ${command}`,
+    '```',
+    '',
+    'Option 3: persist for future shells (append the export to your shell rc)',
+    '```sh',
+    '# zsh (default on macOS); for bash use ~/.bashrc',
+    'echo \'export TRASEQ_API_KEY="trsq_..."\' >> ~/.zshrc',
+    'source ~/.zshrc',
+    command,
+    '```',
+    '',
+    'Fast local-only alternative:',
+    '```sh',
+    `${command} --api-key "trsq_..."`,
+    '```',
+    '',
+    'Do not paste API keys into AI prompts. Avoid committing keys into project config.',
+  ].join('\n');
+}
+
+function warnApiKeyFlag(): void {
+  process.stderr.write(
+    'Note: --api-key is convenient for local setup, but the value may remain in shell history and is briefly visible to other processes via `ps`. Prefer TRASEQ_API_KEY for regular use, especially on shared hosts and CI.\n',
+  );
+}
+
 function isExecutable(path: string): boolean {
   try {
     accessSync(path, fsConstants.X_OK);
@@ -802,8 +920,13 @@ function executeInstallCommand(plan: McpInstallPlan): void {
   }
 }
 
-async function printMcpProbe(): Promise<void> {
-  const client = createPlatformClient();
+async function printMcpProbe(
+  options: {
+    apiKey?: string;
+    baseUrl?: string;
+  } = {},
+): Promise<void> {
+  const client = createPlatformClient(options);
   const result = await probeTraseqMcpSetup({ client });
 
   process.stdout.write('\nTraseq probe:\n');
@@ -835,11 +958,18 @@ async function printMcpProbe(): Promise<void> {
 async function runSetupMcpCommand(): Promise<void> {
   const client = parseMcpClientFlag();
   const scope = parseMcpScopeFlag();
-  const apiKey = readEnv('TRASEQ_API_KEY');
-  const baseUrl = readEnv('TRASEQ_BASE_URL');
+  const { apiKey, apiKeyFromFlag, baseUrl } = resolveMcpCredentials();
   const write = hasFlag('write');
   const inlineSecrets = write && scope !== 'project';
   const claudeDesktopConfigPath = getFlag('claude-desktop-config');
+  const commandExample = setupMcpCommandExample({
+    client,
+    scope,
+    write,
+    probe: hasFlag('probe'),
+    printConfig: hasFlag('print-config'),
+    ...(claudeDesktopConfigPath ? { claudeDesktopConfigPath } : {}),
+  });
   const plan = buildClientInstallPlan({
     client,
     scope,
@@ -859,7 +989,10 @@ async function runSetupMcpCommand(): Promise<void> {
 
   if (write) {
     if (plan.scope !== 'project' && !apiKey) {
-      throw new Error(TRASEQ_API_KEY_SETUP_HELP);
+      throw new Error(missingMcpApiKeyHelp(commandExample));
+    }
+    if (apiKeyFromFlag) {
+      warnApiKeyFlag();
     }
     if (inlineSecrets && apiKey && plan.client !== 'claude-desktop') {
       // claude/codex CLIs accept env values via argv. On shared hosts that
@@ -877,7 +1010,13 @@ async function runSetupMcpCommand(): Promise<void> {
   }
 
   if (hasFlag('probe')) {
-    await printMcpProbe();
+    if (!apiKey) {
+      throw new Error(missingMcpApiKeyHelp(commandExample));
+    }
+    if (apiKeyFromFlag && !write) {
+      warnApiKeyFlag();
+    }
+    await printMcpProbe({ apiKey, ...(baseUrl ? { baseUrl } : {}) });
   }
 }
 
@@ -885,8 +1024,7 @@ async function runMcpDoctorCommand(): Promise<void> {
   const client = parseMcpClientFlag();
   const scope = parseMcpScopeFlag();
   const claudeDesktopConfigPath = getFlag('claude-desktop-config');
-  const apiKey = readEnv('TRASEQ_API_KEY');
-  const baseUrl = readEnv('TRASEQ_BASE_URL');
+  const { apiKey, apiKeyFromFlag, baseUrl } = resolveMcpCredentials();
   const plan = buildClientInstallPlan({
     client,
     scope,
@@ -898,7 +1036,24 @@ async function runMcpDoctorCommand(): Promise<void> {
 
   printMcpPlan(redactMcpInstallPlan(plan));
   if (hasFlag('probe')) {
-    await printMcpProbe();
+    if (!apiKey) {
+      throw new Error(
+        missingMcpApiKeyHelp(
+          setupMcpCommandExample({
+            client,
+            scope,
+            write: false,
+            probe: true,
+            printConfig: false,
+            ...(claudeDesktopConfigPath ? { claudeDesktopConfigPath } : {}),
+          }),
+        ),
+      );
+    }
+    if (apiKeyFromFlag) {
+      warnApiKeyFlag();
+    }
+    await printMcpProbe({ apiKey, ...(baseUrl ? { baseUrl } : {}) });
   }
 }
 

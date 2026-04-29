@@ -1,6 +1,6 @@
 {
   "name": "@traseq/agent",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "module",
   "description": "Guided Traseq strategy research service kit with MCP setup, SDK wrappers, strategy context, scoring, and reports.",
   "license": "MIT",

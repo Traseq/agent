@@ -63,6 +63,27 @@ traseq-agent setup-mcp --client claude-desktop --print-config
 traseq-agent setup-mcp --client generic --print-config
 ```
 
+Without installing the package first, invoke the binary explicitly:
+
+```sh
+npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe
+```
+
+If `TRASEQ_API_KEY` is not set yet, set it in the current terminal before
+running setup:
+
+```sh
+export TRASEQ_API_KEY="trsq_..."
+npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe
+```
+
+For a one-command local install, `setup-mcp` also accepts `--api-key`, but that
+value may remain in shell history:
+
+```sh
+npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe --api-key "trsq_..."
+```
+
 Project-scoped config uses `${TRASEQ_API_KEY}` instead of inlining a secret.
 User/local setup can inline `TRASEQ_API_KEY` for a smooth personal install.
 
@@ -234,7 +255,7 @@ Code**, Codex, or another stdio MCP client:
   "mcpServers": {
     "traseq": {
       "command": "npx",
-      "args": ["-y", "@traseq/agent", "mcp"],
+      "args": ["-y", "--package", "@traseq/agent", "traseq-agent", "mcp"],
       "env": {
         "TRASEQ_API_KEY": "${TRASEQ_API_KEY}",
         "TRASEQ_BASE_URL": "https://api.traseq.com"

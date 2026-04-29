@@ -90,7 +90,7 @@ describe('MCP setup helpers', () => {
       mcpServers: {
         traseq: {
           command: 'npx',
-          args: ['-y', '@traseq/agent', 'mcp'],
+          args: ['-y', '--package', '@traseq/agent', 'traseq-agent', 'mcp'],
           env: {
             TRASEQ_API_KEY: '${TRASEQ_API_KEY}',
             TRASEQ_BASE_URL: 'https://api.test.local',
@@ -120,6 +120,8 @@ describe('MCP setup helpers', () => {
       'traseq',
     ]);
     assert.ok(codex.command.includes('TRASEQ_API_KEY=trsq_secret'));
+    assert.ok(codex.command.includes('--package'));
+    assert.ok(codex.command.includes('traseq-agent'));
     assert.deepEqual(claude.command.slice(0, 5), [
       'claude',
       'mcp',
@@ -216,7 +218,9 @@ describe('MCP setup CLI', () => {
     assert.equal(parsed.mcpServers.traseq.command, 'npx');
     assert.deepEqual(parsed.mcpServers.traseq.args, [
       '-y',
+      '--package',
       '@traseq/agent',
+      'traseq-agent',
       'mcp',
     ]);
   });
@@ -259,6 +263,71 @@ describe('MCP setup CLI', () => {
     assert.equal(result.code, 0, result.stderr);
     assert.doesNotMatch(result.stdout, /trsq_secret/);
     assert.equal(JSON.parse(result.stdout).mcpServers.traseq.command, 'npx');
+  });
+
+  it('explains exactly where to set TRASEQ_API_KEY when setup would write', async () => {
+    const result = await runCli(
+      ['setup-mcp', '--client', 'codex', '--write', '--probe'],
+      {
+        env: {
+          TRASEQ_API_KEY: '',
+        },
+      },
+    );
+
+    assert.notEqual(result.code, 0);
+    assert.match(result.stderr, /Missing TRASEQ_API_KEY for MCP setup/);
+    assert.match(result.stderr, /export TRASEQ_API_KEY="trsq_\.\.\."/);
+    assert.match(result.stderr, /~\/\.zshrc/);
+    assert.match(result.stderr, /~\/\.bashrc/);
+    assert.match(result.stderr, /--api-key "trsq_\.\.\."/);
+    // Anchor the dashboard link so the onboarding URL doesn't silently drift.
+    assert.match(result.stderr, /\/login\?redirectTo=%2Fsettings%2Fapi-keys/);
+    assert.match(
+      result.stderr,
+      /npx -y --package @traseq\/agent traseq-agent setup-mcp --client codex --write --probe/,
+    );
+  });
+
+  it('accepts --api-key for local setup probes without leaking it', async () => {
+    const result = await runCli(
+      ['setup-mcp', '--client', 'codex', '--api-key', 'test-key', '--probe'],
+      {
+        env: {
+          NODE_OPTIONS: '--import ./test/mock-cli-fetch.mjs',
+          TRASEQ_API_KEY: '',
+          TRASEQ_BASE_URL: 'https://api.test.local',
+        },
+      },
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /manifest reachable/);
+    assert.match(result.stdout, /MCP setup is ready/);
+    assert.doesNotMatch(result.stdout, /test-key/);
+    assert.match(result.stderr, /may remain in shell history/);
+    assert.match(result.stderr, /visible to other processes via `ps`/);
+  });
+
+  it('rejects --api-key with a missing value instead of swallowing the next flag', async () => {
+    // Without the defensive check, positional arg parsing would treat `--probe`
+    // as the API key, then warn about shell-history leakage and fail later
+    // against the API. The clear up-front error is what we want.
+    const result = await runCli(
+      ['setup-mcp', '--client', 'codex', '--api-key', '--probe'],
+      {
+        env: {
+          TRASEQ_API_KEY: '',
+        },
+      },
+    );
+
+    assert.notEqual(result.code, 0);
+    assert.match(
+      result.stderr,
+      /--api-key expects a value but got "--probe"/,
+    );
+    assert.doesNotMatch(result.stderr, /may remain in shell history/);
   });
 
   it('probes the API in mcp-doctor', async () => {

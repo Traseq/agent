@@ -66,6 +66,8 @@ describe('environment onboarding help', () => {
           assert.match(error.message, /entry_surface=agent_cli/);
           assert.match(error.message, /entry_source=missing_traseq_api_key/);
           assert.match(error.message, /cta_id=start_with_free_tier/);
+          assert.match(error.message, /export TRASEQ_API_KEY="trsq_\.\.\."/);
+          assert.match(error.message, /~\/\.zshrc for zsh, ~\/\.bashrc for bash/);
           assert.doesNotMatch(error.message, /agent trial/i);
           return true;
         },
@@ -74,6 +76,7 @@ describe('environment onboarding help', () => {
 
     assert.match(TRASEQ_API_KEY_SETUP_HELP, /Start with the free tier/);
     assert.match(TRASEQ_API_KEY_SETUP_HELP, /create a workspace API key/);
+    assert.match(TRASEQ_API_KEY_SETUP_HELP, /check-env --probe/);
     assert.ok(
       TRASEQ_API_KEY_SETUP_URL.includes(
         '/login?redirectTo=%2Fsettings%2Fapi-keys',
@@ -103,6 +106,7 @@ describe('environment onboarding help', () => {
     assert.match(output, /entry_surface=agent_cli/);
     assert.match(output, /entry_source=missing_traseq_api_key/);
     assert.match(output, /cta_id=start_with_free_tier/);
+    assert.match(output, /export TRASEQ_API_KEY="trsq_\.\.\."/);
     assert.doesNotMatch(output, /agent trial/i);
   });
 });

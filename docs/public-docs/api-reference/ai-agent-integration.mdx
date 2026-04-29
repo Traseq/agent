@@ -207,11 +207,25 @@ For Claude Code, Claude Desktop, Codex, or another MCP-capable client, start
 with the setup helper instead of hand-writing JSON:
 
 ```sh
-npx -y @traseq/agent setup-mcp --client codex --probe
-npx -y @traseq/agent setup-mcp --client codex --write --probe
-npx -y @traseq/agent setup-mcp --client claude-code --write --probe
-npx -y @traseq/agent setup-mcp --client claude-desktop --print-config
-npx -y @traseq/agent setup-mcp --client generic --print-config
+npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --probe
+npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe
+npx -y --package @traseq/agent traseq-agent setup-mcp --client claude-code --write --probe
+npx -y --package @traseq/agent traseq-agent setup-mcp --client claude-desktop --print-config
+npx -y --package @traseq/agent traseq-agent setup-mcp --client generic --print-config
+```
+
+If the key is not in your shell yet, set it before running setup:
+
+```sh
+export TRASEQ_API_KEY="trsq_..."
+npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe
+```
+
+For a one-command local install, you can pass the key directly. This is
+convenient, but the value may remain in shell history:
+
+```sh
+npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe --api-key "trsq_..."
 ```
 
 The default mode is dry-run: it prints the command and MCP JSON without
