@@ -16,6 +16,20 @@ import {
 } from '../semantics/index.js';
 
 const MAX_BUFFER_BYTES = 10 * 1024 * 1024; // 10 MB
+const GUIDED_RESEARCH_PROMPT_NAME = 'traseq_guided_research';
+const GUIDED_TOOL_ORDER = [
+  'start_research_engagement',
+  'run_guided_research_round',
+  'summarize_research_engagement',
+] as const;
+const MCP_SERVICE_INSTRUCTIONS = [
+  'Use Traseq as a guided strategy research service, not as a raw toolbox.',
+  'Default flow: call start_research_engagement first, author a strategy draft outside Traseq, then call run_guided_research_round to validate, persist after validation, backtest, evaluate evidence, and return a memo.',
+  'Show users the research task, assumptions, verdict, evidence, risk flags, Traseq app links, and next step. Do not lead with raw tool names or JSON.',
+  'Use lower-level platform tools only for advanced automation or when the guided tools cannot cover the requested workflow.',
+  '@traseq/agent does not call an AI provider, place live orders, or provide investment advice. Historical backtests are research evidence only.',
+  'Destructive platform tools require confirm=true.',
+].join('\n');
 
 type JsonRpcId = string | number | null;
 
@@ -72,16 +86,38 @@ function safeErrorMessage(error: unknown): string {
   return 'An unexpected error occurred.';
 }
 
+const GUIDED_TOOL_NAMES = new Set<string>(GUIDED_TOOL_ORDER);
+
+function orderedAgentTools() {
+  const guided = GUIDED_TOOL_ORDER.map((name) =>
+    getAgentToolDefinition(name),
+  ).filter((tool) => tool !== undefined);
+  const rest = AGENT_TOOL_REGISTRY.filter(
+    (tool) => !GUIDED_TOOL_NAMES.has(tool.name),
+  );
+  return [...guided, ...rest];
+}
+
+function describeAgentTool(tool: {
+  name: string;
+  description: string;
+}): string {
+  return GUIDED_TOOL_NAMES.has(tool.name)
+    ? `${tool.description} Recommended guided-service entrypoint.`
+    : `${tool.description} Local agent helper.`;
+}
+
 function toToolList() {
   return [
-    ...AGENT_TOOL_REGISTRY.map((tool) => ({
+    ...orderedAgentTools().map((tool) => ({
       name: tool.name,
-      description: `${tool.description} Local agent tool.`,
+      description: describeAgentTool(tool),
       inputSchema: tool.input_schema,
     })),
     ...OPERATION_REGISTRY.map((operation) => ({
       name: operation.name,
       description: [
+        'Advanced automation tool.',
         operation.description,
         operation.destructive ? 'Requires confirm=true.' : '',
         operation.longRunning
@@ -93,6 +129,71 @@ function toToolList() {
       inputSchema: operation.input_schema,
     })),
   ];
+}
+
+function toPromptList() {
+  return [
+    {
+      name: GUIDED_RESEARCH_PROMPT_NAME,
+      description:
+        'Start a Traseq guided strategy research engagement from a user trading idea.',
+      arguments: [
+        {
+          name: 'idea',
+          description: 'The strategy idea or market thesis to research.',
+          required: true,
+        },
+        {
+          name: 'instrument',
+          description: 'Optional trading instrument, such as BTCUSDT.',
+          required: false,
+        },
+        {
+          name: 'timeframe',
+          description: 'Optional timeframe: 15m, 1h, 4h, or 1d.',
+          required: false,
+        },
+      ],
+    },
+  ];
+}
+
+function promptArg(args: unknown, key: string): string | undefined {
+  if (typeof args !== 'object' || args === null || Array.isArray(args)) {
+    return undefined;
+  }
+  const value = (args as Record<string, unknown>)[key];
+  return typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function guidedResearchPromptText(args: unknown): string {
+  const idea =
+    promptArg(args, 'idea') ??
+    'Validate a BTCUSDT 4h strategy idea with historical research evidence.';
+  const instrument = promptArg(args, 'instrument');
+  const timeframe = promptArg(args, 'timeframe');
+  const context = [
+    instrument ? `Instrument: ${instrument}` : '',
+    timeframe ? `Timeframe: ${timeframe}` : '',
+  ].filter(Boolean);
+
+  return [
+    `Help me validate this Traseq strategy idea: ${idea}`,
+    context.length > 0 ? context.join('\n') : '',
+    '',
+    'Use the Traseq MCP guided research flow:',
+    '1. Call start_research_engagement first to read workspace context, usage, capabilities, assumptions, and decision points.',
+    '2. Present the research assumptions and only ask for high-value missing decisions.',
+    '3. Author the strategy draft externally using the capabilities and semantic guidance.',
+    '4. Call run_guided_research_round with the draft. Do not create or backtest if validation fails.',
+    '5. Return a service memo with verdict, what was tested, evidence, risk flags, Traseq app links, and recommended next step.',
+    '',
+    'Do not present a raw tool list as the primary user experience. Do not provide investment advice or live-trading instructions.',
+  ]
+    .filter((line) => line !== '')
+    .join('\n');
 }
 
 async function handleRequest(client: TraseqClient, request: JsonRpcRequest) {
@@ -120,18 +221,46 @@ async function handleRequest(client: TraseqClient, request: JsonRpcRequest) {
             tools: {
               listChanged: false,
             },
+            prompts: {
+              listChanged: false,
+            },
           },
           serverInfo: {
             name: '@traseq/agent',
             version: '0.1.0',
           },
-          instructions:
-            'Use start_research_engagement first for service-style strategy research. @traseq/agent guides validation, backtesting, evidence review, and reporting with a workspace-scoped TRASEQ_API_KEY; it does not call an AI provider or place live orders. Destructive platform tools require confirm=true.',
+          instructions: MCP_SERVICE_INSTRUCTIONS,
         });
         return;
       case 'tools/list':
         writeResult(id, { tools: toToolList() });
         return;
+      case 'prompts/list':
+        writeResult(id, { prompts: toPromptList() });
+        return;
+      case 'prompts/get': {
+        const name =
+          typeof request.params?.name === 'string' ? request.params.name : '';
+        if (name !== GUIDED_RESEARCH_PROMPT_NAME) {
+          writeError(id, -32602, `Unknown prompt: ${name}`);
+          return;
+        }
+
+        writeResult(id, {
+          description:
+            'Start a Traseq guided strategy research engagement from a user trading idea.',
+          messages: [
+            {
+              role: 'user',
+              content: {
+                type: 'text',
+                text: guidedResearchPromptText(request.params?.arguments),
+              },
+            },
+          ],
+        });
+        return;
+      }
       case 'tools/call': {
         const name =
           typeof request.params?.name === 'string' ? request.params.name : '';

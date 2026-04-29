@@ -51,6 +51,25 @@ function completedRound(round = 1) {
     backtest: {
       id: `bt-${round}`,
       status: 'completed',
+      appLinks: {
+        backtest: `https://app.traseq.test/backtests/bt-${round}`,
+        backtestCharts: `https://app.traseq.test/backtests/bt-${round}?view=charts`,
+        backtestTrades: `https://app.traseq.test/backtests/bt-${round}?view=trades`,
+        backtestAnalytics: `https://app.traseq.test/backtests/bt-${round}?view=analytics`,
+        strategy: 'https://app.traseq.test/strategies/strategy-1?version=1',
+      },
+      runContext: {
+        instrument: { symbol: 'BTCUSDT' },
+        timeframe: '4h',
+        range: {
+          start: 1704067200000,
+          end: 1735689600000,
+        },
+        initialBalance: 10_000,
+        strategyId: 'strategy-1',
+        strategyVersionId: `version-${round}`,
+        strategyVersionNumber: round,
+      },
       summary: {
         returnPct: 0.14,
         sharpeRatio: 0.9,
@@ -162,6 +181,26 @@ function makeClient() {
       return {
         id: 'bt-1',
         status: 'completed',
+        appLinks: {
+          backtest: 'https://app.traseq.test/backtests/bt-1',
+          backtestCharts: 'https://app.traseq.test/backtests/bt-1?view=charts',
+          backtestTrades: 'https://app.traseq.test/backtests/bt-1?view=trades',
+          backtestAnalytics:
+            'https://app.traseq.test/backtests/bt-1?view=analytics',
+          strategy: 'https://app.traseq.test/strategies/strategy-1?version=1',
+        },
+        runContext: {
+          instrument: { symbol: 'BTCUSDT' },
+          timeframe: '4h',
+          range: {
+            start: 1704067200000,
+            end: 1735689600000,
+          },
+          initialBalance: 10_000,
+          strategyId: 'strategy-1',
+          strategyVersionId: 'version-1',
+          strategyVersionNumber: 1,
+        },
         summaryJson: {
           returnPct: 0.14,
           sharpeRatio: 0.9,
@@ -209,11 +248,22 @@ This memo summarizes historical research evidence only. It is not investment adv
 - **Evaluation confidence:** Robust (\`robust\`)
 - **Champion round:** 1
 
+## Open in Traseq
+
+- **Backtest:** [Open](https://app.traseq.test/backtests/bt-1)
+- **Charts:** [Open](https://app.traseq.test/backtests/bt-1?view=charts)
+- **Trades:** [Open](https://app.traseq.test/backtests/bt-1?view=trades)
+- **Analytics:** [Open](https://app.traseq.test/backtests/bt-1?view=analytics)
+- **Strategy:** [Open](https://app.traseq.test/strategies/strategy-1?version=1)
+
 ## What We Tested
 
 - **Prompt:** Research a BTCUSDT trend strategy.
 - **Instrument:** BTCUSDT
 - **Timeframe:** 4h
+- **Backtest range:** 2024-01-01T00:00:00.000Z to 2025-01-01T00:00:00.000Z
+- **Initial balance:** 10000
+- **Strategy version:** version-1
 - **Position style:** single
 - **Objective:** Improve risk-adjusted returns.
 
@@ -315,7 +365,10 @@ describe('guided research service', () => {
         item.includes('Risk tolerance defaults to moderate'),
       ),
     );
-    assert.doesNotMatch(rendered, /get_manifest|validate_strategy|run_backtest/);
+    assert.doesNotMatch(
+      rendered,
+      /get_manifest|validate_strategy|run_backtest/,
+    );
     assert.doesNotMatch(
       brief.serviceMessages.map((message) => message.message).join('\n'),
       /get_manifest|validate_strategy|run_backtest/,
@@ -342,7 +395,14 @@ describe('guided research service', () => {
     assert.match(output.report, /Traseq Guided Research Memo/);
     assert.ok(
       output.serviceMessages.some(
-        (message) => message.title === 'Candidate passed the first evidence bar',
+        (message) =>
+          message.title === 'Candidate passed the first evidence bar',
+      ),
+    );
+    assert.ok(
+      output.serviceMessages.some(
+        (message) =>
+          message.links?.backtest === 'https://app.traseq.test/backtests/bt-1',
       ),
     );
   });
@@ -619,12 +679,7 @@ describe('guided CLI', () => {
 
   it('prints guided engagement JSON with defaults when requested', async () => {
     const result = await runCli(
-      [
-        'guide',
-        '--prompt',
-        'Research a BTCUSDT trend strategy.',
-        '--json',
-      ],
+      ['guide', '--prompt', 'Research a BTCUSDT trend strategy.', '--json'],
       {
         env: {
           NODE_OPTIONS: '--import ./test/mock-cli-fetch.mjs',
@@ -694,7 +749,8 @@ describe('guided CLI', () => {
     assert.equal(parsed.result.rounds[0].backtest, undefined);
     assert.ok(
       parsed.serviceMessages.some(
-        (message) => message.title === 'Research stopped before usable evidence',
+        (message) =>
+          message.title === 'Research stopped before usable evidence',
       ),
     );
   });

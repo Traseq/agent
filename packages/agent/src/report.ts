@@ -6,6 +6,9 @@ import type {
   ResearchResultEvaluation,
   ResearchRunnerResult,
   ResearchRoundEvaluation,
+  NormalizedBacktestAppLinks,
+  NormalizedBacktestResult,
+  NormalizedBacktestRunContext,
 } from './types.js';
 
 const CONFIDENCE_LABEL: Record<ResearchConfidence, string> = {
@@ -53,6 +56,81 @@ function lineList(items: readonly string[]): string[] {
   return items.length > 0 ? items.map((item) => `- ${item}`) : ['- None'];
 }
 
+// Picks the backtest that should represent an engagement for navigation +
+// "what we tested" framing. Prefers the evaluation's champion round, falls
+// back to the result-level pointer, then to the first round with a backtest.
+export function representativeBacktest(
+  result: ResearchRunnerResult,
+  evaluation?: ResearchResultEvaluation,
+): NormalizedBacktestResult | undefined {
+  const championRound = evaluation?.championRound ?? result.championRound;
+  const champion =
+    championRound !== undefined
+      ? result.rounds.find(
+          (round) => round.round === championRound && round.backtest,
+        )?.backtest
+      : undefined;
+
+  return (
+    champion ??
+    result.rounds.find((round) => round.backtest)?.backtest ??
+    undefined
+  );
+}
+
+// Heuristic: timestamps below this magnitude are interpreted as Unix seconds
+// rather than milliseconds. 1e12 ms ≈ year 2001, 1e12 s ≈ year 33658, so any
+// realistic timestamp lands cleanly on one side. Backend currently always
+// emits ms, but agent normalize() also accepts older fixtures.
+const MS_TIMESTAMP_THRESHOLD = 1e12;
+
+function formatRangePoint(value: number | string | null | undefined): string {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const millis =
+      Math.abs(value) < MS_TIMESTAMP_THRESHOLD ? value * 1000 : value;
+    const date = new Date(millis);
+    return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();
+  }
+  return typeof value === 'string' && value.length > 0 ? value : 'unknown';
+}
+
+function formatRange(
+  range: NormalizedBacktestRunContext['range'] | undefined,
+): string {
+  if (!range) {
+    return 'not specified';
+  }
+  return `${formatRangePoint(range.start)} to ${formatRangePoint(range.end)}`;
+}
+
+function formatOpenInTraseq(
+  links: NormalizedBacktestAppLinks | undefined,
+): string[] {
+  if (!links) {
+    return [];
+  }
+
+  const rows = [
+    ['Backtest', links.backtest],
+    ['Charts', links.backtestCharts],
+    ['Trades', links.backtestTrades],
+    ['Analytics', links.backtestAnalytics],
+    ['Strategy', links.strategy],
+    ['All backtests for strategy', links.strategyBacktests],
+  ].filter((entry): entry is [string, string] => Boolean(entry[1]));
+
+  if (rows.length === 0) {
+    return [];
+  }
+
+  return [
+    '## Open in Traseq',
+    '',
+    ...rows.map(([label, href]) => `- **${label}:** [Open](${href})`),
+    '',
+  ];
+}
+
 function roundEvidenceSection(round: ResearchRoundEvaluation): string[] {
   return [
     `### Round ${round.round}`,
@@ -79,6 +157,12 @@ export function formatResearchReport(
   evaluation: ResearchResultEvaluation = evaluateResearchResult(result),
 ): string {
   const input = result.input;
+  const backtest = representativeBacktest(result, evaluation);
+  const runContext = backtest?.runContext;
+  const instrument = runContext?.instrument.symbol ?? input.instrument;
+  const timeframe = runContext?.timeframe ?? input.timeframe;
+  const initialBalance =
+    runContext?.initialBalance ?? input.initialBalance ?? undefined;
   const evidenceLines =
     evaluation.rounds.length > 0
       ? evaluation.rounds.flatMap((round) => [
@@ -98,11 +182,15 @@ export function formatResearchReport(
     `- **Evaluation confidence:** ${humanizeConfidence(evaluation.confidence)}`,
     `- **Champion round:** ${evaluation.championRound ?? 'none'}`,
     '',
+    ...formatOpenInTraseq(backtest?.appLinks),
     '## What We Tested',
     '',
     `- **Prompt:** ${input.prompt}`,
-    `- **Instrument:** ${input.instrument}`,
-    `- **Timeframe:** ${input.timeframe}`,
+    `- **Instrument:** ${instrument}`,
+    `- **Timeframe:** ${timeframe}`,
+    `- **Backtest range:** ${formatRange(runContext?.range)}`,
+    `- **Initial balance:** ${initialBalance ?? 'not specified'}`,
+    `- **Strategy version:** ${runContext?.strategyVersionId ?? 'not specified'}`,
     `- **Position style:** ${input.positionStyle}`,
     `- **Objective:** ${input.objective}`,
     '',

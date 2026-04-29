@@ -28,7 +28,16 @@ export {
   formatTraseqAgentError,
   runPlatformTool,
 } from './client/index.js';
-export { startMcpServer } from './mcp/index.js';
+export {
+  MCP_CLIENTS,
+  MCP_SCOPES,
+  buildClientInstallPlan,
+  buildMcpServerConfig,
+  formatShellCommand,
+  probeTraseqMcpSetup,
+  redactMcpInstallPlan,
+  startMcpServer,
+} from './mcp/index.js';
 
 // Operational layer
 export { buildScoreBreakdown } from './scoring.js';
@@ -128,6 +137,18 @@ export type {
   EmitResearchEvent,
   AnalyzeRoundArgs,
 } from './types.js';
+export type {
+  McpClient,
+  McpInstallPlan,
+  McpInstallPlanInput,
+  McpProbeClient,
+  McpProbeResult,
+  McpScope,
+  McpServerConfig,
+  McpServerConfigInput,
+  McpServerEntry,
+  ResolvedMcpClient,
+} from './mcp/index.js';
 export type {
   FetchPolicyOptions,
   FetchRetryOptions,

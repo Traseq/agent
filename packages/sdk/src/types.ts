@@ -176,6 +176,40 @@ export interface BacktestConfig {
   ambiguityFallback?: Exclude<AmbiguityResolution, 'multi_resolution'>;
 }
 
+export interface BacktestAppLinks extends JsonObject {
+  backtest: string;
+  backtestCharts: string;
+  backtestTrades: string;
+  backtestAnalytics: string;
+  strategy?: string;
+  strategyBacktests?: string;
+}
+
+export interface BacktestRunContextInstrument extends JsonObject {
+  symbol: string | null;
+  venue: string | null;
+  marketType: string | null;
+}
+
+export interface BacktestRunContextRange extends JsonObject {
+  start: number | string | null;
+  end: number | string | null;
+}
+
+export interface BacktestRunContext extends JsonObject {
+  instrument: BacktestRunContextInstrument;
+  timeframe: string | null;
+  range: BacktestRunContextRange | null;
+  initialBalance: number | null;
+  execution: JsonObject | null;
+  strategyId: string | null;
+  strategyVersionId: string | null;
+  strategyVersionNumber: number | null;
+  createdAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
 export interface SignalGraphAuthoringPayload {
   signalGraph: JsonObject;
   settings: StrategySettings;
@@ -266,20 +300,36 @@ export interface RunBacktestRequest {
   config: BacktestConfig;
 }
 
+export interface BacktestResult extends JsonObject {
+  summaryJson?: JsonObject;
+  artifactUrls?: Record<string, string>;
+}
+
 export interface RunBacktestResponse extends JsonObject {
   id: string;
   status: string;
+  strategyVersionId: string;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  configJson: JsonObject;
+  appLinks: BacktestAppLinks;
+  runContext: BacktestRunContext;
   warnings?: string[];
 }
 
 export interface BacktestDetail extends JsonObject {
   id: string;
   status: string;
-  summaryJson?: JsonObject;
-  resultJson?: JsonObject;
-  artifacts?: JsonObject;
-  result?: JsonObject;
-  strategy?: JsonObject | null;
+  strategyVersionId: string;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  configJson: JsonObject;
+  result: BacktestResult | null;
+  strategy: JsonObject | null;
+  appLinks: BacktestAppLinks;
+  runContext: BacktestRunContext;
 }
 
 export interface StrategyDetail extends JsonObject {

@@ -199,7 +199,48 @@ repo 內已附上兩個可直接複製的資產：
 - `docs/public-docs/reference/traseq-agent-example.ts`
   最小可用的 TypeScript client，加上 validate-repair loop helper。
 
-這個 repo 內 agent package 使用 `@traseq/agent`。它是 tool-first package，不需要 AI provider key。
+這個 repo 內 agent package 使用 `@traseq/agent`。它替 Claude、Codex 與其他 MCP
+client 提供 guided research service layer，同時維持 provider-agnostic；不需要
+AI provider key。
+
+## Claude 與 Codex MCP setup
+
+Claude Code、Claude Desktop、Codex 或其他支援 MCP 的 client，建議先用 setup
+helper，不要手動貼 JSON 起手：
+
+```sh
+npx -y @traseq/agent setup-mcp --client codex --probe
+npx -y @traseq/agent setup-mcp --client codex --write --probe
+npx -y @traseq/agent setup-mcp --client claude-code --write --probe
+npx -y @traseq/agent setup-mcp --client claude-desktop --print-config
+npx -y @traseq/agent setup-mcp --client generic --print-config
+```
+
+預設是 dry-run：只印出安裝指令與 MCP JSON，不會改 client config。加上
+`--write` 才會在支援的 client 上寫入設定。`--probe` 會依序檢查 manifest、
+workspace、usage 與 capabilities，讓 agent 能判斷 API key 是否具備 guided
+research 需要的 scopes。
+
+若要放進共享 repo config，使用 `--scope project`。Project scope 會保留
+`${TRASEQ_API_KEY}`，不把 secret 寫入 config。不要把 API key 貼進 prompt。
+
+在共用主機上，建議用 dry-run 輸出後手動編輯 config：`--write` 會呼叫
+`claude mcp add` 或 `codex mcp add`，這些 CLI 透過 argv 接收 env 值，API key
+會短暫出現在 `ps`/`/proc` 中。Claude Desktop 不會展開 `${VAR}` 佔位符，所以
+它的安裝一律會把 key inline 寫進 user 層級 config 檔，務必確認該檔案不是
+world-readable。`--scope project` 對 Claude Desktop 不適用，會被當成
+`--scope user` 處理。
+
+安裝後，給 client 一句任務導向 prompt：
+
+```text
+Help me validate a BTCUSDT 4h strategy idea. Start with Traseq research engagement first.
+```
+
+MCP server 會透過 `prompts/list` 暴露 `traseq_guided_research`，並把 guided
+tools 排在前面。建議流程是 `start_research_engagement` → 外部 agent author
+draft → `run_guided_research_round` → 必要時再
+`summarize_research_engagement`。低階 Public Agent API tools 仍保留給進階自動化。
 
 ## TypeScript SDK 範例
 
@@ -272,6 +313,11 @@ const backtest = await client.runBacktest({
 });
 ```
 
+Backtest 回傳會包含 `appLinks` 與 `runContext`。Agent 應優先把
+`appLinks.backtest` 或 `appLinks.backtestCharts` 呈現給使用者導流到 Traseq
+App，而不是只輸出 UUID；摘要回測證據時則使用 `runContext.instrument`、
+`runContext.timeframe`、`runContext.range` 描述實際測試條件。
+
 真正重要的不是 wrapper class 本身，而是 SDK 強制維持這個順序：
 
 1. 讀 workspace、usage 與 capabilities
@@ -289,6 +335,9 @@ JSON asset 可直接使用 `docs/public-docs/reference/traseq-agent-tool-schema.
 
 建議工具：
 
+- `start_research_engagement`
+- `run_guided_research_round`
+- `summarize_research_engagement`
 - `get_manifest`
 - `get_workspace_context`
 - `get_usage`

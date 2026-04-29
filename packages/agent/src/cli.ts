@@ -1,4 +1,15 @@
 #!/usr/bin/env node
+import { spawnSync } from 'node:child_process';
+import {
+  accessSync,
+  constants as fsConstants,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
+import { delimiter, dirname, join } from 'node:path';
+
 import { getAgentContext } from './assembler.js';
 import {
   readEnv,
@@ -25,6 +36,18 @@ import {
   runAgentTool,
   type AgentToolName,
 } from './semantics/index.js';
+import {
+  MCP_CLIENTS,
+  MCP_SCOPES,
+  buildClientInstallPlan,
+  formatShellCommand,
+  probeTraseqMcpSetup,
+  redactMcpInstallPlan,
+  type McpClient,
+  type McpInstallPlan,
+  type McpScope,
+  type ResolvedMcpClient,
+} from './mcp/index.js';
 import type {
   JsonObject,
   GuidedResearchRoundInput,
@@ -116,6 +139,9 @@ function printUsage(): void {
       '  report --stdin                                  Format a research runner JSON result as Markdown',
       '  guide --prompt "..." [--json]                    Start a guided research engagement',
       '  guide-run --prompt "..." --draft <json>          Run a guided research round and print a service memo',
+      '  setup-mcp --client <client> [--write]            Generate or install Claude/Codex MCP config',
+      '  mcp-doctor [--client <client>] [--probe]         Print the expected MCP install plan; --probe checks the Traseq API for required scopes',
+      '  mcp                                             Run the stdio MCP server',
       '  research --prompt "..." [options]               Create a tool-first research brief',
       '  research-run --prompt "..." --draft <json>      Execute a single research draft (single-round)',
       '  research-run --prompt "..." --stdin             Execute a single research draft from stdin (single-round)',
@@ -604,6 +630,279 @@ async function runCheckEnvCommand(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// MCP setup / doctor subcommands
+// ---------------------------------------------------------------------------
+
+function parseMcpClientFlag(): McpClient {
+  const raw = getFlag('client') ?? 'auto';
+  if ((MCP_CLIENTS as readonly string[]).includes(raw)) {
+    return raw as McpClient;
+  }
+
+  process.stderr.write(
+    `Error: --client must be one of: ${MCP_CLIENTS.join(', ')}.\n`,
+  );
+  process.exit(1);
+}
+
+function parseMcpScopeFlag(): McpScope {
+  const raw = getFlag('scope') ?? 'user';
+  if ((MCP_SCOPES as readonly string[]).includes(raw)) {
+    return raw as McpScope;
+  }
+
+  process.stderr.write(
+    `Error: --scope must be one of: ${MCP_SCOPES.join(', ')}.\n`,
+  );
+  process.exit(1);
+}
+
+function isExecutable(path: string): boolean {
+  try {
+    accessSync(path, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function commandExists(command: string): boolean {
+  const pathValue = process.env.PATH ?? '';
+  const isWindows = process.platform === 'win32';
+  const extensions = isWindows
+    ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';').filter(Boolean)
+    : [''];
+
+  for (const dir of pathValue.split(delimiter).filter(Boolean)) {
+    for (const ext of extensions) {
+      const candidate = join(dir, `${command}${ext}`);
+      // On Windows, presence in PATH with a PATHEXT extension is the
+      // executable contract. On Unix we additionally require the +x bit so we
+      // do not falsely detect a same-named non-executable file.
+      if (isWindows ? existsSync(candidate) : isExecutable(candidate)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function detectedMcpClients(): Partial<Record<ResolvedMcpClient, boolean>> {
+  return {
+    codex: commandExists('codex'),
+    'claude-code': commandExists('claude'),
+  };
+}
+
+function printMcpPlan(plan: McpInstallPlan): void {
+  process.stdout.write(`# Traseq MCP setup\n\n`);
+  process.stdout.write(`- Client: ${plan.client}\n`);
+  process.stdout.write(`- Scope: ${plan.scope}\n`);
+  process.stdout.write(`- Server name: ${plan.serverName}\n`);
+  if (plan.writeTarget) {
+    process.stdout.write(`- Config path: ${plan.writeTarget}\n`);
+  }
+  process.stdout.write('\n');
+
+  if (plan.command) {
+    process.stdout.write('Install command:\n\n');
+    process.stdout.write(
+      `\`\`\`sh\n${formatShellCommand(plan.command)}\n\`\`\`\n\n`,
+    );
+  }
+
+  if (plan.addJsonCommand) {
+    process.stdout.write('Claude Code add-json alternative:\n\n');
+    process.stdout.write(
+      `\`\`\`sh\n${formatShellCommand(plan.addJsonCommand)}\n\`\`\`\n\n`,
+    );
+  }
+
+  process.stdout.write('MCP config:\n\n');
+  process.stdout.write(
+    `\`\`\`json\n${JSON.stringify(plan.config, null, 2)}\n\`\`\`\n\n`,
+  );
+
+  if (plan.warnings.length > 0) {
+    process.stdout.write('Warnings:\n');
+    for (const warning of plan.warnings) {
+      process.stdout.write(`- ${warning}\n`);
+    }
+    process.stdout.write('\n');
+  }
+
+  process.stdout.write('After install, try this prompt:\n\n');
+  process.stdout.write(`> ${plan.nextPrompt}\n\n`);
+  process.stdout.write('Next steps:\n');
+  for (const step of plan.nextSteps) {
+    process.stdout.write(`- ${step}\n`);
+  }
+}
+
+function readJsonFile(path: string): JsonObject {
+  if (!existsSync(path)) {
+    return {};
+  }
+
+  const raw = readFileSync(path, 'utf8');
+  try {
+    return parseJsonInput(raw);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Existing config at ${path} is not valid JSON (${reason}). Refusing to overwrite. Back up or fix the file, then re-run setup-mcp.`,
+    );
+  }
+}
+
+function writeClaudeDesktopConfig(plan: McpInstallPlan): void {
+  if (!plan.writeTarget) {
+    throw new Error(
+      'Claude Desktop config path could not be detected. Use --print-config and paste the JSON manually.',
+    );
+  }
+
+  const current = readJsonFile(plan.writeTarget);
+  const currentServers = asJsonObject(current.mcpServers) ?? {};
+  const next = {
+    ...current,
+    mcpServers: {
+      ...currentServers,
+      ...plan.config.mcpServers,
+    },
+  };
+
+  mkdirSync(dirname(plan.writeTarget), { recursive: true });
+  writeFileSync(plan.writeTarget, `${JSON.stringify(next, null, 2)}\n`);
+}
+
+function executeInstallCommand(plan: McpInstallPlan): void {
+  if (!plan.command) {
+    if (plan.client === 'claude-desktop') {
+      writeClaudeDesktopConfig(plan);
+      process.stdout.write(
+        `Updated Claude Desktop MCP config: ${plan.writeTarget}\n`,
+      );
+      return;
+    }
+    throw new Error('This MCP client does not support automatic install.');
+  }
+
+  const [command, ...commandArgs] = plan.command;
+  if (!command) {
+    throw new Error('Install command was empty.');
+  }
+  const result = spawnSync(command, commandArgs, { stdio: 'inherit' });
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(`${command} exited with status ${result.status}.`);
+  }
+}
+
+async function printMcpProbe(): Promise<void> {
+  const client = createPlatformClient();
+  const result = await probeTraseqMcpSetup({ client });
+
+  process.stdout.write('\nTraseq probe:\n');
+  for (const check of result.checks) {
+    process.stdout.write(`  + ${check}\n`);
+  }
+  process.stdout.write(`  workspace: ${result.workspace}\n`);
+  process.stdout.write(`  tier: ${result.tier}\n`);
+  process.stdout.write(
+    `  scopes: ${result.scopes.length > 0 ? result.scopes.join(', ') : 'none reported'}\n`,
+  );
+
+  if (result.missingScopes.length > 0) {
+    process.stdout.write(
+      `  missing guided-research scopes: ${result.missingScopes.join(', ')}\n`,
+    );
+  }
+
+  process.stdout.write('\nProbe next steps:\n');
+  for (const step of result.nextSteps) {
+    process.stdout.write(`- ${step}\n`);
+  }
+
+  if (!result.ok) {
+    process.exitCode = 1;
+  }
+}
+
+async function runSetupMcpCommand(): Promise<void> {
+  const client = parseMcpClientFlag();
+  const scope = parseMcpScopeFlag();
+  const apiKey = readEnv('TRASEQ_API_KEY');
+  const baseUrl = readEnv('TRASEQ_BASE_URL');
+  const write = hasFlag('write');
+  const inlineSecrets = write && scope !== 'project';
+  const claudeDesktopConfigPath = getFlag('claude-desktop-config');
+  const plan = buildClientInstallPlan({
+    client,
+    scope,
+    inlineSecrets,
+    detectedClients: detectedMcpClients(),
+    ...(apiKey ? { apiKey } : {}),
+    ...(baseUrl ? { baseUrl } : {}),
+    ...(claudeDesktopConfigPath ? { claudeDesktopConfigPath } : {}),
+  });
+
+  if (hasFlag('print-config')) {
+    process.stdout.write(
+      `${JSON.stringify(redactMcpInstallPlan(plan).config, null, 2)}\n`,
+    );
+    return;
+  }
+
+  if (write) {
+    if (plan.scope !== 'project' && !apiKey) {
+      throw new Error(TRASEQ_API_KEY_SETUP_HELP);
+    }
+    if (inlineSecrets && apiKey && plan.client !== 'claude-desktop') {
+      // claude/codex CLIs accept env values via argv. On shared hosts that
+      // value is briefly visible to other users via `ps`. There is no
+      // upstream interface to avoid this, so warn rather than block.
+      process.stderr.write(
+        'Note: TRASEQ_API_KEY will be passed as a command argument to the install CLI. On shared hosts, prefer dry-run + manual edit to avoid argv exposure.\n',
+      );
+    }
+    executeInstallCommand(plan);
+    process.stdout.write('\nTraseq MCP server installed.\n\n');
+    process.stdout.write(`Try this prompt:\n> ${plan.nextPrompt}\n`);
+  } else {
+    printMcpPlan(redactMcpInstallPlan(plan));
+  }
+
+  if (hasFlag('probe')) {
+    await printMcpProbe();
+  }
+}
+
+async function runMcpDoctorCommand(): Promise<void> {
+  const client = parseMcpClientFlag();
+  const scope = parseMcpScopeFlag();
+  const claudeDesktopConfigPath = getFlag('claude-desktop-config');
+  const apiKey = readEnv('TRASEQ_API_KEY');
+  const baseUrl = readEnv('TRASEQ_BASE_URL');
+  const plan = buildClientInstallPlan({
+    client,
+    scope,
+    detectedClients: detectedMcpClients(),
+    ...(apiKey ? { apiKey } : {}),
+    ...(baseUrl ? { baseUrl } : {}),
+    ...(claudeDesktopConfigPath ? { claudeDesktopConfigPath } : {}),
+  });
+
+  printMcpPlan(redactMcpInstallPlan(plan));
+  if (hasFlag('probe')) {
+    await printMcpProbe();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // platform tools subcommands
 // ---------------------------------------------------------------------------
 
@@ -800,13 +1099,24 @@ async function main(): Promise<void> {
     case 'run':
       await runToolCommand();
       break;
-    case 'research':
     case 'guide':
       await runGuideCommand();
       break;
     case 'guide-run':
       await runGuideRunCommand();
       break;
+    case 'setup-mcp':
+      await runSetupMcpCommand();
+      break;
+    case 'mcp-doctor':
+      await runMcpDoctorCommand();
+      break;
+    case 'mcp': {
+      const { startMcpServer } = await import('./mcp/index.js');
+      startMcpServer();
+      break;
+    }
+    case 'research':
       await runResearchCommand();
       break;
     case 'research-run':

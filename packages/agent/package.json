@@ -1,8 +1,8 @@
 {
   "name": "@traseq/agent",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "type": "module",
-  "description": "Tool-first Traseq agent kit: MCP tools, SDK wrappers, strategy context, scoring, and research briefs.",
+  "description": "Guided Traseq strategy research service kit with MCP setup, SDK wrappers, strategy context, scoring, and reports.",
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -2,7 +2,9 @@ import type {
   AmbiguityResolution,
   BacktestConfigLike,
   JsonObject,
+  NormalizedBacktestAppLinks,
   NormalizedBacktestResult,
+  NormalizedBacktestRunContext,
   ResearchChange,
   RoundAnalysis,
   StrategyDraftLike,
@@ -239,6 +241,79 @@ function toStringRecord(value: unknown): Record<string, string> | undefined {
   return Object.keys(record).length > 0 ? record : undefined;
 }
 
+function asNullableString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function asNullableNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function asNullableRangePoint(value: unknown): number | string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.length > 0) {
+    return value;
+  }
+  return null;
+}
+
+function normalizeBacktestAppLinks(value: unknown): NormalizedBacktestAppLinks {
+  const source = asJsonObject(value) ?? {};
+  const links: NormalizedBacktestAppLinks = {
+    backtest: asString(source.backtest),
+    backtestCharts: asString(source.backtestCharts),
+    backtestTrades: asString(source.backtestTrades),
+    backtestAnalytics: asString(source.backtestAnalytics),
+  };
+  if (typeof source.strategy === 'string' && source.strategy.length > 0) {
+    links.strategy = source.strategy;
+  }
+  if (
+    typeof source.strategyBacktests === 'string' &&
+    source.strategyBacktests.length > 0
+  ) {
+    links.strategyBacktests = source.strategyBacktests;
+  }
+  return links;
+}
+
+function normalizeBacktestRunContext(
+  value: unknown,
+): NormalizedBacktestRunContext {
+  const source = asJsonObject(value) ?? {};
+  const instrumentSource = asJsonObject(source.instrument) ?? {};
+  const rangeSource = asJsonObject(source.range);
+
+  return {
+    instrument: {
+      symbol: asNullableString(instrumentSource.symbol),
+      venue: asNullableString(instrumentSource.venue),
+      marketType: asNullableString(instrumentSource.marketType),
+    },
+    timeframe: asNullableString(source.timeframe),
+    range: rangeSource
+      ? {
+          start: asNullableRangePoint(rangeSource.start),
+          end: asNullableRangePoint(rangeSource.end),
+        }
+      : null,
+    initialBalance: asNullableNumber(source.initialBalance),
+    execution: asJsonObject(source.execution) ?? null,
+    strategyId: asNullableString(source.strategyId),
+    strategyVersionId: asNullableString(source.strategyVersionId),
+    strategyVersionNumber: asNullableNumber(source.strategyVersionNumber),
+    createdAt: asNullableString(source.createdAt),
+    startedAt: asNullableString(source.startedAt),
+    finishedAt: asNullableString(source.finishedAt),
+  };
+}
+
 export function normalizeBacktest(backtest: unknown): NormalizedBacktestResult {
   const source = asJsonObject(backtest) ?? {};
   const nestedResult = asJsonObject(source.result);
@@ -248,6 +323,8 @@ export function normalizeBacktest(backtest: unknown): NormalizedBacktestResult {
   const result: NormalizedBacktestResult = {
     id: asString(source.id, 'unknown-backtest'),
     status: asString(source.status, 'unknown'),
+    appLinks: normalizeBacktestAppLinks(source.appLinks),
+    runContext: normalizeBacktestRunContext(source.runContext),
     raw: source,
   };
 

@@ -41,7 +41,18 @@ globalThis.fetch = async (url, init = {}) => {
   }
 
   if (method === 'GET' && pathname === '/public/v1/workspace') {
-    return json({ workspace: { id: 'workspace-1' }, apiKey: { scopes: [] } });
+    return json({
+      workspace: { id: 'workspace-1', name: 'Test Workspace' },
+      subscription: { tier: 'plus' },
+      apiKey: {
+        scopes: [
+          'workspace_read',
+          'strategies_write',
+          'backtests_read',
+          'backtests_write',
+        ],
+      },
+    });
   }
 
   if (method === 'GET' && pathname === '/public/v1/usage') {

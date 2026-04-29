@@ -181,10 +181,110 @@ describe('normalizeBacktest', () => {
     });
   });
 
+  it('mirrors the public API contract for app links and run context', () => {
+    const result = normalizeBacktest({
+      id: 'bt-789',
+      status: 'succeeded',
+      appLinks: {
+        backtest: 'https://app.traseq.test/backtests/bt-789',
+        backtestCharts: 'https://app.traseq.test/backtests/bt-789?view=charts',
+        backtestTrades: 'https://app.traseq.test/backtests/bt-789?view=trades',
+        backtestAnalytics:
+          'https://app.traseq.test/backtests/bt-789?view=analytics',
+        strategy: 'https://app.traseq.test/strategies/strategy-1?version=2',
+        strategyBacktests:
+          'https://app.traseq.test/strategies/strategy-1?view=backtests',
+      },
+      runContext: {
+        instrument: { symbol: 'BTCUSDT', venue: 'binance', marketType: 'spot' },
+        timeframe: '4h',
+        range: { start: 1704067200000, end: 1735689600000 },
+        initialBalance: 10000,
+        execution: { slippage: 0.001 },
+        strategyId: 'strategy-1',
+        strategyVersionId: 'version-1',
+        strategyVersionNumber: 2,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        startedAt: '2026-01-01T00:01:00.000Z',
+        finishedAt: '2026-01-01T00:02:00.000Z',
+      },
+    });
+
+    assert.deepEqual(result.appLinks, {
+      backtest: 'https://app.traseq.test/backtests/bt-789',
+      backtestCharts: 'https://app.traseq.test/backtests/bt-789?view=charts',
+      backtestTrades: 'https://app.traseq.test/backtests/bt-789?view=trades',
+      backtestAnalytics:
+        'https://app.traseq.test/backtests/bt-789?view=analytics',
+      strategy: 'https://app.traseq.test/strategies/strategy-1?version=2',
+      strategyBacktests:
+        'https://app.traseq.test/strategies/strategy-1?view=backtests',
+    });
+    assert.deepEqual(result.runContext, {
+      instrument: { symbol: 'BTCUSDT', venue: 'binance', marketType: 'spot' },
+      timeframe: '4h',
+      range: { start: 1704067200000, end: 1735689600000 },
+      initialBalance: 10000,
+      execution: { slippage: 0.001 },
+      strategyId: 'strategy-1',
+      strategyVersionId: 'version-1',
+      strategyVersionNumber: 2,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      startedAt: '2026-01-01T00:01:00.000Z',
+      finishedAt: '2026-01-01T00:02:00.000Z',
+    });
+  });
+
+  it('drops unknown app-link keys and coerces invalid types', () => {
+    const result = normalizeBacktest({
+      id: 'bt-strict',
+      status: 'succeeded',
+      appLinks: {
+        backtest: 'https://app.traseq.test/backtests/bt-strict',
+        backtestCharts:
+          'https://app.traseq.test/backtests/bt-strict?view=charts',
+        backtestTrades:
+          'https://app.traseq.test/backtests/bt-strict?view=trades',
+        backtestAnalytics:
+          'https://app.traseq.test/backtests/bt-strict?view=analytics',
+        ignored: 123,
+        unknownKey: 'https://app.traseq.test/who-knows',
+      },
+      runContext: {
+        instrument: { symbol: 'BTCUSDT' },
+        timeframe: null,
+        range: null,
+        initialBalance: null,
+        execution: null,
+        strategyId: null,
+        strategyVersionId: null,
+        strategyVersionNumber: null,
+        createdAt: null,
+        startedAt: null,
+        finishedAt: null,
+      },
+    });
+
+    assert.equal(result.appLinks.strategy, undefined);
+    assert.equal(result.appLinks.strategyBacktests, undefined);
+    assert.equal('ignored' in result.appLinks, false);
+    assert.equal('unknownKey' in result.appLinks, false);
+    assert.deepEqual(result.runContext.instrument, {
+      symbol: 'BTCUSDT',
+      venue: null,
+      marketType: null,
+    });
+    assert.equal(result.runContext.range, null);
+    assert.equal(result.runContext.execution, null);
+  });
+
   it('handles null/undefined input', () => {
     const result = normalizeBacktest(null);
     assert.equal(result.id, 'unknown-backtest');
     assert.equal(result.status, 'unknown');
+    assert.equal(result.appLinks.backtest, '');
+    assert.equal(result.runContext.instrument.symbol, null);
+    assert.equal(result.runContext.range, null);
   });
 });
 

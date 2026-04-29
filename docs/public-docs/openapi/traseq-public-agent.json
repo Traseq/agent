@@ -10393,7 +10393,219 @@
         ],
         "responses": {
           "200": {
-            "description": "Paginated backtest list"
+            "description": "Paginated backtest list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["id", "status"],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "example": "succeeded"
+                          },
+                          "strategyVersionId": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "startedAt": {
+                            "type": "string",
+                            "nullable": true,
+                            "format": "date-time"
+                          },
+                          "finishedAt": {
+                            "type": "string",
+                            "nullable": true,
+                            "format": "date-time"
+                          },
+                          "configJson": {
+                            "type": "object",
+                            "additionalProperties": true
+                          },
+                          "appLinks": {
+                            "type": "object",
+                            "required": [
+                              "backtest",
+                              "backtestCharts",
+                              "backtestTrades",
+                              "backtestAnalytics"
+                            ],
+                            "properties": {
+                              "backtest": {
+                                "type": "string",
+                                "format": "uri",
+                                "example": "https://app.traseq.com/backtests/backtest-id"
+                              },
+                              "backtestCharts": {
+                                "type": "string",
+                                "format": "uri",
+                                "example": "https://app.traseq.com/backtests/backtest-id?view=charts"
+                              },
+                              "backtestTrades": {
+                                "type": "string",
+                                "format": "uri",
+                                "example": "https://app.traseq.com/backtests/backtest-id?view=trades"
+                              },
+                              "backtestAnalytics": {
+                                "type": "string",
+                                "format": "uri",
+                                "example": "https://app.traseq.com/backtests/backtest-id?view=analytics"
+                              },
+                              "strategy": {
+                                "type": "string",
+                                "format": "uri",
+                                "example": "https://app.traseq.com/strategies/strategy-id?version=1"
+                              },
+                              "strategyBacktests": {
+                                "type": "string",
+                                "format": "uri",
+                                "example": "https://app.traseq.com/strategies/strategy-id?view=backtests"
+                              }
+                            }
+                          },
+                          "runContext": {
+                            "type": "object",
+                            "properties": {
+                              "instrument": {
+                                "type": "object",
+                                "properties": {
+                                  "symbol": {
+                                    "type": "string",
+                                    "nullable": true,
+                                    "example": "BTCUSDT"
+                                  },
+                                  "venue": {
+                                    "type": "string",
+                                    "nullable": true
+                                  },
+                                  "marketType": {
+                                    "type": "string",
+                                    "nullable": true
+                                  }
+                                }
+                              },
+                              "timeframe": {
+                                "type": "string",
+                                "nullable": true,
+                                "example": "4h"
+                              },
+                              "range": {
+                                "type": "object",
+                                "nullable": true,
+                                "properties": {
+                                  "start": {
+                                    "oneOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "string"
+                                      }
+                                    ],
+                                    "nullable": true,
+                                    "example": 1704067200000
+                                  },
+                                  "end": {
+                                    "oneOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "string"
+                                      }
+                                    ],
+                                    "nullable": true,
+                                    "example": 1735689600000
+                                  }
+                                }
+                              },
+                              "initialBalance": {
+                                "type": "number",
+                                "nullable": true,
+                                "example": 10000
+                              },
+                              "execution": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "strategyId": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "strategyVersionId": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "strategyVersionNumber": {
+                                "type": "number",
+                                "nullable": true
+                              },
+                              "createdAt": {
+                                "type": "string",
+                                "nullable": true,
+                                "format": "date-time"
+                              },
+                              "startedAt": {
+                                "type": "string",
+                                "nullable": true,
+                                "format": "date-time"
+                              },
+                              "finishedAt": {
+                                "type": "string",
+                                "nullable": true,
+                                "format": "date-time"
+                              }
+                            }
+                          },
+                          "strategy": {
+                            "type": "object",
+                            "nullable": true,
+                            "additionalProperties": true
+                          },
+                          "isPrimary": {
+                            "type": "boolean"
+                          },
+                          "summary": {
+                            "type": "object",
+                            "nullable": true,
+                            "additionalProperties": true
+                          }
+                        }
+                      }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "number"
+                        },
+                        "limit": {
+                          "type": "number"
+                        },
+                        "total": {
+                          "type": "number"
+                        },
+                        "totalPages": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -10593,7 +10805,187 @@
         },
         "responses": {
           "201": {
-            "description": "Backtest job created"
+            "description": "Backtest job created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "status"],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "queued"
+                    },
+                    "strategyVersionId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "startedAt": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "date-time"
+                    },
+                    "finishedAt": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "date-time"
+                    },
+                    "configJson": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "appLinks": {
+                      "type": "object",
+                      "required": [
+                        "backtest",
+                        "backtestCharts",
+                        "backtestTrades",
+                        "backtestAnalytics"
+                      ],
+                      "properties": {
+                        "backtest": {
+                          "type": "string",
+                          "format": "uri",
+                          "example": "https://app.traseq.com/backtests/backtest-id"
+                        },
+                        "backtestCharts": {
+                          "type": "string",
+                          "format": "uri",
+                          "example": "https://app.traseq.com/backtests/backtest-id?view=charts"
+                        },
+                        "backtestTrades": {
+                          "type": "string",
+                          "format": "uri",
+                          "example": "https://app.traseq.com/backtests/backtest-id?view=trades"
+                        },
+                        "backtestAnalytics": {
+                          "type": "string",
+                          "format": "uri",
+                          "example": "https://app.traseq.com/backtests/backtest-id?view=analytics"
+                        },
+                        "strategy": {
+                          "type": "string",
+                          "format": "uri",
+                          "example": "https://app.traseq.com/strategies/strategy-id?version=1"
+                        },
+                        "strategyBacktests": {
+                          "type": "string",
+                          "format": "uri",
+                          "example": "https://app.traseq.com/strategies/strategy-id?view=backtests"
+                        }
+                      }
+                    },
+                    "runContext": {
+                      "type": "object",
+                      "properties": {
+                        "instrument": {
+                          "type": "object",
+                          "properties": {
+                            "symbol": {
+                              "type": "string",
+                              "nullable": true,
+                              "example": "BTCUSDT"
+                            },
+                            "venue": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "marketType": {
+                              "type": "string",
+                              "nullable": true
+                            }
+                          }
+                        },
+                        "timeframe": {
+                          "type": "string",
+                          "nullable": true,
+                          "example": "4h"
+                        },
+                        "range": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "start": {
+                              "oneOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "string"
+                                }
+                              ],
+                              "nullable": true,
+                              "example": 1704067200000
+                            },
+                            "end": {
+                              "oneOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "string"
+                                }
+                              ],
+                              "nullable": true,
+                              "example": 1735689600000
+                            }
+                          }
+                        },
+                        "initialBalance": {
+                          "type": "number",
+                          "nullable": true,
+                          "example": 10000
+                        },
+                        "execution": {
+                          "type": "object",
+                          "nullable": true,
+                          "additionalProperties": true
+                        },
+                        "strategyId": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "strategyVersionId": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "strategyVersionNumber": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "nullable": true,
+                          "format": "date-time"
+                        },
+                        "startedAt": {
+                          "type": "string",
+                          "nullable": true,
+                          "format": "date-time"
+                        },
+                        "finishedAt": {
+                          "type": "string",
+                          "nullable": true,
+                          "format": "date-time"
+                        }
+                      }
+                    },
+                    "warnings": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -10621,7 +11013,202 @@
         ],
         "responses": {
           "200": {
-            "description": "Backtest detail and result"
+            "description": "Backtest detail and result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "status"],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "succeeded"
+                    },
+                    "strategyVersionId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "startedAt": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "date-time"
+                    },
+                    "finishedAt": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "date-time"
+                    },
+                    "configJson": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "appLinks": {
+                      "type": "object",
+                      "required": [
+                        "backtest",
+                        "backtestCharts",
+                        "backtestTrades",
+                        "backtestAnalytics"
+                      ],
+                      "properties": {
+                        "backtest": {
+                          "type": "string",
+                          "format": "uri",
+                          "example": "https://app.traseq.com/backtests/backtest-id"
+                        },
+                        "backtestCharts": {
+                          "type": "string",
+                          "format": "uri",
+                          "example": "https://app.traseq.com/backtests/backtest-id?view=charts"
+                        },
+                        "backtestTrades": {
+                          "type": "string",
+                          "format": "uri",
+                          "example": "https://app.traseq.com/backtests/backtest-id?view=trades"
+                        },
+                        "backtestAnalytics": {
+                          "type": "string",
+                          "format": "uri",
+                          "example": "https://app.traseq.com/backtests/backtest-id?view=analytics"
+                        },
+                        "strategy": {
+                          "type": "string",
+                          "format": "uri",
+                          "example": "https://app.traseq.com/strategies/strategy-id?version=1"
+                        },
+                        "strategyBacktests": {
+                          "type": "string",
+                          "format": "uri",
+                          "example": "https://app.traseq.com/strategies/strategy-id?view=backtests"
+                        }
+                      }
+                    },
+                    "runContext": {
+                      "type": "object",
+                      "properties": {
+                        "instrument": {
+                          "type": "object",
+                          "properties": {
+                            "symbol": {
+                              "type": "string",
+                              "nullable": true,
+                              "example": "BTCUSDT"
+                            },
+                            "venue": {
+                              "type": "string",
+                              "nullable": true
+                            },
+                            "marketType": {
+                              "type": "string",
+                              "nullable": true
+                            }
+                          }
+                        },
+                        "timeframe": {
+                          "type": "string",
+                          "nullable": true,
+                          "example": "4h"
+                        },
+                        "range": {
+                          "type": "object",
+                          "nullable": true,
+                          "properties": {
+                            "start": {
+                              "oneOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "string"
+                                }
+                              ],
+                              "nullable": true,
+                              "example": 1704067200000
+                            },
+                            "end": {
+                              "oneOf": [
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "string"
+                                }
+                              ],
+                              "nullable": true,
+                              "example": 1735689600000
+                            }
+                          }
+                        },
+                        "initialBalance": {
+                          "type": "number",
+                          "nullable": true,
+                          "example": 10000
+                        },
+                        "execution": {
+                          "type": "object",
+                          "nullable": true,
+                          "additionalProperties": true
+                        },
+                        "strategyId": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "strategyVersionId": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "strategyVersionNumber": {
+                          "type": "number",
+                          "nullable": true
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "nullable": true,
+                          "format": "date-time"
+                        },
+                        "startedAt": {
+                          "type": "string",
+                          "nullable": true,
+                          "format": "date-time"
+                        },
+                        "finishedAt": {
+                          "type": "string",
+                          "nullable": true,
+                          "format": "date-time"
+                        }
+                      }
+                    },
+                    "summaryJson": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "resultJson": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "artifacts": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "result": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "strategy": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
           }
         },
         "security": [

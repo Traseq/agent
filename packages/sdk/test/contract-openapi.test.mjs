@@ -314,3 +314,43 @@ test('body-carrying endpoints have request body schemas in OpenAPI spec', () => 
     `Write endpoints missing request body schema in OpenAPI:\n${missing.join('\n')}`,
   );
 });
+
+function responseSchema(path, method, status) {
+  return spec.paths[path]?.[method]?.responses?.[status]?.content?.[
+    'application/json'
+  ]?.schema;
+}
+
+// ── Backtest responses expose agent-friendly navigation and run context ──────
+test('backtest response schemas expose app links and run context', () => {
+  const runSchema = responseSchema('/public/v1/backtests', 'post', '201');
+  const listItemSchema = responseSchema('/public/v1/backtests', 'get', '200')
+    ?.properties?.data?.items;
+  const detailSchema = responseSchema(
+    '/public/v1/backtests/{id}',
+    'get',
+    '200',
+  );
+
+  for (const schema of [runSchema, listItemSchema, detailSchema]) {
+    assert.ok(schema, 'missing backtest response schema');
+    assert.ok(schema.properties.appLinks, 'missing appLinks schema');
+    assert.ok(schema.properties.runContext, 'missing runContext schema');
+    assert.ok(
+      schema.properties.appLinks.properties.backtest,
+      'missing backtest URL schema',
+    );
+    assert.ok(
+      schema.properties.runContext.properties.timeframe,
+      'missing timeframe context schema',
+    );
+    assert.ok(
+      schema.properties.runContext.properties.instrument.properties.symbol,
+      'missing instrument symbol context schema',
+    );
+    assert.ok(
+      schema.properties.runContext.properties.strategyVersionId,
+      'missing strategy version context schema',
+    );
+  }
+});

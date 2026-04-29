@@ -3,7 +3,7 @@ import { TraseqClient } from '@traseq/sdk';
 import { evaluateResearchResult } from './evaluation.js';
 import { readEnv, requireEnv } from './env.js';
 import { asJsonObject } from './normalize.js';
-import { formatResearchReport } from './report.js';
+import { formatResearchReport, representativeBacktest } from './report.js';
 import { normalizeRequest, runResearch } from './research.js';
 import { runResearchRunner } from './research-runner.js';
 import type {
@@ -190,6 +190,7 @@ function buildRoundMessages(
   evaluation: ResearchResultEvaluation,
 ): ServiceMessage[] {
   const messages: ServiceMessage[] = [];
+  const linkedBacktest = representativeBacktest(result, evaluation);
 
   if (result.status === 'failed') {
     messages.push({
@@ -222,6 +223,12 @@ function buildRoundMessages(
     title: 'Evidence memo ready',
     message:
       'The memo separates tested assumptions, observed evidence, risk flags, and the recommended next step.',
+    ...(linkedBacktest?.appLinks?.backtest
+      ? {
+          nextAction: `Open the backtest in Traseq: ${linkedBacktest.appLinks.backtest}`,
+          links: linkedBacktest.appLinks,
+        }
+      : {}),
   });
 
   return messages;

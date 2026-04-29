@@ -48,6 +48,37 @@ pnpm --dir packages/agent build
 node packages/agent/dist/cli.js check-env
 ```
 
+## MCP In 60 Seconds
+
+`setup-mcp` generates a Claude/Codex-ready stdio MCP config. Dry-run is the
+default, so the first command prints the exact install command and JSON without
+writing secrets.
+
+```sh
+traseq-agent setup-mcp --client codex --probe
+traseq-agent setup-mcp --client codex --write --probe
+
+traseq-agent setup-mcp --client claude-code --write --probe
+traseq-agent setup-mcp --client claude-desktop --print-config
+traseq-agent setup-mcp --client generic --print-config
+```
+
+Project-scoped config uses `${TRASEQ_API_KEY}` instead of inlining a secret.
+User/local setup can inline `TRASEQ_API_KEY` for a smooth personal install.
+
+On shared hosts, prefer the dry-run output and edit the config manually: when
+`--write` runs `claude mcp add` or `codex mcp add`, the API key is briefly
+visible in `ps`/`/proc` because those CLIs accept env values via argv. Claude
+Desktop installs always inline the key into the config file directly (it does
+not expand `${VAR}` placeholders), so make sure that file is not
+world-readable.
+
+After setup, ask the client:
+
+```text
+Help me validate a BTCUSDT 4h strategy idea. Start with Traseq research engagement first.
+```
+
 ## Guided SDK
 
 ```ts
@@ -134,6 +165,8 @@ traseq-agent run --tool get_semantics
 traseq-agent run --tool resolve_strategy_semantics --input '{"prompt":"RSI oversold rebound"}'
 traseq-agent score --backtest-id <backtest-id>
 traseq-agent research --prompt "Research a BTCUSDT 4h trend-following strategy"
+traseq-agent setup-mcp --client codex --probe
+traseq-agent mcp
 traseq-agent evaluate --stdin < research-result.json
 traseq-agent report --stdin < research-result.json > research-report.md
 traseq-agent research-run \
@@ -176,21 +209,34 @@ will fetch live capabilities first using `TRASEQ_API_KEY`.
 
 ## MCP
 
-Run the stdio MCP server:
+Run the stdio MCP server directly:
 
 ```sh
 traseq-agent-mcp
+# or
+traseq-agent mcp
 ```
 
-Example MCP server configuration for **Claude Desktop** (`claude_desktop_config.json`) or **Claude Code** (`~/.claude/settings.json`):
+Use `setup-mcp` for client-specific install guidance:
+
+```sh
+traseq-agent setup-mcp --client codex
+traseq-agent setup-mcp --client claude-code
+traseq-agent setup-mcp --client claude-desktop --print-config
+traseq-agent mcp-doctor --client auto --probe
+```
+
+Example generic MCP server configuration for **Claude Desktop**, **Claude
+Code**, Codex, or another stdio MCP client:
 
 ```json
 {
   "mcpServers": {
     "traseq": {
-      "command": "traseq-agent-mcp",
+      "command": "npx",
+      "args": ["-y", "@traseq/agent", "mcp"],
       "env": {
-        "TRASEQ_API_KEY": "trsq_...",
+        "TRASEQ_API_KEY": "${TRASEQ_API_KEY}",
         "TRASEQ_BASE_URL": "https://api.traseq.com"
       }
     }
@@ -199,10 +245,11 @@ Example MCP server configuration for **Claude Desktop** (`claude_desktop_config.
 ```
 
 The MCP server exposes guided research tools, semantic tools, and platform
-tools. Prefer `start_research_engagement` first, then
-`run_guided_research_round` once an external agent has authored a draft.
-Destructive platform tools require `confirm: true` before the local runner will
-call the API.
+tools. `tools/list` puts `start_research_engagement`,
+`run_guided_research_round`, and `summarize_research_engagement` first, and
+`prompts/list` exposes `traseq_guided_research` so clients can start with a
+service-style flow instead of guessing tool order. Destructive platform tools
+require `confirm: true` before the local runner will call the API.
 When Traseq returns structured Public Agent errors, the server formats the
 machine-readable reason, next steps, retryability, and Traseq app links for the
 calling agent.

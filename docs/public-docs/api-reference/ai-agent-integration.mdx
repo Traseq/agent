@@ -197,8 +197,51 @@ Two reference files are available to help you get started:
 - **`traseq-agent-example.ts`** — a minimal TypeScript client with a
   validate-repair loop helper.
 
-The first-party agent package is `@traseq/agent`. It is tool-first and does
-not require an AI provider key.
+The first-party agent package is `@traseq/agent`. It provides a guided
+research service layer for Claude, Codex, and other MCP clients, while staying
+provider-agnostic. It does not require an AI provider key.
+
+## Claude and Codex MCP setup
+
+For Claude Code, Claude Desktop, Codex, or another MCP-capable client, start
+with the setup helper instead of hand-writing JSON:
+
+```sh
+npx -y @traseq/agent setup-mcp --client codex --probe
+npx -y @traseq/agent setup-mcp --client codex --write --probe
+npx -y @traseq/agent setup-mcp --client claude-code --write --probe
+npx -y @traseq/agent setup-mcp --client claude-desktop --print-config
+npx -y @traseq/agent setup-mcp --client generic --print-config
+```
+
+The default mode is dry-run: it prints the command and MCP JSON without
+mutating your client config. `--write` installs when the selected client
+supports it. `--probe` checks manifest, workspace, usage, and capabilities so
+the agent can tell whether the key has the scopes needed for guided research.
+
+Use `--scope project` for shared repository config. Project scope keeps
+`TRASEQ_API_KEY` as `${TRASEQ_API_KEY}` instead of writing the secret into
+config. Do not paste API keys into prompts.
+
+On shared hosts, prefer the dry-run output and edit the config manually:
+during `--write`, `claude mcp add` and `codex mcp add` accept env values via
+argv, so the API key is briefly visible to other users via `ps`. Claude
+Desktop does not expand `${VAR}` placeholders, so its install always inlines
+the key into the user-level config file — keep that file restricted to your
+user. `--scope project` is not applicable to Claude Desktop and is treated as
+`--scope user`.
+
+After setup, give the client a task-oriented prompt:
+
+```text
+Help me validate a BTCUSDT 4h strategy idea. Start with Traseq research engagement first.
+```
+
+The MCP server advertises `traseq_guided_research` through `prompts/list` and
+orders guided tools first. The intended sequence is
+`start_research_engagement` → external draft authoring →
+`run_guided_research_round` → optional `summarize_research_engagement`.
+Lower-level Public Agent API tools remain available for advanced automation.
 
 ## TypeScript SDK example
 
@@ -271,6 +314,12 @@ const backtest = await client.runBacktest({
 });
 ```
 
+The backtest response includes `appLinks` for handoff into the Traseq app and
+`runContext` for agent-readable evidence context. Prefer showing
+`appLinks.backtest` or `appLinks.backtestCharts` to the user instead of only
+printing UUIDs, and use `runContext.instrument`, `runContext.timeframe`, and
+`runContext.range` when summarizing what was tested.
+
 The key point is the strict ordering — always follow this sequence:
 
 1. read workspace, usage, and capabilities
@@ -288,6 +337,9 @@ tool layer. See `traseq-agent-tool-schema.json` for the full JSON definition.
 
 Recommended tools:
 
+- `start_research_engagement`
+- `run_guided_research_round`
+- `summarize_research_engagement`
 - `get_manifest`
 - `get_workspace_context`
 - `get_usage`

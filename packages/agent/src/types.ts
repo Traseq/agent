@@ -136,12 +136,51 @@ export interface AgentStepLog {
   repairAttempt?: number;
 }
 
+// Mirrors the public API contract one-to-one. The four backtest links are
+// always present; strategy links exist only when the backtest is tied to a
+// strategy version (always true today, modeled as optional for forward-safety).
+export interface NormalizedBacktestAppLinks {
+  backtest: string;
+  backtestCharts: string;
+  backtestTrades: string;
+  backtestAnalytics: string;
+  strategy?: string;
+  strategyBacktests?: string;
+}
+
+export interface NormalizedBacktestInstrument {
+  symbol: string | null;
+  venue: string | null;
+  marketType: string | null;
+}
+
+export interface NormalizedBacktestRange {
+  start: number | string | null;
+  end: number | string | null;
+}
+
+export interface NormalizedBacktestRunContext {
+  instrument: NormalizedBacktestInstrument;
+  timeframe: string | null;
+  range: NormalizedBacktestRange | null;
+  initialBalance: number | null;
+  execution: JsonObject | null;
+  strategyId: string | null;
+  strategyVersionId: string | null;
+  strategyVersionNumber: number | null;
+  createdAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
 export interface NormalizedBacktestResult {
   id: string;
   status: string;
   summary?: JsonObject;
   artifactUrls?: Record<string, string>;
   strategy?: JsonObject | null;
+  appLinks: NormalizedBacktestAppLinks;
+  runContext: NormalizedBacktestRunContext;
   raw: JsonObject;
 }
 
@@ -202,6 +241,7 @@ export interface ServiceMessage {
   title: string;
   message: string;
   nextAction?: string;
+  links?: NormalizedBacktestAppLinks;
 }
 
 export interface ResearchDecisionPoint {
