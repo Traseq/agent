@@ -193,9 +193,7 @@ describe('MCP setup helpers', () => {
       '${TRASEQ_API_KEY}',
     );
     assert.ok(
-      plan.warnings.some((w) =>
-        /does not expand \$\{TRASEQ_API_KEY\}/.test(w),
-      ),
+      plan.warnings.some((w) => /does not expand \$\{TRASEQ_API_KEY\}/.test(w)),
     );
   });
 });

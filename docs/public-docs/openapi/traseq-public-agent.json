@@ -10403,7 +10403,17 @@
                       "type": "array",
                       "items": {
                         "type": "object",
-                        "required": ["id", "status"],
+                        "required": [
+                          "id",
+                          "status",
+                          "strategyVersionId",
+                          "createdAt",
+                          "configJson",
+                          "appLinks",
+                          "runContext",
+                          "strategy",
+                          "isPrimary"
+                        ],
                         "properties": {
                           "id": {
                             "type": "string"
@@ -10476,9 +10486,23 @@
                           },
                           "runContext": {
                             "type": "object",
+                            "required": [
+                              "instrument",
+                              "timeframe",
+                              "range",
+                              "initialBalance",
+                              "execution",
+                              "strategyId",
+                              "strategyVersionId",
+                              "strategyVersionNumber",
+                              "createdAt",
+                              "startedAt",
+                              "finishedAt"
+                            ],
                             "properties": {
                               "instrument": {
                                 "type": "object",
+                                "required": ["symbol", "venue", "marketType"],
                                 "properties": {
                                   "symbol": {
                                     "type": "string",
@@ -10503,6 +10527,7 @@
                               "range": {
                                 "type": "object",
                                 "nullable": true,
+                                "required": ["start", "end"],
                                 "properties": {
                                   "start": {
                                     "oneOf": [
@@ -10810,7 +10835,15 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["id", "status"],
+                  "required": [
+                    "id",
+                    "status",
+                    "strategyVersionId",
+                    "createdAt",
+                    "configJson",
+                    "appLinks",
+                    "runContext"
+                  ],
                   "properties": {
                     "id": {
                       "type": "string"
@@ -10883,9 +10916,23 @@
                     },
                     "runContext": {
                       "type": "object",
+                      "required": [
+                        "instrument",
+                        "timeframe",
+                        "range",
+                        "initialBalance",
+                        "execution",
+                        "strategyId",
+                        "strategyVersionId",
+                        "strategyVersionNumber",
+                        "createdAt",
+                        "startedAt",
+                        "finishedAt"
+                      ],
                       "properties": {
                         "instrument": {
                           "type": "object",
+                          "required": ["symbol", "venue", "marketType"],
                           "properties": {
                             "symbol": {
                               "type": "string",
@@ -10910,6 +10957,7 @@
                         "range": {
                           "type": "object",
                           "nullable": true,
+                          "required": ["start", "end"],
                           "properties": {
                             "start": {
                               "oneOf": [
@@ -11018,7 +11066,17 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": ["id", "status"],
+                  "required": [
+                    "id",
+                    "status",
+                    "strategyVersionId",
+                    "createdAt",
+                    "configJson",
+                    "appLinks",
+                    "runContext",
+                    "result",
+                    "strategy"
+                  ],
                   "properties": {
                     "id": {
                       "type": "string"
@@ -11091,9 +11149,23 @@
                     },
                     "runContext": {
                       "type": "object",
+                      "required": [
+                        "instrument",
+                        "timeframe",
+                        "range",
+                        "initialBalance",
+                        "execution",
+                        "strategyId",
+                        "strategyVersionId",
+                        "strategyVersionNumber",
+                        "createdAt",
+                        "startedAt",
+                        "finishedAt"
+                      ],
                       "properties": {
                         "instrument": {
                           "type": "object",
+                          "required": ["symbol", "venue", "marketType"],
                           "properties": {
                             "symbol": {
                               "type": "string",
@@ -11118,6 +11190,7 @@
                         "range": {
                           "type": "object",
                           "nullable": true,
+                          "required": ["start", "end"],
                           "properties": {
                             "start": {
                               "oneOf": [
@@ -11184,20 +11257,22 @@
                         }
                       }
                     },
-                    "summaryJson": {
-                      "type": "object",
-                      "additionalProperties": true
-                    },
-                    "resultJson": {
-                      "type": "object",
-                      "additionalProperties": true
-                    },
-                    "artifacts": {
-                      "type": "object",
-                      "additionalProperties": true
-                    },
                     "result": {
                       "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "summaryJson": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "artifactUrls": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string",
+                            "format": "uri"
+                          }
+                        }
+                      },
                       "additionalProperties": true
                     },
                     "strategy": {
