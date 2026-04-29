@@ -50,39 +50,32 @@ node packages/agent/dist/cli.js check-env
 
 ## MCP In 60 Seconds
 
-`setup-mcp` generates a Claude/Codex-ready stdio MCP config. Dry-run is the
-default, so the first command prints the exact install command and JSON without
-writing secrets.
-
-```sh
-traseq-agent setup-mcp --client codex --probe
-traseq-agent setup-mcp --client codex --write --probe
-
-traseq-agent setup-mcp --client claude-code --write --probe
-traseq-agent setup-mcp --client claude-desktop --print-config
-traseq-agent setup-mcp --client generic --print-config
-```
-
-Without installing the package first, invoke the binary explicitly:
-
-```sh
-npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe
-```
-
-If `TRASEQ_API_KEY` is not set yet, set it in the current terminal before
-running setup:
+`setup-mcp` installs a Claude/Codex-ready stdio MCP config and verifies the
+workspace key before the user starts a research session. For Codex:
 
 ```sh
 export TRASEQ_API_KEY="trsq_..."
 npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe
 ```
 
-For a one-command local install, `setup-mcp` also accepts `--api-key`, but that
-value may remain in shell history:
+Dry-run is available when you want to inspect the install command and MCP JSON
+before writing config:
 
 ```sh
-npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe --api-key "trsq_..."
+npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --probe
 ```
+
+Other clients follow the same pattern with client-appropriate flags
+(`--write` where supported, `--print-config` otherwise):
+
+```sh
+npx -y --package @traseq/agent traseq-agent setup-mcp --client claude-code --write --probe
+npx -y --package @traseq/agent traseq-agent setup-mcp --client claude-desktop --print-config
+npx -y --package @traseq/agent traseq-agent setup-mcp --client generic --print-config
+```
+
+For a one-command local fallback, `setup-mcp` also accepts `--api-key`, but
+prefer `TRASEQ_API_KEY` because flag values may remain in shell history.
 
 Project-scoped config uses `${TRASEQ_API_KEY}` instead of inlining a secret.
 User/local setup can inline `TRASEQ_API_KEY` for a smooth personal install.
@@ -93,6 +86,12 @@ visible in `ps`/`/proc` because those CLIs accept env values via argv. Claude
 Desktop installs always inline the key into the config file directly (it does
 not expand `${VAR}` placeholders), so make sure that file is not
 world-readable.
+
+`--write` runs `--probe` first (when both are passed) and refuses the install
+if the API key is rejected, so a bad key can never half-write your MCP config.
+It also preflights the target client CLI: if `codex` or `claude` is not on
+`PATH`, setup-mcp exits with the install link plus a `--print-config` fallback
+instead of leaking the underlying `spawn ENOENT` error.
 
 After setup, ask the client:
 

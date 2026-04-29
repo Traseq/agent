@@ -203,35 +203,31 @@ provider-agnostic. It does not require an AI provider key.
 
 ## Claude and Codex MCP setup
 
-For Claude Code, Claude Desktop, Codex, or another MCP-capable client, start
-with the setup helper instead of hand-writing JSON:
-
-```sh
-npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --probe
-npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe
-npx -y --package @traseq/agent traseq-agent setup-mcp --client claude-code --write --probe
-npx -y --package @traseq/agent traseq-agent setup-mcp --client claude-desktop --print-config
-npx -y --package @traseq/agent traseq-agent setup-mcp --client generic --print-config
-```
-
-If the key is not in your shell yet, set it before running setup:
+For Codex, Claude Code, Claude Desktop, or any MCP-capable client, start with
+the setup helper instead of hand-writing JSON. Codex example:
 
 ```sh
 export TRASEQ_API_KEY="trsq_..."
 npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe
 ```
 
-For a one-command local install, you can pass the key directly. This is
-convenient, but the value may remain in shell history:
+Dry-run prints the install command and MCP JSON without mutating client config:
 
 ```sh
-npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe --api-key "trsq_..."
+npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --probe
 ```
 
-The default mode is dry-run: it prints the command and MCP JSON without
-mutating your client config. `--write` installs when the selected client
-supports it. `--probe` checks manifest, workspace, usage, and capabilities so
-the agent can tell whether the key has the scopes needed for guided research.
+Other clients follow the same pattern with client-appropriate flags:
+
+```sh
+npx -y --package @traseq/agent traseq-agent setup-mcp --client claude-code --write --probe
+npx -y --package @traseq/agent traseq-agent setup-mcp --client claude-desktop --print-config
+npx -y --package @traseq/agent traseq-agent setup-mcp --client generic --print-config
+```
+
+`--write` installs when the selected client supports it. `--probe` checks
+manifest, workspace, usage, and capabilities so the agent can tell whether the
+key has the scopes needed for guided research.
 
 Use `--scope project` for shared repository config. Project scope keeps
 `TRASEQ_API_KEY` as `${TRASEQ_API_KEY}` instead of writing the secret into
@@ -244,6 +240,9 @@ Desktop does not expand `${VAR}` placeholders, so its install always inlines
 the key into the user-level config file — keep that file restricted to your
 user. `--scope project` is not applicable to Claude Desktop and is treated as
 `--scope user`.
+
+For a one-command local fallback, `setup-mcp` also accepts `--api-key`, but
+prefer `TRASEQ_API_KEY` because flag values may remain in shell history.
 
 After setup, give the client a task-oriented prompt:
 

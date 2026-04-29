@@ -205,35 +205,31 @@ AI provider key。
 
 ## Claude 與 Codex MCP setup
 
-Claude Code、Claude Desktop、Codex 或其他支援 MCP 的 client，建議先用 setup
-helper，不要手動貼 JSON 起手：
-
-```sh
-npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --probe
-npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe
-npx -y --package @traseq/agent traseq-agent setup-mcp --client claude-code --write --probe
-npx -y --package @traseq/agent traseq-agent setup-mcp --client claude-desktop --print-config
-npx -y --package @traseq/agent traseq-agent setup-mcp --client generic --print-config
-```
-
-如果 shell 還沒有設定 key，先在目前 terminal 設定：
+不論是 Codex、Claude Code、Claude Desktop 或其他支援 MCP 的 client，建議先用
+setup helper，不要手動貼 JSON 起手。以 Codex 為例：
 
 ```sh
 export TRASEQ_API_KEY="trsq_..."
 npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe
 ```
 
-若只想用一行完成本機安裝，也可以直接傳入 key。這比較順，但可能留在 shell
-history：
+Dry-run 會印出安裝指令與 MCP JSON，不會改 client config：
 
 ```sh
-npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe --api-key "trsq_..."
+npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --probe
 ```
 
-預設是 dry-run：只印出安裝指令與 MCP JSON，不會改 client config。加上
-`--write` 才會在支援的 client 上寫入設定。`--probe` 會依序檢查 manifest、
-workspace、usage 與 capabilities，讓 agent 能判斷 API key 是否具備 guided
-research 需要的 scopes。
+其他 client 沿用同一套流程，依 client 特性帶不同 flags：
+
+```sh
+npx -y --package @traseq/agent traseq-agent setup-mcp --client claude-code --write --probe
+npx -y --package @traseq/agent traseq-agent setup-mcp --client claude-desktop --print-config
+npx -y --package @traseq/agent traseq-agent setup-mcp --client generic --print-config
+```
+
+加上 `--write` 才會在支援的 client 上寫入設定。`--probe` 會依序檢查
+manifest、workspace、usage 與 capabilities，讓 agent 能判斷 API key 是否具備
+guided research 需要的 scopes。
 
 若要放進共享 repo config，使用 `--scope project`。Project scope 會保留
 `${TRASEQ_API_KEY}`，不把 secret 寫入 config。不要把 API key 貼進 prompt。
@@ -244,6 +240,9 @@ research 需要的 scopes。
 它的安裝一律會把 key inline 寫進 user 層級 config 檔，務必確認該檔案不是
 world-readable。`--scope project` 對 Claude Desktop 不適用，會被當成
 `--scope user` 處理。
+
+若只想用一行完成本機備援安裝，`setup-mcp` 也支援 `--api-key`，但建議優先用
+`TRASEQ_API_KEY`，因為 flag 值可能留在 shell history。
 
 安裝後，給 client 一句任務導向 prompt：
 

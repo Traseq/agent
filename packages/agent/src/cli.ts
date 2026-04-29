@@ -739,33 +739,20 @@ function missingMcpApiKeyHelp(command: string): string {
     'Create or copy a workspace API key here:',
     TRASEQ_API_KEY_SETUP_URL,
     '',
-    'Then choose one of these options:',
-    '',
-    'Option 1: set it for the current terminal, then rerun setup',
+    'Set it for the current terminal, then rerun setup:',
     '```sh',
     'export TRASEQ_API_KEY="trsq_..."',
     command,
     '```',
     '',
-    'Option 2: run setup once with the key inline',
+    'Or, for a one-shot install, pass the key inline (keeps it out of `ps` argv):',
     '```sh',
     `TRASEQ_API_KEY="trsq_..." ${command}`,
     '```',
     '',
-    'Option 3: persist for future shells (append the export to your shell rc)',
-    '```sh',
-    '# zsh (default on macOS); for bash use ~/.bashrc',
-    'echo \'export TRASEQ_API_KEY="trsq_..."\' >> ~/.zshrc',
-    'source ~/.zshrc',
-    command,
-    '```',
+    'For future terminals, add the export line to your shell profile (~/.zshrc for zsh, ~/.bashrc for bash).',
     '',
-    'Fast local-only alternative:',
-    '```sh',
-    `${command} --api-key "trsq_..."`,
-    '```',
-    '',
-    'Do not paste API keys into AI prompts. Avoid committing keys into project config.',
+    'Do not paste API keys into AI prompts or commit them into project config.',
   ].join('\n');
 }
 
@@ -895,6 +882,53 @@ function writeClaudeDesktopConfig(plan: McpInstallPlan): void {
   writeFileSync(plan.writeTarget, `${JSON.stringify(next, null, 2)}\n`);
 }
 
+const CLIENT_INSTALL_DOC: Partial<Record<ResolvedMcpClient, string>> = {
+  codex: 'https://github.com/openai/codex',
+  'claude-code': 'https://docs.claude.com/en/docs/claude-code',
+};
+
+function missingClientBinaryHelp(
+  plan: McpInstallPlan,
+  binary: string,
+  setupCommandExample: string,
+): string {
+  const docUrl = CLIENT_INSTALL_DOC[plan.client];
+  const printConfigCommand = setupCommandExample.replace(
+    /\s--write\b/,
+    ' --print-config',
+  );
+  const lines = [
+    `Cannot run \`${binary}\`: not found on PATH.`,
+    '',
+    `setup-mcp --client ${plan.client} --write needs the ${plan.client} CLI to register the MCP server, but it is not installed on this machine.`,
+    '',
+    'Choose one of:',
+    `  • Install ${plan.client}${docUrl ? ` (${docUrl})` : ''}, then re-run the same command.`,
+    '  • Print the MCP JSON and paste it into the client config manually:',
+    `      ${printConfigCommand}`,
+    '  • Re-run setup-mcp with a different --client (e.g. claude-code, claude-desktop, or generic).',
+  ];
+  return lines.join('\n');
+}
+
+function assertWriteSupported(
+  plan: McpInstallPlan,
+  detectedClients: Partial<Record<ResolvedMcpClient, boolean>>,
+  setupCommandExample: string,
+): void {
+  if (plan.client === 'claude-desktop' || plan.client === 'generic') {
+    return;
+  }
+  if (!plan.command) {
+    return;
+  }
+  if (detectedClients[plan.client]) {
+    return;
+  }
+  const binary = plan.command[0] ?? plan.client;
+  throw new Error(missingClientBinaryHelp(plan, binary, setupCommandExample));
+}
+
 function executeInstallCommand(plan: McpInstallPlan): void {
   if (!plan.command) {
     if (plan.client === 'claude-desktop') {
@@ -913,10 +947,26 @@ function executeInstallCommand(plan: McpInstallPlan): void {
   }
   const result = spawnSync(command, commandArgs, { stdio: 'inherit' });
   if (result.error) {
+    const code = (result.error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      throw new Error(
+        [
+          `Cannot run \`${command}\`: not found on PATH.`,
+          'Install the client CLI, then re-run setup-mcp; or re-run with --print-config and paste the JSON into the client config manually.',
+        ].join('\n'),
+      );
+    }
+    if (code === 'EACCES') {
+      throw new Error(
+        `Cannot execute \`${command}\`: permission denied. Check file permissions on the binary in PATH.`,
+      );
+    }
     throw result.error;
   }
   if (result.status !== 0) {
-    throw new Error(`${command} exited with status ${result.status}.`);
+    throw new Error(
+      `\`${command}\` exited with status ${result.status}. See the output above for details, or re-run with --print-config to apply the JSON manually.`,
+    );
   }
 }
 
@@ -960,13 +1010,15 @@ async function runSetupMcpCommand(): Promise<void> {
   const scope = parseMcpScopeFlag();
   const { apiKey, apiKeyFromFlag, baseUrl } = resolveMcpCredentials();
   const write = hasFlag('write');
+  const probe = hasFlag('probe');
   const inlineSecrets = write && scope !== 'project';
   const claudeDesktopConfigPath = getFlag('claude-desktop-config');
+  const detectedClients = detectedMcpClients();
   const commandExample = setupMcpCommandExample({
     client,
     scope,
     write,
-    probe: hasFlag('probe'),
+    probe,
     printConfig: hasFlag('print-config'),
     ...(claudeDesktopConfigPath ? { claudeDesktopConfigPath } : {}),
   });
@@ -974,7 +1026,7 @@ async function runSetupMcpCommand(): Promise<void> {
     client,
     scope,
     inlineSecrets,
-    detectedClients: detectedMcpClients(),
+    detectedClients,
     ...(apiKey ? { apiKey } : {}),
     ...(baseUrl ? { baseUrl } : {}),
     ...(claudeDesktopConfigPath ? { claudeDesktopConfigPath } : {}),
@@ -987,11 +1039,30 @@ async function runSetupMcpCommand(): Promise<void> {
     return;
   }
 
+  // Validate credentials BEFORE touching local config. A bad key or missing
+  // scope should not leave the user's MCP config half-written. Probe is also
+  // independent of whether the client CLI is installed locally, so running it
+  // first surfaces auth issues even when --write would later fail.
+  if (probe) {
+    if (!apiKey) {
+      throw new Error(missingMcpApiKeyHelp(commandExample));
+    }
+    if (apiKeyFromFlag && !write) {
+      warnApiKeyFlag();
+    }
+    await printMcpProbe({ apiKey, ...(baseUrl ? { baseUrl } : {}) });
+    if (process.exitCode && process.exitCode !== 0) {
+      // probe printed remediation already; do not proceed to install.
+      return;
+    }
+  }
+
   if (write) {
     if (plan.scope !== 'project' && !apiKey) {
       throw new Error(missingMcpApiKeyHelp(commandExample));
     }
-    if (apiKeyFromFlag) {
+    if (apiKeyFromFlag && !probe) {
+      // probe path already warned; avoid double-warning.
       warnApiKeyFlag();
     }
     if (inlineSecrets && apiKey && plan.client !== 'claude-desktop') {
@@ -1002,21 +1073,15 @@ async function runSetupMcpCommand(): Promise<void> {
         'Note: TRASEQ_API_KEY will be passed as a command argument to the install CLI. On shared hosts, prefer dry-run + manual edit to avoid argv exposure.\n',
       );
     }
+    // Refuse the spawn early when the target client CLI is not on PATH.
+    // The raw ENOENT message is unactionable; this surfaces install/fallback
+    // options the user actually has.
+    assertWriteSupported(plan, detectedClients, commandExample);
     executeInstallCommand(plan);
     process.stdout.write('\nTraseq MCP server installed.\n\n');
     process.stdout.write(`Try this prompt:\n> ${plan.nextPrompt}\n`);
   } else {
     printMcpPlan(redactMcpInstallPlan(plan));
-  }
-
-  if (hasFlag('probe')) {
-    if (!apiKey) {
-      throw new Error(missingMcpApiKeyHelp(commandExample));
-    }
-    if (apiKeyFromFlag && !write) {
-      warnApiKeyFlag();
-    }
-    await printMcpProbe({ apiKey, ...(baseUrl ? { baseUrl } : {}) });
   }
 }
 

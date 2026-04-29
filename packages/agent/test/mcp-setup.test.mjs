@@ -280,7 +280,16 @@ describe('MCP setup CLI', () => {
     assert.match(result.stderr, /export TRASEQ_API_KEY="trsq_\.\.\."/);
     assert.match(result.stderr, /~\/\.zshrc/);
     assert.match(result.stderr, /~\/\.bashrc/);
-    assert.match(result.stderr, /--api-key "trsq_\.\.\."/);
+    // Inline form keeps the key out of `ps` argv — kept as a documented
+    // middle-ground vs the higher-leakage `--api-key` flag.
+    assert.match(
+      result.stderr,
+      /TRASEQ_API_KEY="trsq_\.\.\." npx -y --package @traseq\/agent/,
+    );
+    assert.doesNotMatch(result.stderr, /Then choose one of these options/);
+    assert.doesNotMatch(result.stderr, /Option 1/);
+    assert.doesNotMatch(result.stderr, /Option 2/);
+    assert.doesNotMatch(result.stderr, /--api-key "trsq_\.\.\."/);
     // Anchor the dashboard link so the onboarding URL doesn't silently drift.
     assert.match(result.stderr, /\/login\?redirectTo=%2Fsettings%2Fapi-keys/);
     assert.match(
@@ -323,10 +332,7 @@ describe('MCP setup CLI', () => {
     );
 
     assert.notEqual(result.code, 0);
-    assert.match(
-      result.stderr,
-      /--api-key expects a value but got "--probe"/,
-    );
+    assert.match(result.stderr, /--api-key expects a value but got "--probe"/);
     assert.doesNotMatch(result.stderr, /may remain in shell history/);
   });
 
@@ -346,6 +352,71 @@ describe('MCP setup CLI', () => {
     assert.match(result.stdout, /manifest reachable/);
     assert.match(result.stdout, /Test Workspace/);
     assert.match(result.stdout, /MCP setup is ready/);
+  });
+
+  it('refuses --write when the target client CLI is not on PATH', async () => {
+    const result = await runCli(
+      ['setup-mcp', '--client', 'codex', '--write'],
+      {
+        env: {
+          TRASEQ_API_KEY: 'trsq_secret',
+          // Force commandExists('codex') to return false. The CLI shells out
+          // to PATH-resolved binaries, so a deliberately empty PATH simulates
+          // a workstation without the codex CLI installed.
+          PATH: '/nonexistent-traseq-test',
+        },
+      },
+    );
+
+    assert.notEqual(result.code, 0);
+    assert.match(result.stderr, /Cannot run `codex`: not found on PATH/);
+    // The remediation must point users to actionable next steps, not just
+    // restate the failure.
+    assert.match(
+      result.stderr,
+      /setup-mcp --client codex --print-config/,
+    );
+    assert.match(result.stderr, /Install codex/);
+    assert.match(result.stderr, /different --client/);
+    // Raw Node spawn error must not leak through.
+    assert.doesNotMatch(result.stderr, /spawnSync/);
+    assert.doesNotMatch(result.stderr, /ENOENT/);
+  });
+
+  it('runs --probe before --write and short-circuits install on auth failure', async () => {
+    // The mock CLI fetch returns 401 unless x-api-key === 'test-key'. Passing
+    // a wrong key here makes the probe fail; if the probe-first ordering is
+    // wrong, the CLI would attempt to spawn `codex` and fail with a different
+    // (install-side) error message instead of the auth one.
+    const result = await runCli(
+      [
+        'setup-mcp',
+        '--client',
+        'codex',
+        '--write',
+        '--probe',
+        '--api-key',
+        'wrong-key',
+      ],
+      {
+        env: {
+          NODE_OPTIONS: '--import ./test/mock-cli-fetch.mjs',
+          TRASEQ_API_KEY: '',
+          TRASEQ_BASE_URL: 'https://api.test.local',
+          // Empty PATH would normally break --write; this test asserts that
+          // the probe failure exits before the install preflight ever runs.
+          PATH: '/nonexistent-traseq-test',
+        },
+      },
+    );
+
+    assert.notEqual(result.code, 0);
+    // Probe failure surfaced via the top-level error handler (stderr).
+    assert.match(result.stderr, /401|missing test key/i);
+    // Install side never ran.
+    assert.doesNotMatch(result.stdout, /Traseq MCP server installed/);
+    // Specifically: preflight did not fire because probe rejected first.
+    assert.doesNotMatch(result.stderr, /Cannot run `codex`/);
   });
 
   it('refuses to overwrite a corrupt Claude Desktop config', async () => {
