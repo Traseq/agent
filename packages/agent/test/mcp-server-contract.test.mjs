@@ -55,7 +55,7 @@ describe('MCP server contract', () => {
     });
   });
 
-  it('lists tools and includes start_research_engagement', async () => {
+  it('lists tools and includes start_research_engagement (guided profile, slim)', async () => {
     await withClient(async (client) => {
       const tools = await client.listTools();
       assert.ok(Array.isArray(tools.tools));
@@ -63,14 +63,20 @@ describe('MCP server contract', () => {
         tools.tools.some((t) => t.name === 'start_research_engagement'),
         'start_research_engagement must be listed',
       );
-      assert.ok(
-        tools.tools.some((t) => t.name === 'assemble_signal_graph'),
-        'assemble_signal_graph must be listed',
-      );
-      assert.ok(
-        tools.tools.some((t) => t.name === 'preflight_strategy_draft'),
-        'preflight_strategy_draft must be listed',
-      );
+      // P1-D: internal helpers (resolve/assemble/preflight) are intentionally
+      // hidden in guided mode and reachable inside run_guided_research_round.
+      const exposed = new Set(tools.tools.map((t) => t.name));
+      for (const advanced of [
+        'assemble_signal_graph',
+        'preflight_strategy_draft',
+        'resolve_strategy_semantics',
+        'suggest_minimal_repairs',
+      ]) {
+        assert.ok(
+          !exposed.has(advanced),
+          `${advanced} should be hidden in guided profile (P1-D)`,
+        );
+      }
       const validate = tools.tools.find((t) => t.name === 'validate_strategy');
       assert.ok(validate, 'validate_strategy must be listed');
       assert.equal(
@@ -89,6 +95,31 @@ describe('MCP server contract', () => {
       assert.ok(
         prompts.prompts.some((p) => p.name === 'traseq_guided_research'),
         'traseq_guided_research must be listed',
+      );
+    });
+  });
+
+  it('lists capability + instruments + system-strategies resources (P1-F)', async () => {
+    await withClient(async (client) => {
+      const caps = client.getServerCapabilities();
+      assert.ok(caps?.resources, 'resources capability must be advertised');
+      const resources = await client.listResources();
+      assert.ok(Array.isArray(resources.resources));
+      const uris = new Set(resources.resources.map((r) => r.uri));
+      assert.ok(uris.has('traseq://capabilities'));
+      assert.ok(
+        uris.has('traseq://instruments'),
+        'traseq://instruments must be exposed so agents can pick a symbol and date range without hallucinating tier limits',
+      );
+      assert.ok(uris.has('traseq://system-strategies'));
+    });
+  });
+
+  it('rejects unknown resource URIs with InvalidParams (P1-F)', async () => {
+    await withClient(async (client) => {
+      await assert.rejects(
+        () => client.readResource({ uri: 'traseq://nonexistent' }),
+        /Unknown resource URI/,
       );
     });
   });

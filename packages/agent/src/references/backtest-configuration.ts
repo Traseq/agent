@@ -90,12 +90,24 @@ Use \`pessimistic\` when stress-testing a strategy you plan to deploy.
 
 ## Date Range
 
-| Field | Type | Notes |
-|-------|------|-------|
-| range.start | integer | Starting candle index (0 = oldest available) |
-| range.end | integer | Ending candle index |
+| Field       | Type    | Notes                                                                    |
+|-------------|---------|--------------------------------------------------------------------------|
+| range.start | integer | Inclusive start of the backtest window, in **epoch milliseconds (UTC)**. |
+| range.end   | integer | Inclusive end of the backtest window, in **epoch milliseconds (UTC)**.   |
 
 If omitted, the backtest runs over all available data for the instrument/timeframe.
+All Traseq subscription tiers run on \`all_available_history\` — there is no per-tier
+backtest-period gate. Only research credits, strategy count, and workspace count
+are tier-limited.
+
+**Example** (2022-01-01 00:00:00 UTC to 2025-12-31 23:59:59 UTC):
+
+\`\`\`json
+"range": {
+  "start": 1640995200000,
+  "end":   1767225599000
+}
+\`\`\`
 
 ## Complete Configuration Example
 

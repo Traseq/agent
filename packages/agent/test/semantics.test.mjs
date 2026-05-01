@@ -429,4 +429,151 @@ describe('agent-local semantic tools', () => {
       ),
     );
   });
+
+  it('compose_strategy_from_template forks a template and returns a preflight-clean draft (P1-E)', async () => {
+    // P1-E exists to spare LLMs from hand-authoring 10+ node signal graphs
+    // when "fork the trend template, switch warmup" is what the user wanted.
+    // The contract: pass templateKey, optionally tweak settings, get a draft
+    // that already passed preflight so the next call can be a one-shot
+    // run_guided_research_round / validate_strategy.
+    const templatePayload = {
+      key: 'fixture_trend_template',
+      name: 'Fixture trend template',
+      description: 'Fixture used by compose_strategy_from_template tests.',
+      category: 'trend',
+      tags: ['trend'],
+      signalGraph: {
+        protocol: 'traseq.signal-graph',
+        version: 2,
+        nodes: [
+          {
+            id: 'price',
+            kind: 'market',
+            params: { field: 'close', timeframe: '1d' },
+          },
+          {
+            id: 'sma200',
+            kind: 'indicator',
+            indicator: 'SMA',
+            params: { length: 200 },
+            inputs: ['price'],
+          },
+        ],
+        bindings: {},
+        strategy: {
+          entry: {
+            trigger: { ref: 'sma200' },
+            action: {
+              kind: 'enter',
+              side: 'long',
+              sizing: { mode: 'percent_equity', value: 100 },
+            },
+          },
+        },
+      },
+      settings: { positionStyle: 'single', warmupPeriod: 200 },
+    };
+    let getSystemStrategyCalls = 0;
+    let getCapabilitiesCalls = 0;
+    const result = await runAgentTool(
+      'compose_strategy_from_template',
+      {
+        templateKey: 'fixture_trend_template',
+        name: 'Forked trend draft',
+        settingsOverride: { warmupPeriod: 250 },
+      },
+      {
+        client: {
+          async getSystemStrategy(key) {
+            getSystemStrategyCalls += 1;
+            assert.equal(key, 'fixture_trend_template');
+            return templatePayload;
+          },
+          async getCapabilities() {
+            getCapabilitiesCalls += 1;
+            return FULL_CAPABILITIES;
+          },
+        },
+      },
+    );
+    assert.equal(getSystemStrategyCalls, 1);
+    assert.equal(getCapabilitiesCalls, 1);
+    assert.equal(result.template.key, 'fixture_trend_template');
+    assert.equal(result.draft.name, 'Forked trend draft');
+    assert.equal(result.draft.settings.warmupPeriod, 250);
+    assert.equal(result.draft.settings.positionStyle, 'single');
+    assert.ok(result.preflight, 'preflight result must be returned');
+    assert.equal(typeof result.nextStep, 'string');
+  });
+
+  it('preflight_strategy_draft adds tier-aware warnings when caps are exceeded (P2-I)', async () => {
+    // Free tier free-rides on a tight maxExits=1 cap. The user's transcript
+    // showed them spending two round-trips before discovering this — P2-I
+    // surfaces it as a warning at preflight so the LLM fixes the draft
+    // before validate_strategy is even called.
+    const draftWithTwoExits = {
+      name: 'Two-exit draft',
+      signalGraph: {
+        protocol: 'traseq.signal-graph',
+        version: 2,
+        nodes: [],
+        bindings: {},
+        strategy: {
+          kind: 'strategy',
+          entry: {
+            kind: 'entry',
+            trigger: { ref: 'n1' },
+            action: {
+              side: 'long',
+              sizing: { mode: 'percent_equity', value: 100 },
+            },
+          },
+          exits: [
+            { kind: 'exit', when: { ref: 'n2' }, action: { kind: 'flatten' } },
+            { kind: 'exit', when: { ref: 'n3' }, action: { kind: 'flatten' } },
+          ],
+        },
+      },
+      settings: { positionStyle: 'single' },
+    };
+    const capabilitiesWithTightLimits = {
+      limits: { maxEntryConditions: 5, maxExitConditions: 3, maxExits: 1 },
+    };
+    const result = await runAgentTool('preflight_strategy_draft', {
+      draft: draftWithTwoExits,
+      capabilities: capabilitiesWithTightLimits,
+    });
+    const tierWarning = (result.issues ?? []).find(
+      (issue) => issue.code === 'tier_exit_limit',
+    );
+    assert.ok(tierWarning, 'tier_exit_limit warning must be present');
+    assert.equal(tierWarning.severity, 'warning');
+    assert.match(tierWarning.message, /maxExits at 1/);
+  });
+
+  it('compose_strategy_from_template throws when the template lacks a signalGraph', async () => {
+    await assert.rejects(
+      () =>
+        runAgentTool(
+          'compose_strategy_from_template',
+          { templateKey: 'time_only_dca' },
+          {
+            client: {
+              async getSystemStrategy() {
+                return {
+                  key: 'time_only_dca',
+                  name: 'Time-only DCA',
+                  description: 'token-only fixture',
+                  category: 'dca',
+                  tags: ['dca'],
+                  signalGraph: null,
+                  settings: { positionStyle: 'single' },
+                };
+              },
+            },
+          },
+        ),
+      /no signalGraph/,
+    );
+  });
 });

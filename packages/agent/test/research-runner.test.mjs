@@ -200,6 +200,19 @@ describe('runResearchRunner', () => {
     assert.equal(result.rounds[0].status, 'failed');
     assert.equal(result.rounds[0].validation.valid, false);
     assert.equal(result.rounds[0].backtest, undefined);
+    // P0-A: structured issues must be propagated, not just a flat string.
+    assert.ok(
+      Array.isArray(result.validationIssues) &&
+        result.validationIssues.length === 1,
+      'result should expose structured validationIssues',
+    );
+    assert.equal(result.validationIssues[0].code, 'missing_entry');
+    assert.equal(result.validationIssues[0].severity, 'error');
+    assert.equal(result.validationIssues[0].path, 'signalGraph.strategy.entry');
+    assert.deepEqual(
+      result.validationIssues,
+      result.rounds[0].validationIssues,
+    );
     assert.deepEqual(methodNames(client), [
       'getManifest',
       'getWorkspaceContext',
@@ -207,6 +220,36 @@ describe('runResearchRunner', () => {
       'getCapabilities',
       'validateStrategy',
     ]);
+  });
+
+  it('exposes repair attempts with before/after validation snapshots (P2-H)', async () => {
+    const client = makeClient({
+      validationQueue: [VALIDATION_ERROR, VALIDATION_OK],
+    });
+
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      draftProducer: () => makeDraft('Broken draft'),
+      repairProducer: ({ attempt, draft }) => ({
+        ...draft,
+        name: `Repaired draft ${attempt}`,
+      }),
+    });
+
+    assert.equal(result.status, 'completed');
+    const round = result.rounds[0];
+    assert.ok(
+      Array.isArray(round.repairAttempts),
+      'completed round must surface repairAttempts',
+    );
+    assert.equal(round.repairAttempts.length, 1);
+    assert.equal(round.repairAttempts[0].attempt, 1);
+    assert.equal(round.repairAttempts[0].validationBefore.valid, false);
+    assert.equal(round.repairAttempts[0].validationAfter.valid, true);
   });
 
   it('repairs validation failures with a bounded repair callback', async () => {
@@ -235,6 +278,68 @@ describe('runResearchRunner', () => {
         .length,
       2,
     );
+  });
+
+  it('records every repair attempt before/after validation across a multi-step recovery (P3-J)', async () => {
+    // P3-J end-to-end safety net: lock down that the agent reports each repair
+    // step's transition. This is what gives an LLM the ability to reason
+    // "attempt 1 fixed missing_entry but exposed missing_exit, attempt 2 then
+    // fixed exits" without re-running validate manually.
+    const VALIDATION_ENTRY_FIXED_BUT_EXIT_BAD = {
+      valid: false,
+      summary: { errors: 1, warnings: 0 },
+      issues: [
+        {
+          code: 'missing_exit',
+          path: 'signalGraph.strategy.exits',
+          field: 'signalGraph',
+          message: 'Exit rules required.',
+          severity: 'error',
+        },
+      ],
+    };
+
+    const client = makeClient({
+      validationQueue: [
+        VALIDATION_ERROR,
+        VALIDATION_ENTRY_FIXED_BUT_EXIT_BAD,
+        VALIDATION_OK,
+      ],
+    });
+
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Multi-step repair recovery.',
+        rounds: 1,
+      },
+      draftProducer: () => makeDraft('Initially broken'),
+      repairProducer: ({ attempt, draft }) => ({
+        ...draft,
+        name: `Repair attempt ${attempt}`,
+      }),
+    });
+
+    assert.equal(result.status, 'completed');
+    const repairAttempts = result.rounds[0].repairAttempts ?? [];
+    assert.equal(repairAttempts.length, 2, 'must record 2 repair attempts');
+    // Attempt 1: started with VALIDATION_ERROR, ended with the entry-fixed-
+    // but-exit-bad state — different issue codes prove the runner saw the
+    // transition correctly.
+    assert.equal(
+      repairAttempts[0].validationBefore.issues.signalGraph[0].code,
+      'missing_entry',
+    );
+    assert.equal(
+      repairAttempts[0].validationAfter.issues.signalGraph[0].code,
+      'missing_exit',
+    );
+    // Attempt 2: cleared everything.
+    assert.equal(
+      repairAttempts[1].validationBefore.issues.signalGraph[0].code,
+      'missing_exit',
+    );
+    assert.equal(repairAttempts[1].validationAfter.valid, true);
   });
 
   it('stops after the repair attempt limit is exhausted', async () => {

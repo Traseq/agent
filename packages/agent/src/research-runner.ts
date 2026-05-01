@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { TraseqClient, preflightStrategyDraft } from '@traseq/sdk';
+import {
+  TraseqApiError,
+  TraseqClient,
+  preflightStrategyDraft,
+} from '@traseq/sdk';
 
 import { analyzeRound } from './analysis.js';
 import { readEnv, requireEnv } from './env.js';
@@ -29,10 +33,12 @@ import type {
   ResearchRunnerRound,
   ResearchRunnerStatus,
   ResearchRunnerSummary,
+  RepairAttemptRecord,
   ScoreBreakdown,
   StrategyDraftLike,
   StrategySettings,
   Timeframe,
+  ValidationIssueLike,
   ValidationSummaryLike,
 } from './types.js';
 
@@ -115,12 +121,26 @@ function createLog(
   };
 }
 
-function validationMessages(validation: ValidationSummaryLike): string[] {
+function flattenValidationIssues(
+  validation: ValidationSummaryLike,
+): ValidationIssueLike[] {
   return [
     ...(validation.issues.signalGraph ?? []),
     ...(validation.issues.settings ?? []),
     ...(validation.issues.conflicts ?? []),
-  ].map((issue) => issue.message);
+  ];
+}
+
+function formatIssueMessage(issue: ValidationIssueLike): string {
+  const parts: string[] = [];
+  if (issue.code) {
+    parts.push(`[${issue.code}]`);
+  }
+  if (issue.path) {
+    parts.push(`${issue.path}:`);
+  }
+  parts.push(issue.message);
+  return parts.join(' ');
 }
 
 function buildAuthoringPayload(draft: StrategyDraftLike) {
@@ -272,6 +292,8 @@ function completeResult(args: {
   rounds: ResearchRunnerRound[];
   stopReason?: string;
   errors?: string[];
+  validationIssues?: ValidationIssueLike[];
+  repairAttempts?: RepairAttemptRecord[];
 }): ResearchRunnerResult {
   const champion = selectChampionRound(args.rounds);
   const status = resultStatus(args.rounds, args.stopReason);
@@ -295,6 +317,12 @@ function completeResult(args: {
     status,
     ...(args.stopReason ? { stopReason: args.stopReason } : {}),
     ...(args.errors && args.errors.length > 0 ? { errors: args.errors } : {}),
+    ...(args.validationIssues && args.validationIssues.length > 0
+      ? { validationIssues: args.validationIssues }
+      : {}),
+    ...(args.repairAttempts && args.repairAttempts.length > 0
+      ? { repairAttempts: args.repairAttempts }
+      : {}),
   };
 }
 
@@ -621,6 +649,27 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function extractIssuesFromError(error: unknown): ValidationIssueLike[] {
+  if (!(error instanceof TraseqApiError)) {
+    return [];
+  }
+  const body = error.parsedBody;
+  if (!body || !Array.isArray(body.issues)) {
+    return [];
+  }
+  return body.issues.map((issue) => ({
+    code: issue.code,
+    path: issue.path,
+    ...(issue.field ? { field: issue.field } : {}),
+    message: issue.message,
+    ...(issue.suggestion ? { suggestion: issue.suggestion } : {}),
+    ...(issue.severity ? { severity: issue.severity } : {}),
+    ...(issue.details ? { details: issue.details } : {}),
+    ...(issue.blockA ? { blockA: issue.blockA } : {}),
+    ...(issue.blockB ? { blockB: issue.blockB } : {}),
+  }));
+}
+
 function isBacktestTimeoutError(error: unknown): boolean {
   return error instanceof Error && /timed out after/i.test(error.message);
 }
@@ -738,6 +787,10 @@ export async function runResearchRunner(
     let draft: StrategyDraftLike | undefined;
     let validation: ValidationSummaryLike | undefined;
     let validationAttempts = 0;
+    // Hoisted out of `try` so the catch block can surface partial repair
+    // records when a producer throws mid-loop (e.g. the third repair attempt
+    // times out — the LLM still gets the first two attempts' before/after).
+    const repairAttemptRecords: RepairAttemptRecord[] = [];
 
     try {
       draft = normalizeRunnerDraft(
@@ -769,6 +822,11 @@ export async function runResearchRunner(
       ) {
         phase = 'repair';
         repairAttempts += 1;
+        // Snapshot the pre-repair validation BEFORE re-running validate so the
+        // record always pairs the issues the producer was asked to fix with the
+        // issues that remained — even if the producer surfaces no patches, the
+        // LLM can compare before/after to reason about whether to retry or pivot.
+        const validationBefore = validation;
         logs.push(
           createLog(
             round,
@@ -809,10 +867,16 @@ export async function runResearchRunner(
           draft,
           live.capabilities,
         );
+        repairAttemptRecords.push({
+          attempt: repairAttempts,
+          validationBefore,
+          validationAfter: validation,
+        });
       }
 
       if (!validation.valid) {
-        const errors = validationMessages(validation);
+        const validationIssues = flattenValidationIssues(validation);
+        const errors = validationIssues.map(formatIssueMessage);
         logs.push(
           createLog(
             round,
@@ -832,6 +896,10 @@ export async function runResearchRunner(
           logs,
           stopReason: 'validation_failed',
           ...(errors.length > 0 ? { errors } : {}),
+          ...(validationIssues.length > 0 ? { validationIssues } : {}),
+          ...(repairAttemptRecords.length > 0
+            ? { repairAttempts: repairAttemptRecords }
+            : {}),
         });
         return completeResult({
           runId,
@@ -841,6 +909,10 @@ export async function runResearchRunner(
           rounds,
           stopReason: 'validation_failed',
           errors,
+          validationIssues,
+          ...(repairAttemptRecords.length > 0
+            ? { repairAttempts: repairAttemptRecords }
+            : {}),
         });
       }
 
@@ -923,11 +995,15 @@ export async function runResearchRunner(
         score,
         analysis,
         logs,
+        ...(repairAttemptRecords.length > 0
+          ? { repairAttempts: repairAttemptRecords }
+          : {}),
       });
       previousFinalizedVersionId = finalizedStrategyVersionId;
     } catch (caught) {
       const stopReason = stopReasonForPhase(phase, caught);
       const message = errorMessage(caught);
+      const errorIssues = extractIssuesFromError(caught);
       logs.push(
         createLog(
           round,
@@ -947,6 +1023,10 @@ export async function runResearchRunner(
         logs,
         stopReason,
         errors: [message],
+        ...(errorIssues.length > 0 ? { validationIssues: errorIssues } : {}),
+        ...(repairAttemptRecords.length > 0
+          ? { repairAttempts: repairAttemptRecords }
+          : {}),
       });
       return completeResult({
         runId,
@@ -956,6 +1036,10 @@ export async function runResearchRunner(
         rounds,
         stopReason,
         errors: [message],
+        ...(errorIssues.length > 0 ? { validationIssues: errorIssues } : {}),
+        ...(repairAttemptRecords.length > 0
+          ? { repairAttempts: repairAttemptRecords }
+          : {}),
       });
     }
   }

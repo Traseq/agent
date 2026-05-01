@@ -5,8 +5,10 @@ import {
   ErrorCode,
   GetPromptRequestSchema,
   ListPromptsRequestSchema,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
   McpError,
+  ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import {
   TraseqClient,
@@ -29,6 +31,7 @@ import {
 import { packageVersion } from '../install/version.js';
 import {
   DEFAULT_MCP_PROFILE,
+  GUIDED_AGENT_TOOL_NAMES,
   operationStage,
   parseMcpProfile,
   platformOperationsForProfile,
@@ -53,9 +56,15 @@ export const MCP_SERVICE_INSTRUCTIONS = [
   'If start_research_engagement is not available, tell the user the Traseq MCP server is not connected or not enabled.',
   'Show users the research task, assumptions, verdict, evidence, risk flags, Traseq app links, and next step. Do not lead with raw tool names or JSON.',
   'Use lower-level platform tools only for advanced automation or when the guided tools cannot cover the requested workflow.',
+  'Tier limits in Traseq are: research credits (USD/month), active strategy count, saved backtest count, and workspaces. Backtest period is NOT tier-limited; all tiers can run all available history. Only treat a failure as a plan/billing problem if the response carries `publicAgent.category` of `plan` or `usage`. Errors with `category: validation` are schema/parameter problems — re-read the relevant reference doc and fix the call, do not suggest the user upgrade.',
+  'When validation fails, read `validationIssues` (or response body `issues`) for `code` / `path` / `severity` and fix the draft directly. Do not assume the platform is broken when validation reports issues; only escalate when issues are absent AND the response has no useful body.',
   'If you need a write or destructive platform tool that is not exposed, ask the operator to enable `--profile=full`. Do not assume it is missing by accident — the server filters writes out of the default `guided` profile.',
   '@traseq/agent does not call an AI provider, place live orders, or provide investment advice. Historical backtests are research evidence only.',
   'Destructive platform tools require confirm=true.',
+  'Quick capability reference: timeframes are 15m, 1h, 4h, 1d. Market fields are open/high/low/close/hl2/hlc3/ohlc4/typical/median/volume. Operator categories: compare, cross, rolling, math, conflict policies. Patterns and indicators (~30+) are listed in the reference docs. For the authoritative current list call get_capabilities, or call start_research_engagement which dumps capabilities into the engagement context.',
+  'Available instruments are Binance spot, USDT-quoted only. Each symbol has its own `dataStart` — a backtest range that begins before this date returns no candles, not a quota error, and the request is rejected with `category: validation`. Approximate set: BTCUSDT/ETHUSDT from 2017-08, XRPUSDT from 2017-11, ADAUSDT/TRXUSDT/BNBUSDT from 2018, LINKUSDT/DOGEUSDT from 2019, SOLUSDT from 2020, SUIUSDT from 2023. The authoritative list with exact dates lives in `capabilities.instruments` (read once via `traseq://capabilities`). Pass `signalInstrument.symbol` as one of those exact strings.',
+  'Cacheable read-only data is exposed via MCP resources: `traseq://capabilities` (full capability spec, includes `instruments` with `dataStart`/`dataEnd`), `traseq://instruments` (instruments-only shortcut), and `traseq://system-strategies` (template index). Prefer reading these resources once per session over calling the equivalent tools on each turn — capabilities alone is large.',
+  'Backtest range fields use `range.start` and `range.end` in **epoch milliseconds** (UTC). Not `startDate/endDate`, not candle indices.',
 ].join('\n');
 
 function safeErrorMessage(error: unknown): string {
@@ -80,14 +89,28 @@ function safeErrorMessage(error: unknown): string {
   return 'An unexpected error occurred.';
 }
 
-function orderedAgentTools() {
-  const guided = GUIDED_TOOL_ORDER.map((name) =>
+function orderedAgentTools(profile: McpProfile = readProfileFromEnv()) {
+  const guidedHeadOrder = GUIDED_TOOL_ORDER.map((name) =>
     getAgentToolDefinition(name),
   ).filter((tool) => tool !== undefined);
+  // In guided mode, hide internal helpers (resolve/assemble/preflight/etc.)
+  // from tools/list — they are reachable inside run_guided_research_round and
+  // adding 8 more entries pushes the total over Claude Desktop's deferred-tool
+  // threshold, which costs a ToolSearch round-trip per call. Full mode still
+  // exposes everything so advanced operators can intervene step-by-step.
+  if (profile === 'guided') {
+    const guidedHeadNames = new Set(guidedHeadOrder.map((tool) => tool.name));
+    const tail = AGENT_TOOL_REGISTRY.filter(
+      (tool) =>
+        GUIDED_AGENT_TOOL_NAMES.has(tool.name) &&
+        !guidedHeadNames.has(tool.name),
+    );
+    return [...guidedHeadOrder, ...tail];
+  }
   const rest = AGENT_TOOL_REGISTRY.filter(
     (tool) => !GUIDED_TOOL_NAMES.has(tool.name),
   );
-  return [...guided, ...rest];
+  return [...guidedHeadOrder, ...rest];
 }
 
 function describeAgentTool(tool: {
@@ -133,7 +156,7 @@ export function toToolList(profile: McpProfile = readProfileFromEnv()): {
   inputSchema: Record<string, unknown>;
 }[] {
   return [
-    ...orderedAgentTools().map((tool) => ({
+    ...orderedAgentTools(profile).map((tool) => ({
       name: tool.name,
       description: describeAgentTool(tool),
       inputSchema: tool.input_schema,
@@ -228,6 +251,7 @@ export function buildMcpServer(
       capabilities: {
         tools: { listChanged: false },
         prompts: { listChanged: false },
+        resources: { listChanged: false },
       },
       instructions: MCP_SERVICE_INSTRUCTIONS,
     },
@@ -246,6 +270,80 @@ export function buildMcpServer(
   server.setRequestHandler(ListPromptsRequestSchema, async () => ({
     prompts: toPromptList(),
   }));
+
+  // P1-F: read-only resources let MCP clients cache the capability spec and
+  // template index by URI rather than calling get_capabilities /
+  // list_system_strategies on every research turn. Capabilities alone is
+  // 5–15k tokens of JSON; once the client caches it the LLM stops paying
+  // for it on each round, and we keep the resource shape stable so cache
+  // invalidation only fires on actual server upgrades.
+  server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+    resources: [
+      {
+        uri: 'traseq://capabilities',
+        name: 'Traseq capability spec',
+        description:
+          'Full capability document: indicators, operators, node kinds, timeframes, tier limits, and the instrument universe (each instrument carries its `dataStart`). Read once and cache; stable across a server lifetime.',
+        mimeType: 'application/json',
+      },
+      {
+        uri: 'traseq://instruments',
+        name: 'Traseq instrument universe',
+        description:
+          'Trading instruments only — same data as `capabilities.instruments`, exposed as a smaller resource for callers that just need the symbol list and `dataStart` per symbol. Use this before picking `signalInstrument.symbol` and `range.start`.',
+        mimeType: 'application/json',
+      },
+      {
+        uri: 'traseq://system-strategies',
+        name: 'Traseq system strategy index',
+        description:
+          'List of forkable strategy templates with key, name, category, and tags. Use compose_strategy_from_template to fork one.',
+        mimeType: 'application/json',
+      },
+    ],
+  }));
+
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    const uri = request.params.uri;
+    const fetchAndSerialize = async (): Promise<string> => {
+      if (uri === 'traseq://capabilities') {
+        return JSON.stringify(await client.getCapabilities(), null, 2);
+      }
+      if (uri === 'traseq://instruments') {
+        const capabilities = (await client.getCapabilities()) as {
+          instruments?: unknown;
+        };
+        return JSON.stringify(capabilities.instruments ?? [], null, 2);
+      }
+      if (uri === 'traseq://system-strategies') {
+        return JSON.stringify(await client.listSystemStrategies(), null, 2);
+      }
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `Unknown resource URI: ${uri}`,
+      );
+    };
+    try {
+      const text = await fetchAndSerialize();
+      return {
+        contents: [
+          {
+            uri,
+            mimeType: 'application/json',
+            text,
+          },
+        ],
+      };
+    } catch (error) {
+      if (error instanceof McpError) {
+        throw error;
+      }
+      throw new McpError(
+        ErrorCode.InternalError,
+        `Failed to read resource ${uri}: ${safeErrorMessage(error)}`,
+      );
+    }
+  });
 
   server.setRequestHandler(GetPromptRequestSchema, async (request) => {
     const name = request.params.name;
@@ -271,6 +369,15 @@ export function buildMcpServer(
     const args = request.params.arguments ?? {};
     const agentTool = getAgentToolDefinition(name);
     if (agentTool) {
+      if (
+        profile === 'guided' &&
+        !GUIDED_AGENT_TOOL_NAMES.has(agentTool.name)
+      ) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `Tool "${name}" is an advanced agent helper and is not available in profile "guided". Use run_guided_research_round (which composes resolve/assemble/preflight internally) or restart with --profile=full to access this helper directly.`,
+        );
+      }
       try {
         const result = await runAgentTool(agentTool.name, args, { client });
         return {

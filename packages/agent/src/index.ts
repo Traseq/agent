@@ -46,6 +46,7 @@ export {
 export { toToolList } from './mcp/server.js';
 export {
   DEFAULT_MCP_PROFILE,
+  GUIDED_AGENT_TOOL_NAMES,
   GUIDED_PLATFORM_OPS,
   parseMcpProfile,
   platformOperationsForProfile,
@@ -72,11 +73,15 @@ export {
 } from './usage-hints.js';
 export { runResearch, normalizeRequest } from './research.js';
 export {
+  _clearEngagementStore,
   formatResearchEngagementBrief,
+  getResearchEngagement,
   runGuidedResearchRound,
   startResearchEngagement,
   summarizeResearchEngagement,
+  updateResearchEngagement,
 } from './guided-research.js';
+export type { ResearchEngagementPatch } from './guided-research.js';
 export {
   RUNNER_SCHEMA_VERSION,
   buildBacktestConfig,

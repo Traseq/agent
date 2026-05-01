@@ -10,9 +10,13 @@ export const DEFAULT_MCP_PROFILE: McpProfile = 'guided';
 
 /**
  * Read-only platform operations exposed in the `guided` profile alongside the
- * agent-local guided/semantic/repair tools. Write/destructive/long-running
- * operations require `full`. Keep this list narrow on purpose: every entry an
- * agent sees is an entry it might call before validation.
+ * agent-local guided/semantic/repair tools, plus `run_backtest` (non-destructive
+ * write — creates a backtest record against an existing strategy version, used
+ * when an agent wants to re-test a validated version with a different range or
+ * config without re-running the full validate→persist→backtest pipeline). Other
+ * write/destructive/long-running operations require `full`. Keep this list
+ * narrow on purpose: every entry an agent sees is an entry it might call before
+ * validation.
  */
 export const GUIDED_PLATFORM_OPS: ReadonlySet<OperationName> =
   new Set<OperationName>([
@@ -33,7 +37,27 @@ export const GUIDED_PLATFORM_OPS: ReadonlySet<OperationName> =
     'list_system_strategies',
     'get_system_strategy',
     'validate_strategy',
+    'run_backtest',
   ]);
+
+/**
+ * Agent-side tools surfaced in `guided` mode. Anything not on this list is
+ * treated as an advanced helper: the LLM can still reach it under `--profile=full`,
+ * but in guided mode we keep tools/list trim so Claude Desktop and other clients
+ * don't fall over MCP defer thresholds (which fire at high tool counts and add
+ * a ToolSearch round-trip per call). Each entry should map to a verb the user
+ * actually narrates ("start engagement", "run a guided round", "summarize",
+ * "explain validation"). Internals like resolve/assemble/preflight are reachable
+ * inside run_guided_research_round and don't need their own surface area.
+ */
+export const GUIDED_AGENT_TOOL_NAMES: ReadonlySet<string> = new Set<string>([
+  'start_research_engagement',
+  'run_guided_research_round',
+  'summarize_research_engagement',
+  'explain_validation_issues',
+  'compose_strategy_from_template',
+  'update_research_engagement',
+]);
 
 export function parseMcpProfile(value: unknown): McpProfile {
   return value === 'full' ? 'full' : 'guided';

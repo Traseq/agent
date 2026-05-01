@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  GUIDED_AGENT_TOOL_NAMES,
   GUIDED_PLATFORM_OPS,
   parseMcpProfile,
   platformOperationsForProfile,
@@ -45,6 +46,52 @@ describe('mcp profile filter', () => {
       !names.has('create_strategy'),
       'write op should be hidden in guided profile',
     );
+  });
+
+  it('guided profile only exposes the 4 essential agent tools (P1-D)', () => {
+    // Why this number is fixed: every agent tool a guided client sees adds to
+    // Claude Desktop's tools/list payload, which past ~30 entries forces clients
+    // into a deferred-tool flow (one extra ToolSearch round-trip per first call).
+    // The four below are the verbs the user actually narrates; the rest are
+    // internals reachable inside run_guided_research_round.
+    const tools = toToolList('guided');
+    const agentToolNames = tools
+      .map((tool) => tool.name)
+      .filter((name) => GUIDED_AGENT_TOOL_NAMES.has(name));
+    assert.equal(agentToolNames.length, GUIDED_AGENT_TOOL_NAMES.size);
+    const hidden = [
+      'get_semantics',
+      'resolve_strategy_semantics',
+      'assemble_signal_graph',
+      'preflight_strategy_draft',
+      'run_research_draft',
+      'evaluate_research_result',
+      'format_research_report',
+      'suggest_minimal_repairs',
+    ];
+    const exposed = new Set(tools.map((tool) => tool.name));
+    for (const name of hidden) {
+      assert.ok(
+        !exposed.has(name),
+        `${name} should be hidden from the guided profile tools/list`,
+      );
+    }
+  });
+
+  it('full profile keeps every agent tool exposed for advanced operators', () => {
+    const tools = toToolList('full');
+    const exposed = new Set(tools.map((tool) => tool.name));
+    for (const advanced of [
+      'resolve_strategy_semantics',
+      'assemble_signal_graph',
+      'preflight_strategy_draft',
+      'suggest_minimal_repairs',
+    ]) {
+      assert.ok(
+        exposed.has(advanced),
+        `${advanced} must remain available under --profile=full`,
+      );
+    }
   });
 
   it('toToolList in full profile exposes write/destructive ops with stage hints', () => {

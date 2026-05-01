@@ -386,6 +386,88 @@ describe('guided research service', () => {
     assert.ok(brief.authoringInstructions.includes('external AI agent'));
   });
 
+  it('update_research_engagement patches in-memory state without re-fetching context (P2-G)', async () => {
+    // Why this test exists: the user transcript shows the agent re-running
+    // start_research_engagement (= 4 API calls) every time the user said
+    // "actually use conservative". P2-G stores the brief and lets a patch
+    // recompute assumptions/decisionPoints/serviceMessages with no client
+    // calls. We assert exactly that: zero new client method invocations
+    // between start and update.
+    let manifestCalls = 0;
+    let workspaceCalls = 0;
+    let usageCalls = 0;
+    let capabilityCalls = 0;
+    const trackingClient = {
+      async getManifest() {
+        manifestCalls += 1;
+        return { name: 'Traseq Agent API', version: 'v1' };
+      },
+      async getWorkspaceContext() {
+        workspaceCalls += 1;
+        return {
+          workspace: { id: 'workspace-1' },
+          subscription: { tier: 'plus' },
+          apiKey: { scopes: ['workspace_read'] },
+        };
+      },
+      async getUsage() {
+        usageCalls += 1;
+        return { usage: {}, limits: {} };
+      },
+      async getCapabilities() {
+        capabilityCalls += 1;
+        return {
+          protocol: 'traseq.capabilities',
+          version: 1,
+          signalGraph: { nodes: [], bindings: [] },
+          indicators: [],
+          operators: { compare: [], cross: [] },
+        };
+      },
+    };
+    const brief = await startResearchEngagement(
+      { prompt: 'Research a BTC trend strategy.' },
+      { client: trackingClient },
+    );
+    assert.equal(brief.riskTolerance, 'moderate');
+    assert.equal(
+      manifestCalls + workspaceCalls + usageCalls + capabilityCalls,
+      4,
+    );
+
+    const patched = await runAgentTool('update_research_engagement', {
+      runId: brief.runId,
+      riskTolerance: 'conservative',
+      timeframe: '1d',
+    });
+    // Critical assertion: zero new client calls.
+    assert.equal(
+      manifestCalls + workspaceCalls + usageCalls + capabilityCalls,
+      4,
+    );
+    assert.equal(patched.runId, brief.runId);
+    assert.equal(patched.riskTolerance, 'conservative');
+    assert.equal(patched.input.timeframe, '1d');
+    // Assumptions and decisionPoints must reflect the new risk tolerance.
+    assert.ok(
+      patched.assumptions.some((item) =>
+        item.toLowerCase().includes('conservative'),
+      ),
+      'patched assumptions should mention the new conservative tolerance',
+    );
+  });
+
+  it('update_research_engagement throws on an unknown runId (P2-G)', async () => {
+    await assert.rejects(
+      () =>
+        runAgentTool('update_research_engagement', {
+          runId: 'definitely-not-a-real-runid',
+          riskTolerance: 'aggressive',
+        }),
+      /unknown runId/,
+    );
+  });
+
   it('runs a guided research round and returns service messages plus a memo', async () => {
     const client = makeClient();
     const output = await runGuidedResearchRound(

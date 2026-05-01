@@ -91,6 +91,16 @@ export interface ValidationSummaryLike {
   };
 }
 
+// P2-H: per-repair-attempt record so the LLM can see "we already tried these
+// fixes and they did/didn't change the issue set" instead of duplicating work
+// the runner already attempted. Captured even on success so callers can audit
+// how many repairs the producer needed.
+export interface RepairAttemptRecord {
+  attempt: number;
+  validationBefore: ValidationSummaryLike;
+  validationAfter: ValidationSummaryLike;
+}
+
 export interface ScoreBreakdown {
   total: number;
   returnScore: number;
@@ -426,6 +436,8 @@ export interface ResearchRunnerRound {
   logs: AgentStepLog[];
   stopReason?: string;
   errors?: string[];
+  validationIssues?: ValidationIssueLike[];
+  repairAttempts?: RepairAttemptRecord[];
 }
 
 export interface ResearchRunnerSummary {
@@ -451,6 +463,8 @@ export interface ResearchRunnerResult {
   status: ResearchRunnerStatus;
   stopReason?: string;
   errors?: string[];
+  validationIssues?: ValidationIssueLike[];
+  repairAttempts?: RepairAttemptRecord[];
 }
 
 export type ResearchConfidence = 'robust' | 'promising' | 'weak' | 'reject';

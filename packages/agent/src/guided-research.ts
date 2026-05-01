@@ -253,13 +253,26 @@ function buildRoundMessages(
   const linkedBacktest = representativeBacktest(result, evaluation);
 
   if (result.status === 'failed') {
+    const topIssues = (result.validationIssues ?? []).slice(0, 3);
+    const issueLines = topIssues
+      .map((issue) => {
+        const code = issue.code ? `[${issue.code}] ` : '';
+        const path = issue.path ? `${issue.path}: ` : '';
+        return `- ${code}${path}${issue.message}`;
+      })
+      .join('\n');
+    const baseMessage =
+      result.stopReason === 'validation_failed'
+        ? 'Validation failed, so no strategy write or backtest execution should be treated as completed research.'
+        : `The research run stopped with reason: ${result.stopReason ?? 'unknown'}.`;
+    const fullMessage =
+      issueLines.length > 0
+        ? `${baseMessage}\n\nTop issues (read \`result.validationIssues\` for the full list):\n${issueLines}`
+        : baseMessage;
     messages.push({
       level: 'critical',
       title: 'Research stopped before usable evidence',
-      message:
-        result.stopReason === 'validation_failed'
-          ? 'Validation failed, so no strategy write or backtest execution should be treated as completed research.'
-          : `The research run stopped with reason: ${result.stopReason ?? 'unknown'}.`,
+      message: fullMessage,
       nextAction: evaluation.verdict.nextAction,
     });
   } else if (evaluation.confidence === 'robust') {
@@ -294,6 +307,66 @@ function buildRoundMessages(
   return messages;
 }
 
+// P2-G: in-memory engagement store. Caches the brief so callers can patch
+// riskTolerance / instrument / timeframe / positionStyle without re-running
+// the 4-API-call context fetch (manifest, workspace, usage, capabilities).
+// State is per-process and lost on MCP restart — adequate for single-session
+// LLM clients and a clean swap point for a future backend-persisted store.
+const engagementStore = new Map<string, ResearchEngagementBrief>();
+
+export interface ResearchEngagementPatch {
+  riskTolerance?: ResearchRiskTolerance;
+  instrument?: string;
+  timeframe?: string;
+  positionStyle?: string;
+  objective?: string;
+  initialBalance?: number;
+  maxConcurrentPositions?: number;
+}
+
+function rebuildBrief(
+  base: ResearchEngagementBrief,
+  patch: ResearchEngagementPatch,
+): ResearchEngagementBrief {
+  // Build the overlay one field at a time so exactOptionalPropertyTypes never
+  // sees an undefined assignment — only set keys that are explicitly patched.
+  const overlay: Record<string, unknown> = {};
+  if (patch.instrument !== undefined) overlay.instrument = patch.instrument;
+  if (patch.timeframe !== undefined) overlay.timeframe = patch.timeframe;
+  if (patch.positionStyle !== undefined)
+    overlay.positionStyle = patch.positionStyle;
+  if (patch.objective !== undefined) overlay.objective = patch.objective;
+  if (patch.initialBalance !== undefined)
+    overlay.initialBalance = patch.initialBalance;
+  if (patch.maxConcurrentPositions !== undefined)
+    overlay.maxConcurrentPositions = patch.maxConcurrentPositions;
+
+  const mergedRawInput = {
+    ...base.input,
+    ...overlay,
+  } as ResearchEngagementInput;
+  const normalized = normalizeRequest(mergedRawInput);
+  const riskTolerance = normalizeRiskTolerance(
+    patch.riskTolerance ?? base.riskTolerance,
+  );
+
+  const serviceMessages = buildEngagementMessages(normalized, riskTolerance);
+  const usageMessage = buildUsageStatusMessage(base.usageStatus);
+  if (usageMessage) {
+    serviceMessages.push(usageMessage);
+  }
+
+  return {
+    ...base,
+    input: normalized,
+    riskTolerance,
+    assumptions: buildAssumptions(mergedRawInput, normalized, riskTolerance),
+    serviceMessages,
+    decisionPoints: buildDecisionPoints(normalized, riskTolerance),
+    completedAt: new Date().toISOString(),
+  };
+}
+
 export async function startResearchEngagement(
   input: ResearchEngagementInput,
   options: { client?: ResearchContextClient } = {},
@@ -315,7 +388,7 @@ export async function startResearchEngagement(
     serviceMessages.push(usageMessage);
   }
 
-  return {
+  const brief: ResearchEngagementBrief = {
     runId: research.runId,
     startedAt: research.startedAt,
     completedAt: research.completedAt,
@@ -330,6 +403,35 @@ export async function startResearchEngagement(
     recommendedWorkflow: research.recommendedWorkflow,
     evidenceBoundaries: buildEvidenceBoundaries(),
   };
+
+  engagementStore.set(brief.runId, brief);
+  return brief;
+}
+
+export function updateResearchEngagement(
+  runId: string,
+  patch: ResearchEngagementPatch,
+): ResearchEngagementBrief {
+  const existing = engagementStore.get(runId);
+  if (!existing) {
+    throw new Error(
+      `update_research_engagement: unknown runId "${runId}". Call start_research_engagement first; engagement state lives in-memory and resets when the MCP server restarts.`,
+    );
+  }
+  const updated = rebuildBrief(existing, patch);
+  engagementStore.set(runId, updated);
+  return updated;
+}
+
+export function getResearchEngagement(
+  runId: string,
+): ResearchEngagementBrief | undefined {
+  return engagementStore.get(runId);
+}
+
+// Test-only escape hatch so unit tests can reset the singleton between cases.
+export function _clearEngagementStore(): void {
+  engagementStore.clear();
 }
 
 export function formatResearchEngagementBrief(

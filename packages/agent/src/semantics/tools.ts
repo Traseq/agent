@@ -10,6 +10,8 @@ import {
   runGuidedResearchRound,
   startResearchEngagement,
   summarizeResearchEngagement,
+  updateResearchEngagement,
+  type ResearchEngagementPatch,
 } from '../guided-research.js';
 import { formatResearchReport } from '../report.js';
 import { runResearchRunner } from '../research-runner.js';
@@ -45,7 +47,9 @@ export interface AgentToolDefinition {
     | 'evaluate_research_result'
     | 'format_research_report'
     | 'explain_validation_issues'
-    | 'suggest_minimal_repairs';
+    | 'suggest_minimal_repairs'
+    | 'compose_strategy_from_template'
+    | 'update_research_engagement';
   readonly description: string;
   readonly input_schema: Record<string, unknown>;
   readonly local: true;
@@ -82,6 +86,99 @@ function objectSchema(
     ...(required.length > 0 ? { required: [...required] } : {}),
     properties,
   };
+}
+
+interface PreflightWarningIssue {
+  code: string;
+  path: string;
+  field: string;
+  message: string;
+  severity: 'warning';
+  suggestion?: string;
+}
+
+function tierAwarePreflightIssues(
+  draft: Record<string, unknown>,
+  capabilities: unknown,
+): PreflightWarningIssue[] {
+  const caps = asJsonObject(capabilities);
+  const limits = asJsonObject(caps?.limits);
+  if (!limits) return [];
+  const signalGraph = asJsonObject(draft.signalGraph);
+  const strategy = asJsonObject(signalGraph?.strategy);
+  if (!strategy) return [];
+
+  const issues: PreflightWarningIssue[] = [];
+
+  const entry = asJsonObject(strategy.entry);
+  const filters = Array.isArray(entry?.filters) ? entry.filters : undefined;
+  const maxEntryConditions =
+    typeof limits.maxEntryConditions === 'number'
+      ? limits.maxEntryConditions
+      : undefined;
+  if (filters && maxEntryConditions !== undefined) {
+    // +1 because the trigger ref also counts as a condition under the public
+    // condition-limit semantics (mirrors how the backend's
+    // version-validation.service counts entries).
+    const entryConditionCount = filters.length + 1;
+    if (entryConditionCount > maxEntryConditions) {
+      issues.push({
+        code: 'tier_entry_condition_limit',
+        path: 'signalGraph.strategy.entry.filters',
+        field: 'signalGraph',
+        severity: 'warning',
+        message: `Entry has ${entryConditionCount} conditions (trigger + ${filters.length} filters) but the current tier caps maxEntryConditions at ${maxEntryConditions}. validate_strategy will reject this; reduce filters or upgrade.`,
+        suggestion:
+          'Combine related filters with a logical "all" or "any" node so the entry uses fewer top-level filters.',
+      });
+    }
+  }
+
+  const exits = Array.isArray(strategy.exits) ? strategy.exits : undefined;
+  const maxExitConditions =
+    typeof limits.maxExitConditions === 'number'
+      ? limits.maxExitConditions
+      : undefined;
+  const maxExits =
+    typeof limits.maxExits === 'number' ? limits.maxExits : undefined;
+  if (exits) {
+    if (maxExits !== undefined && exits.length > maxExits) {
+      issues.push({
+        code: 'tier_exit_limit',
+        path: 'signalGraph.strategy.exits',
+        field: 'signalGraph',
+        severity: 'warning',
+        message: `Strategy has ${exits.length} exit blocks but the current tier caps maxExits at ${maxExits}. Merge them with an "any" logical node so the strategy uses a single exit block referencing the merged condition.`,
+        suggestion:
+          'Add a logic node {kind: "logic", op: "any", inputs: [<each exit cond ref>]} and point the single exit at it.',
+      });
+    }
+    if (maxExitConditions !== undefined) {
+      // Sum exit conditions across all exit blocks (each exit "when" ref is
+      // one, plus any filters within). Matches the backend tier counter.
+      let totalExitConditions = 0;
+      for (const exitNode of exits) {
+        const exitObj = asJsonObject(exitNode);
+        if (!exitObj) continue;
+        totalExitConditions += 1; // the when ref
+        const exitFilters = Array.isArray(exitObj.filters)
+          ? exitObj.filters
+          : undefined;
+        if (exitFilters) totalExitConditions += exitFilters.length;
+      }
+      if (totalExitConditions > maxExitConditions) {
+        issues.push({
+          code: 'tier_exit_condition_limit',
+          path: 'signalGraph.strategy.exits',
+          field: 'signalGraph',
+          severity: 'warning',
+          message: `Exit logic has ${totalExitConditions} conditions but the current tier caps maxExitConditions at ${maxExitConditions}. Simplify the exit logic before calling validate_strategy.`,
+        });
+      }
+    }
+  }
+
+  return issues;
 }
 
 export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
@@ -301,6 +398,41 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
       ['draft', 'validation'],
     ),
   },
+  {
+    name: 'update_research_engagement',
+    description:
+      'Patch an existing in-memory research engagement (riskTolerance, instrument, timeframe, positionStyle, objective, initialBalance, maxConcurrentPositions) without re-running the manifest/workspace/usage/capabilities fetch. Use after start_research_engagement when the user adjusts a parameter mid-conversation. State is per-process and resets when the MCP server restarts.',
+    local: true,
+    input_schema: objectSchema(
+      {
+        runId: stringProp,
+        riskTolerance: enumProp(RISK_TOLERANCE_VALUES),
+        instrument: stringProp,
+        timeframe: enumProp(TIMEFRAME_VALUES),
+        positionStyle: enumProp(POSITION_STYLE_VALUES),
+        objective: stringProp,
+        initialBalance: numberProp,
+        maxConcurrentPositions: numberProp,
+      },
+      ['runId'],
+    ),
+  },
+  {
+    name: 'compose_strategy_from_template',
+    description:
+      'Fork a Traseq system strategy template and produce a draft (signalGraph + settings) that has already passed local preflight. Avoids hand-authoring 10+ node signal graphs from scratch — pass templateKey plus optional name/description and a settings override (shallow merged into the template settings). The returned draft can be passed straight to run_guided_research_round or validate_strategy.',
+    local: true,
+    input_schema: objectSchema(
+      {
+        templateKey: stringProp,
+        name: stringProp,
+        description: stringProp,
+        settingsOverride: objectProp,
+        capabilities: objectProp,
+      },
+      ['templateKey'],
+    ),
+  },
 ];
 
 export function getAgentToolDefinition(
@@ -435,7 +567,25 @@ export async function runAgentTool(
       if (!draft) {
         throw new Error('preflight_strategy_draft requires draft.');
       }
-      return preflightStrategyDraft(draft, input.capabilities);
+      const result = preflightStrategyDraft(draft, input.capabilities);
+      // P2-I: tier-aware lint. The SDK preflight runs the structural schema;
+      // we layer count-based capacity checks on top so the LLM sees "you have
+      // 3 entry filters but free tier caps at 2" before validate_strategy
+      // returns a 400 for the same reason. Warnings (severity: 'warning') are
+      // additive — never flip valid:false — so callers can choose to ignore
+      // and let the backend reconfirm.
+      const tierIssues = tierAwarePreflightIssues(draft, input.capabilities);
+      if (tierIssues.length === 0) {
+        return result;
+      }
+      return {
+        ...result,
+        summary: {
+          errors: result.summary?.errors ?? 0,
+          warnings: (result.summary?.warnings ?? 0) + tierIssues.length,
+        },
+        issues: [...(result.issues ?? []), ...tierIssues],
+      };
     }
     case 'start_research_engagement': {
       if (!isResearchContextClient(options.client)) {
@@ -644,6 +794,110 @@ export async function runAgentTool(
         draft: draft as unknown as StrategyDraftLike,
         validation: validation as unknown as ValidationSummaryLike,
       });
+    }
+    case 'update_research_engagement': {
+      const runId = typeof input.runId === 'string' ? input.runId.trim() : '';
+      if (!runId) {
+        throw new Error('update_research_engagement requires runId.');
+      }
+      const patch: ResearchEngagementPatch = {};
+      if (typeof input.riskTolerance === 'string') {
+        patch.riskTolerance = input.riskTolerance as NonNullable<
+          ResearchEngagementPatch['riskTolerance']
+        >;
+      }
+      if (typeof input.instrument === 'string') {
+        patch.instrument = input.instrument;
+      }
+      if (typeof input.timeframe === 'string') {
+        patch.timeframe = input.timeframe;
+      }
+      if (typeof input.positionStyle === 'string') {
+        patch.positionStyle = input.positionStyle;
+      }
+      if (typeof input.objective === 'string') {
+        patch.objective = input.objective;
+      }
+      if (typeof input.initialBalance === 'number') {
+        patch.initialBalance = input.initialBalance;
+      }
+      if (typeof input.maxConcurrentPositions === 'number') {
+        patch.maxConcurrentPositions = input.maxConcurrentPositions;
+      }
+      return updateResearchEngagement(runId, patch);
+    }
+    case 'compose_strategy_from_template': {
+      const templateKey =
+        typeof input.templateKey === 'string' ? input.templateKey.trim() : '';
+      if (!templateKey) {
+        throw new Error('compose_strategy_from_template requires templateKey.');
+      }
+      const client = options.client as
+        | (Pick<TraseqClient, 'getSystemStrategy' | 'getCapabilities'> &
+            Record<string, unknown>)
+        | undefined;
+      if (!client || typeof client.getSystemStrategy !== 'function') {
+        throw new Error(
+          'compose_strategy_from_template requires a Traseq client with getSystemStrategy.',
+        );
+      }
+      const template = await client.getSystemStrategy(templateKey);
+      if (!template?.signalGraph) {
+        throw new Error(
+          `compose_strategy_from_template: template "${templateKey}" has no signalGraph (template may be deprecated or token-only).`,
+        );
+      }
+      const overrideSettings = asJsonObject(input.settingsOverride) ?? {};
+      const baseSettings = asJsonObject(template.settings) ?? {};
+      // Shallow merge: caller is responsible for keeping discriminated-union
+      // shape consistent. If they change positionStyle they must also pass the
+      // fields that style requires; preflightStrategyDraft will catch the
+      // mismatch and the caller fixes it before validate_strategy is called.
+      const mergedSettings = { ...baseSettings, ...overrideSettings };
+      const draft: Record<string, unknown> = {
+        name:
+          typeof input.name === 'string' && input.name.trim()
+            ? input.name.trim()
+            : (template.name ?? `Forked from ${templateKey}`),
+        signalGraph: template.signalGraph,
+        settings: mergedSettings,
+      };
+      if (typeof input.description === 'string' && input.description.trim()) {
+        draft.description = input.description.trim();
+      } else if (typeof template.description === 'string') {
+        draft.description = template.description;
+      }
+      let capabilities = input.capabilities;
+      if (
+        capabilities === undefined &&
+        typeof client.getCapabilities === 'function'
+      ) {
+        try {
+          capabilities = await client.getCapabilities();
+        } catch {
+          // Preflight tolerates undefined capabilities (skips capability
+          // checks, runs structural ones). Fall back gracefully.
+        }
+      }
+      const preflight = preflightStrategyDraft(draft, capabilities);
+      return {
+        template: {
+          key: templateKey,
+          ...(typeof template.name === 'string' ? { name: template.name } : {}),
+          ...(typeof template.description === 'string'
+            ? { description: template.description }
+            : {}),
+          ...(typeof template.category === 'string'
+            ? { category: template.category }
+            : {}),
+          ...(Array.isArray(template.tags) ? { tags: template.tags } : {}),
+        },
+        draft,
+        preflight,
+        nextStep: preflight.valid
+          ? 'Pass `draft` to run_guided_research_round (or validate_strategy) — preflight already cleared.'
+          : 'Read `preflight.issues` for code/path/severity, fix the override settings, and re-call this tool. Common cause: changing positionStyle without supplying the required fields for the new style.',
+      };
     }
     default: {
       const _exhaustive: never = name;

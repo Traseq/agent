@@ -145,8 +145,9 @@ export function explainTraseqError(
           ? error.parsedBody.errorCode
           : 'traseq_request_failed',
       category:
-        Array.isArray(error.parsedBody?.issues) &&
-        error.parsedBody.issues.length > 0
+        (Array.isArray(error.parsedBody?.issues) &&
+          error.parsedBody.issues.length > 0) ||
+        error.parsedBody?.errorCode === 'validation_failed'
           ? 'validation'
           : 'runtime',
       retryable: false,
