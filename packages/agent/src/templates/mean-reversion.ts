@@ -8,7 +8,7 @@ export const meanReversionTemplate: StrategyTemplate = {
   thesis:
     'Price tends to revert to the mean after touching statistical extremes. The lower Bollinger Band combined with RSI oversold identifies high-probability reversion points.',
   adaptationHints: [
-    'Adjust BB stdDev (1.5-3.0) to widen or narrow the bands.',
+    'Adjust BB multiplier (1.5-3.0) to widen or narrow the bands.',
     'Change RSI oversold threshold (20-35) for sensitivity.',
     'Replace BB middle exit with a take-profit target for faster exits.',
     'Add a volume spike confirmation for stronger signals.',
@@ -27,7 +27,8 @@ export const meanReversionTemplate: StrategyTemplate = {
           id: 'bb',
           kind: 'indicator',
           indicator: 'bbands',
-          args: { length: 20, stdDev: 2 },
+          args: { length: 20, multiplier: 2 },
+          output: 'lower',
         },
         {
           id: 'rsi_14',

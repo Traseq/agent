@@ -9,16 +9,21 @@ import type {
   ComparisonSetDetail,
   ComparisonSetListResponse,
   ComparisonSetRequest,
+  ConfirmStrategyLifecycleRequest,
+  CreateSignalMonitorRequest,
   CreateStrategyRequest,
   CreateStrategyResponse,
   CreateStrategyVersionRequest,
+  CreateWebhookEndpointRequest,
+  CreateWebhookEndpointResponse,
   FinalizeStrategyVersionRequest,
   FinalizeStrategyVersionResponse,
   JsonObject,
   ListAnalysisRunsQuery,
   ListBacktestsQuery,
-  ListBlocksQuery,
   ListComparisonSetsQuery,
+  ListSignalEventsQuery,
+  ListSignalMonitorsQuery,
   ListStrategiesQuery,
   ListSystemStrategiesQuery,
   PineExportRequest,
@@ -28,19 +33,27 @@ import type {
   RobustnessAnalysisPreview,
   RunBacktestRequest,
   RunBacktestResponse,
+  SignalEvent,
+  SignalEventListResponse,
+  SignalMonitor,
+  SignalMonitorListResponse,
   StrategyDetail,
   StrategyAuthoringPayload,
   StrategyVersionDetail,
   SystemStrategyDetail,
   SystemStrategyListResponse,
   TraseqValidationResponse,
+  UpdateSignalMonitorRequest,
   UpdateStrategyRequest,
   UpdateStrategyVersionRequest,
+  UpdateWebhookEndpointRequest,
+  WebhookEndpoint,
+  WebhookEndpointListResponse,
+  WebhookEndpointTestResponse,
   WorkspaceContext,
   WorkspaceUsageSummary,
-  BlockDetail,
-  BlockListResponse,
-  BlockRequest,
+  BacktestCostEstimate,
+  BacktestCostEstimateInput,
 } from './types.js';
 import {
   fetchWithPolicy,
@@ -145,6 +158,16 @@ export class TraseqClient {
     return this.request<WorkspaceUsageSummary>('GET', '/public/v1/usage');
   }
 
+  estimateBacktestCost(
+    input: BacktestCostEstimateInput,
+  ): Promise<BacktestCostEstimate> {
+    return this.request<BacktestCostEstimate>(
+      'POST',
+      '/public/v1/usage/estimate',
+      input,
+    );
+  }
+
   getCapabilities(): Promise<CapabilityDocument> {
     return this.request<CapabilityDocument>('GET', '/public/v1/capabilities');
   }
@@ -220,6 +243,35 @@ export class TraseqClient {
     return this.request<StrategyDetail>(
       'PATCH',
       `/public/v1/strategies/${encodeURIComponent(strategyId)}`,
+      payload,
+    );
+  }
+
+  trashStrategy(
+    strategyId: string,
+    payload: ConfirmStrategyLifecycleRequest,
+  ): Promise<StrategyDetail> {
+    return this.request<StrategyDetail>(
+      'POST',
+      `/public/v1/strategies/${encodeURIComponent(strategyId)}/trash`,
+      payload,
+    );
+  }
+
+  restoreStrategy(strategyId: string): Promise<StrategyDetail> {
+    return this.request<StrategyDetail>(
+      'POST',
+      `/public/v1/strategies/${encodeURIComponent(strategyId)}/restore`,
+    );
+  }
+
+  purgeStrategy(
+    strategyId: string,
+    payload: ConfirmStrategyLifecycleRequest,
+  ): Promise<JsonObject> {
+    return this.request<JsonObject>(
+      'POST',
+      `/public/v1/strategies/${encodeURIComponent(strategyId)}/purge`,
       payload,
     );
   }
@@ -306,14 +358,6 @@ export class TraseqClient {
     return this.request<JsonObject>(
       'POST',
       `/public/v1/strategies/${encodeURIComponent(strategyId)}/versions/${encodeURIComponent(String(version))}/pine-export`,
-      payload,
-    );
-  }
-
-  validateConflicts(payload: JsonObject): Promise<JsonObject> {
-    return this.request<JsonObject>(
-      'POST',
-      '/public/v1/strategies/validate-conflicts',
       payload,
     );
   }
@@ -476,53 +520,107 @@ export class TraseqClient {
     );
   }
 
-  listBlocks(query?: ListBlocksQuery): Promise<BlockListResponse> {
-    return this.request<BlockListResponse>(
-      'GET',
-      `/public/v1/blocks${buildQuery(query)}`,
-    );
-  }
-
-  getBlock(blockId: string): Promise<BlockDetail> {
-    return this.request<BlockDetail>(
-      'GET',
-      `/public/v1/blocks/${encodeURIComponent(blockId)}`,
-    );
-  }
-
-  createBlock(payload: BlockRequest): Promise<BlockDetail> {
-    return this.request<BlockDetail>('POST', '/public/v1/blocks', payload);
-  }
-
-  updateBlock(
-    blockId: string,
-    payload: Partial<BlockRequest>,
-  ): Promise<BlockDetail> {
-    return this.request<BlockDetail>(
-      'PATCH',
-      `/public/v1/blocks/${encodeURIComponent(blockId)}`,
+  createSignalMonitor(
+    payload: CreateSignalMonitorRequest,
+  ): Promise<SignalMonitor> {
+    return this.request<SignalMonitor>(
+      'POST',
+      '/public/v1/signal-monitors',
       payload,
     );
   }
 
-  deleteBlock(blockId: string): Promise<JsonObject> {
+  listSignalMonitors(
+    query?: ListSignalMonitorsQuery,
+  ): Promise<SignalMonitorListResponse> {
+    return this.request<SignalMonitorListResponse>(
+      'GET',
+      `/public/v1/signal-monitors${buildQuery(query)}`,
+    );
+  }
+
+  getSignalMonitor(monitorId: string): Promise<SignalMonitor> {
+    return this.request<SignalMonitor>(
+      'GET',
+      `/public/v1/signal-monitors/${encodeURIComponent(monitorId)}`,
+    );
+  }
+
+  updateSignalMonitor(
+    monitorId: string,
+    payload: UpdateSignalMonitorRequest,
+  ): Promise<SignalMonitor> {
+    return this.request<SignalMonitor>(
+      'PATCH',
+      `/public/v1/signal-monitors/${encodeURIComponent(monitorId)}`,
+      payload,
+    );
+  }
+
+  deleteSignalMonitor(monitorId: string): Promise<JsonObject> {
     return this.request<JsonObject>(
       'DELETE',
-      `/public/v1/blocks/${encodeURIComponent(blockId)}`,
+      `/public/v1/signal-monitors/${encodeURIComponent(monitorId)}`,
     );
   }
 
-  pinBlock(blockId: string): Promise<BlockDetail> {
-    return this.request<BlockDetail>(
+  listSignalEvents(
+    query?: ListSignalEventsQuery,
+  ): Promise<SignalEventListResponse> {
+    return this.request<SignalEventListResponse>(
+      'GET',
+      `/public/v1/signal-events${buildQuery(query)}`,
+    );
+  }
+
+  getSignalEvent(eventId: string): Promise<SignalEvent> {
+    return this.request<SignalEvent>(
+      'GET',
+      `/public/v1/signal-events/${encodeURIComponent(eventId)}`,
+    );
+  }
+
+  createWebhookEndpoint(
+    payload: CreateWebhookEndpointRequest,
+  ): Promise<CreateWebhookEndpointResponse> {
+    return this.request<CreateWebhookEndpointResponse>(
       'POST',
-      `/public/v1/blocks/${encodeURIComponent(blockId)}/pin`,
+      '/public/v1/webhook-endpoints',
+      payload,
     );
   }
 
-  unpinBlock(blockId: string): Promise<BlockDetail> {
-    return this.request<BlockDetail>(
+  listWebhookEndpoints(): Promise<WebhookEndpointListResponse> {
+    return this.request<WebhookEndpointListResponse>(
+      'GET',
+      '/public/v1/webhook-endpoints',
+    );
+  }
+
+  updateWebhookEndpoint(
+    endpointId: string,
+    payload: UpdateWebhookEndpointRequest,
+  ): Promise<WebhookEndpoint> {
+    return this.request<WebhookEndpoint>(
+      'PATCH',
+      `/public/v1/webhook-endpoints/${encodeURIComponent(endpointId)}`,
+      payload,
+    );
+  }
+
+  deleteWebhookEndpoint(endpointId: string): Promise<JsonObject> {
+    return this.request<JsonObject>(
       'DELETE',
-      `/public/v1/blocks/${encodeURIComponent(blockId)}/pin`,
+      `/public/v1/webhook-endpoints/${encodeURIComponent(endpointId)}`,
+    );
+  }
+
+  testWebhookEndpoint(
+    endpointId: string,
+  ): Promise<WebhookEndpointTestResponse> {
+    return this.request<WebhookEndpointTestResponse>(
+      'POST',
+      `/public/v1/webhook-endpoints/${encodeURIComponent(endpointId)}/test`,
     );
   }
 

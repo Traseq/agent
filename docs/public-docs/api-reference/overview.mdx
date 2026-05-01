@@ -38,14 +38,12 @@ With the Public Agent API you can:
 - validate, create, and finalize strategies
 - queue backtests and poll for results
 
-### Strategy payload formats
+### Strategy Payload Format
 
-The API accepts two strategy formats:
-
-- **SignalGraph** — a higher-level authoring format, recommended for AI agents
-  and external integrations. The backend compiles it into the canonical format
-  automatically.
-- **StrategyAst** — the canonical format, for agents that produce it directly.
+The Public Agent API accepts **SignalGraph v2** for strategy authoring. This is
+the stable external contract for AI agents and integrations. The backend may
+compile it into internal execution formats, but agents should not submit those
+internal representations.
 
 Always validate your payload with `POST /public/v1/strategies/validate` before
 creating or finalizing a strategy.
@@ -63,9 +61,11 @@ x-api-key: trsq_live_<keyId>_<secret>
 3. Call `GET /public/v1/workspace` to check your role, scopes, and plan limits.
 4. Call `GET /public/v1/usage` before write or backtest work to check current
    budget and hard limits.
-5. Call `GET /public/v1/capabilities` to learn which indicators, operators, and
-   settings are available before composing a payload.
-6. Build a `signalGraph` or `strategyAst` payload, then validate and create.
+5. Call `GET /public/v1/capabilities` to learn which indicators, node fields,
+   strategy bindings, risk metadata, operators, and settings are available
+   before composing a payload.
+6. Build a `signalGraph` payload, run local preflight if using the SDK/MCP
+   tools, then validate and create.
 7. When reading backtest results, check `result.summaryJson.strategyTrace` and
    `result.summaryJson.ruleStatsSummary` before fetching larger artifacts.
 

@@ -1,6 +1,6 @@
 {
   "name": "@traseq/agent",
-  "version": "0.1.5",
+  "version": "0.6.0",
   "type": "module",
   "description": "Guided Traseq strategy research service kit with MCP setup, SDK wrappers, strategy context, scoring, and reports.",
   "license": "MIT",
@@ -26,8 +26,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "traseq-agent": "./dist/cli.js",
-    "traseq-agent-mcp": "./dist/mcp-cli.js"
+    "traseq-agent": "./dist/cli.js"
   },
   "exports": {
     ".": {
@@ -61,6 +60,10 @@
     "./mcp": {
       "types": "./dist/mcp/index.d.ts",
       "import": "./dist/mcp/index.js"
+    },
+    "./events": {
+      "types": "./dist/events/index.d.ts",
+      "import": "./dist/events/index.js"
     },
     "./research": {
       "types": "./dist/research.d.ts",
@@ -101,7 +104,9 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@traseq/sdk": "workspace:*"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@traseq/sdk": "workspace:*",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -34,6 +34,22 @@ function bodyMessage(
   return fallback;
 }
 
+function formatValidationIssues(
+  issues: TraseqPublicApiErrorBody['issues'],
+): string {
+  if (!Array.isArray(issues) || issues.length === 0) {
+    return '';
+  }
+
+  return issues
+    .map((issue) => {
+      const code = issue.code ? `[${issue.code}] ` : '';
+      const path = issue.path ? `${issue.path}: ` : '';
+      return `- ${code}${path}${issue.message}`;
+    })
+    .join('\n');
+}
+
 const API_KEY_AUTH_HELP = [
   'Check that TRASEQ_API_KEY is a Traseq workspace API key, not a wallet private key or exchange secret.',
   'If the key was lost, expired, revoked, or has insufficient scopes, create or rotate it from Settings > API Keys in the Traseq app.',
@@ -124,11 +140,23 @@ export function explainTraseqError(
 
     return {
       status: error.status,
-      code: 'traseq_request_failed',
-      category: 'runtime',
+      code:
+        typeof error.parsedBody?.errorCode === 'string'
+          ? error.parsedBody.errorCode
+          : 'traseq_request_failed',
+      category:
+        Array.isArray(error.parsedBody?.issues) &&
+        error.parsedBody.issues.length > 0
+          ? 'validation'
+          : 'runtime',
       retryable: false,
       title: 'Traseq request failed',
-      explanation: bodyMessage(error.parsedBody, error.body ?? error.message),
+      explanation: [
+        bodyMessage(error.parsedBody, error.body ?? error.message),
+        formatValidationIssues(error.parsedBody?.issues),
+      ]
+        .filter(Boolean)
+        .join('\n'),
       nextSteps: ['Inspect the response message and adjust the request.'],
       links: [],
     };

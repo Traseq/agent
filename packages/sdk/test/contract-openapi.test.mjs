@@ -67,12 +67,6 @@ const CLIENT_METHOD_MAP = [
     path: '/public/v1/strategies/validate',
     requestBody: true,
   },
-  {
-    method: 'validateConflicts',
-    verb: 'POST',
-    path: '/public/v1/strategies/validate-conflicts',
-    requestBody: true,
-  },
   { method: 'listStrategies', verb: 'GET', path: '/public/v1/strategies' },
   {
     method: 'createStrategy',
@@ -85,6 +79,23 @@ const CLIENT_METHOD_MAP = [
     method: 'updateStrategy',
     verb: 'PATCH',
     path: '/public/v1/strategies/:param',
+    requestBody: true,
+  },
+  {
+    method: 'trashStrategy',
+    verb: 'POST',
+    path: '/public/v1/strategies/:param/trash',
+    requestBody: true,
+  },
+  {
+    method: 'restoreStrategy',
+    verb: 'POST',
+    path: '/public/v1/strategies/:param/restore',
+  },
+  {
+    method: 'purgeStrategy',
+    verb: 'POST',
+    path: '/public/v1/strategies/:param/purge',
     requestBody: true,
   },
   {
@@ -228,30 +239,69 @@ const CLIENT_METHOD_MAP = [
     verb: 'DELETE',
     path: '/public/v1/comparison-sets/:param',
   },
-  { method: 'listBlocks', verb: 'GET', path: '/public/v1/blocks' },
-  { method: 'getBlock', verb: 'GET', path: '/public/v1/blocks/:param' },
   {
-    method: 'createBlock',
+    method: 'createSignalMonitor',
     verb: 'POST',
-    path: '/public/v1/blocks',
+    path: '/public/v1/signal-monitors',
     requestBody: true,
   },
   {
-    method: 'updateBlock',
+    method: 'listSignalMonitors',
+    verb: 'GET',
+    path: '/public/v1/signal-monitors',
+  },
+  {
+    method: 'getSignalMonitor',
+    verb: 'GET',
+    path: '/public/v1/signal-monitors/:param',
+  },
+  {
+    method: 'updateSignalMonitor',
     verb: 'PATCH',
-    path: '/public/v1/blocks/:param',
+    path: '/public/v1/signal-monitors/:param',
     requestBody: true,
   },
-  { method: 'deleteBlock', verb: 'DELETE', path: '/public/v1/blocks/:param' },
   {
-    method: 'pinBlock',
-    verb: 'POST',
-    path: '/public/v1/blocks/:param/pin',
+    method: 'deleteSignalMonitor',
+    verb: 'DELETE',
+    path: '/public/v1/signal-monitors/:param',
   },
   {
-    method: 'unpinBlock',
+    method: 'listSignalEvents',
+    verb: 'GET',
+    path: '/public/v1/signal-events',
+  },
+  {
+    method: 'getSignalEvent',
+    verb: 'GET',
+    path: '/public/v1/signal-events/:param',
+  },
+  {
+    method: 'createWebhookEndpoint',
+    verb: 'POST',
+    path: '/public/v1/webhook-endpoints',
+    requestBody: true,
+  },
+  {
+    method: 'listWebhookEndpoints',
+    verb: 'GET',
+    path: '/public/v1/webhook-endpoints',
+  },
+  {
+    method: 'updateWebhookEndpoint',
+    verb: 'PATCH',
+    path: '/public/v1/webhook-endpoints/:param',
+    requestBody: true,
+  },
+  {
+    method: 'deleteWebhookEndpoint',
     verb: 'DELETE',
-    path: '/public/v1/blocks/:param/pin',
+    path: '/public/v1/webhook-endpoints/:param',
+  },
+  {
+    method: 'testWebhookEndpoint',
+    verb: 'POST',
+    path: '/public/v1/webhook-endpoints/:param/test',
   },
 ];
 

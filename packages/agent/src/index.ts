@@ -29,15 +29,32 @@ export {
   runPlatformTool,
 } from './client/index.js';
 export {
+  GUIDED_RESEARCH_PROMPT_DESCRIPTION,
+  GUIDED_RESEARCH_PROMPT_NAME,
   MCP_CLIENTS,
   MCP_SCOPES,
+  MCP_SERVICE_INSTRUCTIONS,
+  NEXT_PROMPT_DEFAULT,
   buildClientInstallPlan,
   buildMcpServerConfig,
   formatShellCommand,
+  guidedResearchPromptText,
   probeTraseqMcpSetup,
   redactMcpInstallPlan,
   startMcpServer,
 } from './mcp/index.js';
+export { toToolList } from './mcp/server.js';
+export {
+  DEFAULT_MCP_PROFILE,
+  GUIDED_PLATFORM_OPS,
+  parseMcpProfile,
+  platformOperationsForProfile,
+} from './mcp/profile.js';
+export type { McpProfile } from './mcp/profile.js';
+export {
+  explainValidationIssues,
+  suggestMinimalRepairs,
+} from './semantics/repair.js';
 
 // Operational layer
 export { buildScoreBreakdown } from './scoring.js';
@@ -49,6 +66,10 @@ export {
   evaluateResearchRound,
 } from './evaluation.js';
 export { buildResearchArtifactBundle, formatResearchReport } from './report.js';
+export {
+  renderUsageStatusMarkdown,
+  summarizeUsageHints,
+} from './usage-hints.js';
 export { runResearch, normalizeRequest } from './research.js';
 export {
   formatResearchEngagementBrief,
@@ -64,6 +85,11 @@ export {
   selectChampionRound,
 } from './research-runner.js';
 export { fetchWithRetry, type RetryOptions } from './http.js';
+export {
+  listenForSignalEvents,
+  serveSignalWebhook,
+  testEventAdapter,
+} from './events/index.js';
 export {
   readEnv,
   readNumberEnv,
@@ -167,6 +193,16 @@ export type {
   OperationDefinition,
   OperationName,
 } from './generated/operation-registry.js';
+export type {
+  SummarizeUsageHintsInput,
+  UsageBottleneck,
+  UsageBottleneckResource,
+  UsageHintLevel,
+  UsageHintTier,
+  UsageHintUnit,
+  UsageStatus,
+} from './usage-hints.js';
+export type { EventAdapter, EventAdapterContext } from './events/index.js';
 export type {
   AgentToolDefinition,
   AgentToolName,

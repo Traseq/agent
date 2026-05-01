@@ -145,7 +145,7 @@ export function normalizeDraft(draft: unknown): StrategyDraftLike {
 
 function normalizeValidationIssues(
   value: unknown,
-): NonNullable<ValidationSummaryLike['issues']['tokens']> {
+): NonNullable<ValidationSummaryLike['issues']['signalGraph']> {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -168,7 +168,7 @@ function normalizeValidationIssues(
           : undefined;
 
       const issue: NonNullable<
-        ValidationSummaryLike['issues']['tokens']
+        ValidationSummaryLike['issues']['signalGraph']
       >[number] = {
         message,
       };
@@ -181,6 +181,11 @@ function normalizeValidationIssues(
       const path = asString(source.path);
       if (path) {
         issue.path = path;
+      }
+
+      const field = asString(source.field);
+      if (field) {
+        issue.field = field;
       }
 
       const suggestion = asString(source.suggestion);
@@ -197,17 +202,80 @@ function normalizeValidationIssues(
         issue.severity = severity;
       }
 
+      const blockA = asBlockRef(source.blockA);
+      if (blockA) {
+        issue.blockA = blockA;
+      }
+      const blockB = asBlockRef(source.blockB);
+      if (blockB) {
+        issue.blockB = blockB;
+      }
+
       return issue;
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
+}
+
+function asBlockRef(value: unknown): { id: string; name: string } | undefined {
+  const source = asJsonObject(value);
+  if (!source) {
+    return undefined;
+  }
+  const id = asString(source.id);
+  const name = asString(source.name);
+  if (!id || !name) {
+    return undefined;
+  }
+  return { id, name };
+}
+
+type IssueGroup = 'signalGraph' | 'settings' | 'conflicts';
+
+function groupForIssue(
+  issue: NonNullable<ValidationSummaryLike['issues']['signalGraph']>[number],
+): IssueGroup {
+  if (issue.blockA || issue.blockB) {
+    return 'conflicts';
+  }
+  switch (issue.field) {
+    case 'signalGraph':
+    case 'settings':
+    case 'conflicts':
+      return issue.field;
+  }
+  const path = issue.path ?? '';
+  if (path.startsWith('settings')) return 'settings';
+  if (path.startsWith('conflicts')) return 'conflicts';
+  return 'signalGraph';
 }
 
 export function normalizeValidation(
   validation: unknown,
 ): ValidationSummaryLike {
   const source = asJsonObject(validation) ?? {};
-  const issues = asJsonObject(source.issues) ?? {};
+  const rawIssues = source.issues;
 
+  if (Array.isArray(rawIssues)) {
+    const issueList = normalizeValidationIssues(rawIssues);
+    const grouped: Required<ValidationSummaryLike['issues']> = {
+      signalGraph: [],
+      settings: [],
+      conflicts: [],
+    };
+    for (const issue of issueList) {
+      grouped[groupForIssue(issue)].push(issue);
+    }
+    return {
+      valid: source.valid === true,
+      summary: {
+        errors: asNumber(asJsonObject(source.summary)?.errors) ?? 0,
+        warnings: asNumber(asJsonObject(source.summary)?.warnings) ?? 0,
+      },
+      issues: grouped,
+    };
+  }
+
+  const issues = asJsonObject(rawIssues) ?? {};
   return {
     valid: source.valid === true,
     summary: {
@@ -215,7 +283,7 @@ export function normalizeValidation(
       warnings: asNumber(asJsonObject(source.summary)?.warnings) ?? 0,
     },
     issues: {
-      tokens: normalizeValidationIssues(issues.tokens),
+      signalGraph: normalizeValidationIssues(issues.signalGraph),
       settings: normalizeValidationIssues(issues.settings),
       conflicts: normalizeValidationIssues(issues.conflicts),
     },

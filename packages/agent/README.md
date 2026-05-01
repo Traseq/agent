@@ -13,12 +13,19 @@ material, and scoring helpers for lower-level automation.
 
 This package does not call an AI provider and does not place live orders. Your
 agent is responsible for reasoning and authoring strategy payloads; Traseq
-handles validation, persistence, backtests, analysis runs, comparisons, and
-reusable blocks.
+handles validation, persistence, backtests, analysis runs, and comparisons.
+
+## Breaking changes (0.2.x)
+
+If you are upgrading from 0.1.x, two API contracts have changed:
+
+- **Node.js 20 is now the minimum.** The `engines.node` field is `>=20`; Node 18 is no longer supported.
+- **`runResearchRunner` no longer throws on producer / persistence / backtest errors.** It always resolves with `{ status: 'failed', stopReason }` instead. Callers that wrap the function in `try/catch` will silently treat failed runs as success — switch to checking `result.status` and `result.stopReason`. New stop reasons: `context_failed`, `persistence_failed`. Existing reasons (`producer_timeout`, `producer_error`, `validation_failed`, `backtest_timeout`, `backtest_failed`) are unchanged.
+- **`ResearchRunnerRound.draft` and `ResearchRunnerRound.validation` are now optional.** A round can fail before either is produced (for example when the upfront context fetch returns `context_failed`). TypeScript consumers may need to add `?.` access or guards.
 
 ## Requirements
 
-- Node.js 18 or newer.
+- Node.js 20 or newer.
 - A Traseq API key created from the target workspace.
 - API key scopes that match the operations your agent will perform.
 
@@ -50,54 +57,84 @@ node packages/agent/dist/cli.js check-env
 
 ## MCP In 60 Seconds
 
-`setup-mcp` installs a Claude/Codex-ready stdio MCP config and verifies the
-workspace key before the user starts a research session. For Codex:
+The fastest path is the interactive setup wizard, which probes your API key
+into the OS keychain, detects installed MCP clients, and installs the Traseq
+entry pointing at the keychain reference:
 
 ```sh
-export TRASEQ_API_KEY="trsq_..."
-npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --probe
+npx -y --package @traseq/agent@latest traseq-agent setup
 ```
 
-Dry-run is available when you want to inspect the install command and MCP JSON
-before writing config:
+Manual two-step flow (non-interactive shells, scripts, CI):
 
 ```sh
-npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --probe
+# 1. Probe and persist your API key in the OS keychain
+npx -y --package @traseq/agent@latest traseq-agent login
+
+# 2. Install MCP into Claude Code (user scope)
+npx -y --package @traseq/agent@latest traseq-agent install --target=claude-code:user
 ```
 
-Other clients follow the same pattern with client-appropriate flags
-(`--write` where supported, `--print-config` otherwise):
+Other targets:
 
 ```sh
-npx -y --package @traseq/agent traseq-agent setup-mcp --client claude-code --write --probe
-npx -y --package @traseq/agent traseq-agent setup-mcp --client claude-desktop --print-config
-npx -y --package @traseq/agent traseq-agent setup-mcp --client generic --print-config
+traseq-agent install --target=claude-code:project    # writes ./.mcp.json (no plaintext key)
+traseq-agent install --target=claude-desktop:user    # macOS/Windows config file
+traseq-agent install --target=codex:user             # shells out to `codex mcp add`
+traseq-agent install --target=file:./mcp.json        # generate JSON for manual paste
+traseq-agent install --target=file:-                 # print redacted JSON to stdout
 ```
 
-For a one-command local fallback, `setup-mcp` also accepts `--api-key`, but
-prefer `TRASEQ_API_KEY` because flag values may remain in shell history.
+`install` writes `npx -y --package @traseq/agent@^<major>.<minor>.0 traseq-agent mcp`
+into the client config and sets `TRASEQ_API_KEY_REF=keychain:traseq/api-key`. The
+MCP server resolves the keychain reference at boot. **No plaintext API key ever
+hits the client config file.** If you really want the legacy inline form, pass
+`--inline` (the secret you currently have in your shell `TRASEQ_API_KEY` env is
+used) and accept the warning. For project-scoped `.mcp.json` the writer refuses
+inline secrets unless you also pass `--i-know-this-is-shared`.
 
-Project-scoped config uses `${TRASEQ_API_KEY}` instead of inlining a secret.
-User/local setup can inline `TRASEQ_API_KEY` for a smooth personal install.
+Diagnose any failure with `doctor`:
 
-On shared hosts, prefer the dry-run output and edit the config manually: when
-`--write` runs `claude mcp add` or `codex mcp add`, the API key is briefly
-visible in `ps`/`/proc` because those CLIs accept env values via argv. Claude
-Desktop installs always inline the key into the config file directly (it does
-not expand `${VAR}` placeholders), so make sure that file is not
-world-readable.
+```sh
+traseq-agent doctor                # human output
+traseq-agent doctor --json         # machine output for CI/agents
+```
 
-`--write` runs `--probe` first (when both are passed) and refuses the install
-if the API key is rejected, so a bad key can never half-write your MCP config.
-It also preflights the target client CLI: if `codex` or `claude` is not on
-`PATH`, setup-mcp exits with the install link plus a `--print-config` fallback
-instead of leaking the underlying `spawn ENOENT` error.
+Doctor verifies Node version, OS keychain availability, secret resolvability,
+config presence across all known clients, command shape, absolute-path drift,
+npx version pinning, a live MCP `initialize` handshake against the configured
+server, and a Traseq API probe. It is the single command to run when an MCP
+server shows `✗ failed`.
 
-After setup, ask the client:
+After install, ask the client:
 
 ```text
-Help me validate a BTCUSDT 4h strategy idea. Start with Traseq research engagement first.
+Use the Traseq MCP server. First call the MCP tool `start_research_engagement` with prompt "Validate a BTCUSDT 4h strategy idea." Do not search the repo; if the tool is unavailable, tell me the Traseq MCP server is not connected.
 ```
+
+## Upgrading from 0.1.x
+
+0.2.0 is a clean break. The `setup-mcp` command and the `traseq-agent-mcp`
+binary are both gone; the stdio framing layer was rewritten on top of
+`@modelcontextprotocol/sdk` and secret handling moved to the OS keychain. Run
+this once to migrate cleanly:
+
+```sh
+# Remove every existing traseq MCP server, clear stale npx cache, reinstall fresh
+claude mcp remove --scope user traseq 2>/dev/null || true
+claude mcp remove --scope project traseq 2>/dev/null || true
+codex mcp remove traseq 2>/dev/null || true
+rm -rf "$(npm config get cache)/_npx" 2>/dev/null || true
+
+npx -y --package @traseq/agent@latest traseq-agent login
+npx -y --package @traseq/agent@latest traseq-agent install --target=claude-code:user
+npx -y --package @traseq/agent@latest traseq-agent doctor
+```
+
+If your previous `~/.claude.json` had a `trsq_live_*` key inlined under
+`mcpServers.traseq.env.TRASEQ_API_KEY`, treat it as exposed and rotate the key
+from the workspace API keys page. The 0.2.0 default never writes the live key
+to disk — only the keychain reference `keychain:traseq/api-key`.
 
 ## Guided SDK
 
@@ -130,7 +167,12 @@ backtesting, evidence evaluation, and reporting.
 ## Low-Level SDK
 
 ```ts
-import { TraseqClient, runPlatformTool } from '@traseq/agent';
+import {
+  TraseqClient,
+  assembleSignalGraphDraft,
+  preflightStrategyDraft,
+  runPlatformTool,
+} from '@traseq/agent';
 
 const client = new TraseqClient({
   baseUrl: process.env.TRASEQ_BASE_URL ?? 'https://api.traseq.com',
@@ -143,15 +185,25 @@ const client = new TraseqClient({
 const context = await client.getWorkspaceContext();
 const capabilities = await client.getCapabilities();
 
-const validation = await runPlatformTool(client, 'validate_strategy', {
-  signalGraph: {
-    protocol: 'traseq.signal-graph',
-    version: 2,
-    nodes: [],
-    strategy: { kind: 'strategy' },
-  },
-  settings: { positionStyle: 'single', warmupPeriod: 200 },
+const selectedFragments = [
+  /* resolver fragments selected by your agent */
+];
+const assembled = assembleSignalGraphDraft({
+  fragments: selectedFragments,
+  capabilities,
 });
+
+if (!assembled.valid || !assembled.draft)
+  throw new Error('local assembly failed');
+
+const preflight = preflightStrategyDraft(assembled.draft, capabilities);
+if (!preflight.valid) throw new Error('local preflight failed');
+
+const validation = await runPlatformTool(
+  client,
+  'validate_strategy',
+  assembled.draft,
+);
 ```
 
 Semantic resolution is available as a local agent helper. It does not call a
@@ -229,25 +281,18 @@ will fetch live capabilities first using `TRASEQ_API_KEY`.
 
 ## MCP
 
-Run the stdio MCP server directly:
+For first-time install run `traseq-agent setup` (see [MCP In 60 Seconds](#mcp-in-60-seconds)). To run the stdio MCP server directly:
 
 ```sh
-traseq-agent-mcp
-# or
-traseq-agent mcp
+traseq-agent mcp                   # default: --profile=guided
+traseq-agent mcp --profile=full    # expose every platform tool
 ```
 
-Use `setup-mcp` for client-specific install guidance:
-
-```sh
-traseq-agent setup-mcp --client codex
-traseq-agent setup-mcp --client claude-code
-traseq-agent setup-mcp --client claude-desktop --print-config
-traseq-agent mcp-doctor --client auto --probe
-```
-
-Example generic MCP server configuration for **Claude Desktop**, **Claude
-Code**, Codex, or another stdio MCP client:
+Generic MCP entry that points at the keychain-stored API key (the writer
+emits this shape for **Claude Desktop**, **Claude Code**, and Codex). The
+default `guided` profile is implicit, so the writer omits the `--profile`
+flag for `guided` and only appends `--profile=full` when explicitly requested
+at install time:
 
 ```json
 {
@@ -256,7 +301,7 @@ Code**, Codex, or another stdio MCP client:
       "command": "npx",
       "args": ["-y", "--package", "@traseq/agent", "traseq-agent", "mcp"],
       "env": {
-        "TRASEQ_API_KEY": "${TRASEQ_API_KEY}",
+        "TRASEQ_API_KEY_REF": "keychain:traseq/api-key",
         "TRASEQ_BASE_URL": "https://api.traseq.com"
       }
     }
@@ -264,15 +309,20 @@ Code**, Codex, or another stdio MCP client:
 }
 ```
 
-The MCP server exposes guided research tools, semantic tools, and platform
-tools. `tools/list` puts `start_research_engagement`,
+The server resolves `TRASEQ_API_KEY_REF` at boot, so no plaintext key sits in
+the client config. `tools/list` puts `start_research_engagement`,
 `run_guided_research_round`, and `summarize_research_engagement` first, and
 `prompts/list` exposes `traseq_guided_research` so clients can start with a
-service-style flow instead of guessing tool order. Destructive platform tools
-require `confirm: true` before the local runner will call the API.
-When Traseq returns structured Public Agent errors, the server formats the
-machine-readable reason, next steps, retryability, and Traseq app links for the
-calling agent.
+service-style flow instead of guessing tool order.
+
+### Profiles
+
+| Profile            | What it exposes                                                                                                                                        | When to use                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `guided` (default) | Guided research, semantics, draft authoring helpers, and read-only platform tools (workspace context, capabilities, list/get strategies and backtests) | Most agents; minimises wrong-tool calls before validation.              |
+| `full`             | Everything in `guided` plus all write/destructive/long-running platform operations                                                                     | Advanced automation, scripting, deletion sweeps, manual override flows. |
+
+Switch via env (`TRASEQ_MCP_PROFILE=full`) or CLI flag (`traseq-agent mcp --profile=full`); the install writers default to `guided` and accept `--profile=full` to override at install time. Destructive platform tools still require `confirm: true` before the local runner will call the API. When Traseq returns structured Public Agent errors, the server formats the machine-readable reason, next steps, retryability, and Traseq app links for the calling agent.
 
 ## Semantic Resolver
 
@@ -289,10 +339,12 @@ Use it when the user expresses strategy meaning, such as:
 
 Available local tools:
 
-| Tool                         | Purpose                                                                 |
-| ---------------------------- | ----------------------------------------------------------------------- |
-| `get_semantics`              | Read the local semantic ontology and optional implementation fragments. |
-| `resolve_strategy_semantics` | Resolve facets or prompt text into candidate `signalGraph` fragments.   |
+| Tool                         | Purpose                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------ |
+| `get_semantics`              | Read the local semantic ontology and optional implementation fragments.  |
+| `resolve_strategy_semantics` | Resolve facets or prompt text into candidate `signalGraph` fragments.    |
+| `assemble_signal_graph`      | Assemble selected resolver fragments into a complete draft payload.      |
+| `preflight_strategy_draft`   | Validate schema, refs, types, and legacy vocabulary before remote calls. |
 
 The resolver output is intentionally not a complete strategy. It returns:
 
@@ -303,8 +355,8 @@ The resolver output is intentionally not a complete strategy. It returns:
 - an assembly plan with recommended candidate IDs
 
 Your agent should assemble the selected fragments into a complete
-`signalGraph`, add entry action, exits or risk rules, then call
-`validate_strategy` before any create or finalize operation.
+`signalGraph`, run local preflight, then call `validate_strategy` before any
+create or finalize operation.
 
 ## Research Runner
 
@@ -408,12 +460,14 @@ to a PR, or keep them in the current agent conversation.
 3. `get_usage`: check current budget and limits.
 4. `get_capabilities`: load the live strategy authoring contract.
 5. `resolve_strategy_semantics`: map user intent to candidate fragments.
-6. Assemble a complete `signalGraph` from selected fragments.
-7. `validate_strategy`: repair payload issues before writes.
-8. `create_strategy` or `create_strategy_version`: persist a draft.
-9. `finalize_strategy_version`: lock the version for backtesting.
-10. `run_backtest` and `wait_backtest`: queue and poll results.
-11. `get_backtest_chart_data`, `preview_robustness_analysis`,
+6. `assemble_signal_graph`: compose selected fragments into a complete draft.
+7. `preflight_strategy_draft`: stop local schema/ref/type/legacy errors before
+   remote calls.
+8. `validate_strategy`: repair finalize-grade payload issues before writes.
+9. `create_strategy` or `create_strategy_version`: persist a draft.
+10. `finalize_strategy_version`: lock the version for backtesting.
+11. `run_backtest` and `wait_backtest`: queue and poll results.
+12. `get_backtest_chart_data`, `preview_robustness_analysis`,
     `create_comparison_set`: inspect evidence and compare revisions.
 
 For Claude Code, Codex, or another MCP-capable agent, the higher-level local
@@ -423,10 +477,11 @@ tools provide the smoother first path:
    boundaries, and authoring instructions.
 2. `resolve_strategy_semantics`: map the user's thesis to capability-grounded
    fragments.
-3. Author a complete `StrategyDraftLike` outside of `@traseq/agent`.
-4. `run_guided_research_round`: validate, create, finalize, backtest, evaluate,
+3. `assemble_signal_graph`: compose selected fragments into a complete draft.
+4. `preflight_strategy_draft`: fix local diagnostics before remote validation.
+5. `run_guided_research_round`: validate, create, finalize, backtest, evaluate,
    and return a service memo in one auditable call.
-5. `summarize_research_engagement`: render saved runner JSON or guided results
+6. `summarize_research_engagement`: render saved runner JSON or guided results
    as a memo without network calls.
 
 The older `run_research_draft`, `evaluate_research_result`, and
@@ -446,8 +501,6 @@ The older `run_research_draft`, `evaluate_research_result`, and
 | `analysis_runs_write`    | Previewing, creating, updating, and deleting robustness analysis runs                        |
 | `comparison_sets_read`   | Listing and reading comparison sets                                                          |
 | `comparison_sets_write`  | Creating, updating, and deleting comparison sets                                             |
-| `blocks_read`            | Listing and reading reusable blocks                                                          |
-| `blocks_write`           | Creating, updating, deleting, pinning, and unpinning reusable blocks                         |
 | `market_read`            | Reading chart data and price previews                                                        |
 
 Write scopes require the corresponding read scope when keys are created in the
@@ -458,6 +511,8 @@ Traseq app.
 - Always call `get_capabilities` before authoring strategy payloads.
 - Resolve user intent with `resolve_strategy_semantics` before writing
   non-trivial `signalGraph` JSON.
+- Assemble resolver fragments with `assemble_signal_graph` and run
+  `preflight_strategy_draft` before remote validation.
 - Always call `get_usage` before write or backtest workflows so the agent can
   see current budget and hard limits.
 - Always call `validate_strategy` before create, update, or finalize.

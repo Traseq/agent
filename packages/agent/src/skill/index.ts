@@ -66,8 +66,9 @@ that implements the selected semantics.
 4. Pick the smallest candidate set that satisfies the thesis. Patterns are only
    priors; do not force the user into a predefined pattern when capabilities can
    express their intent compositionally.
-5. Adapt the selected fragments into a complete signalGraph with entry action,
-   exits or risk rules, and settings.
+5. Call \`assemble_signal_graph\` with the selected fragments. Resolver
+   fragments expose \`assemblyHints\`; they are not final top-level signalGraph
+   fields.
 6. Follow these composition rules:
    - Use signalGraph format (protocol: "traseq.signal-graph", version: 2).
    - Keep the first draft minimal: 1 trigger + at most 1 confirmation filter.
@@ -96,9 +97,12 @@ that implements the selected semantics.
 
 **Goal**: Ensure the strategy payload is valid before persisting.
 
-1. Call \`validate_strategy\` with the signalGraph and settings.
-2. If valid, proceed to Phase 4.
-3. If there are errors:
+1. Call \`preflight_strategy_draft\` first. If it fails, repair locally and do
+   not call remote \`validate_strategy\`.
+2. Call \`validate_strategy\` only after preflight passes, using the assembled
+   \`signalGraph\` and \`settings\`.
+3. If valid, proceed to Phase 4.
+4. If there are errors:
    - Group issues by severity. Fix errors first; warnings can often be ignored.
    - Use \`issue.code\`, \`issue.path\`, \`issue.message\`, and \`issue.suggestion\`
      to make targeted repairs. Change the minimum subtree needed.

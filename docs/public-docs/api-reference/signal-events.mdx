@@ -1,0 +1,42 @@
+---
+title: Strategy condition events
+description: Monitor ready strategy versions and deliver neutral closed-bar condition events by webhook or cursor polling.
+---
+
+Strategy condition events let a workspace monitor a ready strategy version after each closed bar. Traseq only evaluates whether the user-defined condition is satisfied. Events are neutral automation inputs, not order instructions.
+
+The v1 event type is `strategy.condition.satisfied`. The `conditionRole` field can be `entry_condition` or `exit_condition`, but it only identifies which condition tree was evaluated. Event payloads do not include `side`, `buy/sell`, `qty`, `notional`, `orderType`, `leverage`, or recommended position fields.
+
+## Flow
+
+1. Create an API key with the required scopes: `signal_monitors_write`, `signal_events_read`, and optionally `webhooks_write`.
+2. Create a monitor with `POST /public/v1/signal-monitors` for a `ready` strategy version.
+3. Register a webhook endpoint, or poll `GET /public/v1/signal-events?cursor=...`.
+4. Use `@traseq/agent` locally to verify, dedupe, and forward neutral events into your own adapter.
+
+## Webhook signing
+
+Webhook requests include:
+
+```text
+x-traseq-event-id: <event id>
+x-traseq-timestamp: <unix seconds>
+x-traseq-delivery-id: <delivery id>
+x-traseq-signature: v1=<hmac_sha256(timestamp + "." + rawBody)>
+```
+
+The endpoint creation response is `{ endpoint, secret }`. The plaintext secret is returned only once — store it as `TRASEQ_WEBHOOK_SECRET` when using `traseq-agent events serve-webhook`.
+
+## Delivery & retries
+
+Each event is signed and POSTed once per active endpoint subscribed to its `eventType`. A 2xx response is success; 4xx (except 429) is a permanent failure; 429 and 5xx schedule a retry. The retry schedule is 1m → 5m → 15m → 1h → 6h → 24h → 24h × 4, for up to 10 attempts (≈4 days). Connections are pinned to the originally validated public IP at the socket layer, so the URL must not resolve to localhost, RFC1918, link-local, CGNAT, benchmark, or documentation address ranges.
+
+## Agent bridge
+
+```bash
+traseq-agent events listen --mode poll --adapter stdout
+traseq-agent events serve-webhook --port 8787 --adapter ./adapter.js
+traseq-agent events test-adapter ./adapter.js
+```
+
+The official agent includes `stdout`, `paper`, and `webhook-forwarder` adapters. Broker adapters are user-owned code. The agent defaults to dry-run mode; pass `--live` only after your local adapter has its own safeguards.

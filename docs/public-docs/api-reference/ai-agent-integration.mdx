@@ -34,14 +34,11 @@ needed for the workflow:
 Add `system_strategies_read` only when the agent needs to inspect system
 templates.
 
-## Choosing a payload format
+## Strategy Authoring Contract
 
-Your agent can submit strategies in two formats:
-
-- **SignalGraph** — recommended for AI agents. It's higher-level, easier to
-  generate, and simpler to repair when validation fails.
-- **StrategyAst** — the canonical format. Use this if your agent already
-  produces it directly.
+The Public Agent API accepts **SignalGraph v2** for strategy authoring. Your
+agent should submit `signalGraph` plus `settings`; internal execution formats
+are not part of the public write contract.
 
 ## Minimum scopes
 
@@ -68,10 +65,12 @@ Recommended add-ons:
 3. `GET /public/v1/usage`
    Check current budget, usage, and hard limits before write or backtest workflows.
 4. `GET /public/v1/capabilities`
-   Fetch machine-readable indicators, node inputs, bindings, operators, tier limits, and validation
+   Fetch machine-readable indicators, indicator args, node fields, strategy
+   bindings, risk authoring metadata, operators, tier limits, and validation
    issue shape before authoring a payload.
 5. `POST /public/v1/strategies/validate`
-   Validate the draft payload and repair it until `valid === true`.
+   Validate the draft payload after local assembly/preflight and repair it until
+   `valid === true`.
 6. `POST /public/v1/strategies`
    Create a draft strategy.
 7. `POST /public/v1/strategies/:id/versions/finalize`
@@ -87,32 +86,37 @@ Always call `GET /public/v1/capabilities` before your agent writes a strategy.
 This endpoint returns everything your agent needs to know about what's
 supported:
 
-- available indicators and their parameters
-- supported node kinds and bindings for SignalGraph
+- available indicators and their `args`
+- supported node kinds, node fields, strategy bindings, and risk metadata for
+  SignalGraph
 - operators, enums (timeframes, market fields, patterns)
 - plan-specific limits
-- the validation issue format (`code`, `path`, `message`, `suggestion`)
+- the validation issue format (`code`, `path`, `field`, `message`, `severity`)
 
-Use this as your source of truth — don't guess indicator names or parameter
-shapes from prompts alone.
+Use this as your source of truth. Do not guess indicator names, `args`, node
+fields, bindings, risk paths, or operators from prompts alone.
 
 ## Structured validation issues
 
-`POST /public/v1/strategies/validate` returns machine-readable issues. Token,
-AST, and graph validation issues now include:
+`POST /public/v1/strategies/validate` returns machine-readable issues. Graph
+validation issues and 400 request schema failures use the same flat `issues[]`
+shape. Request schema failures also include `errorCode: "validation_failed"`.
+
+Validation issues include:
 
 - `code`
 - `path`
+- `field`
 - `message`
-- `suggestion`
+- `severity`
 
-Example token issue:
+Example issue:
 
 ```json
 {
   "code": "WARMUP_TOO_SHORT",
-  "path": "strategyAst.Strategy.warmupPeriod",
-  "field": "strategyAst",
+  "path": "settings.warmupPeriod",
+  "field": "settings",
   "severity": "warning",
   "message": "Warmup setting is shorter than this strategy's inferred lookback.",
   "suggestion": "Set warmupPeriod to at least 200 for more consistent behavior when prehistory is limited or after gaps."
@@ -121,11 +125,12 @@ Example token issue:
 
 Recommended repair loop:
 
-1. Generate `signalGraph` or `strategyAst`.
-2. Validate.
-3. Group issues by `severity`.
-4. Repair the payload using `code`, `path`, and `suggestion`.
-5. Revalidate until blocking issues are gone.
+1. Resolve strategy semantics into fragments.
+2. Assemble selected fragments into a full `signalGraph` draft.
+3. Run local preflight; do not call remote validation while local errors remain.
+4. Validate remotely.
+5. Repair the payload using `code`, `path`, `message`, and `suggestion`.
+6. Revalidate until blocking issues are gone.
 
 ## cURL example
 
@@ -217,6 +222,12 @@ Dry-run prints the install command and MCP JSON without mutating client config:
 npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --probe
 ```
 
+If the MCP server already exists and you want to reinstall it, add `--force`:
+
+```sh
+npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --force --probe
+```
+
 Other clients follow the same pattern with client-appropriate flags:
 
 ```sh
@@ -247,7 +258,7 @@ prefer `TRASEQ_API_KEY` because flag values may remain in shell history.
 After setup, give the client a task-oriented prompt:
 
 ```text
-Help me validate a BTCUSDT 4h strategy idea. Start with Traseq research engagement first.
+Use the Traseq MCP server. First call the MCP tool `start_research_engagement` with prompt "Validate a BTCUSDT 4h strategy idea." Do not search the repo; if the tool is unavailable, tell me the Traseq MCP server is not connected.
 ```
 
 The MCP server advertises `traseq_guided_research` through `prompts/list` and
@@ -357,51 +368,21 @@ Recommended tools:
 - `get_workspace_context`
 - `get_usage`
 - `get_capabilities`
+- `resolve_strategy_semantics`
+- `assemble_signal_graph`
+- `preflight_strategy_draft`
 - `validate_strategy`
 - `create_strategy`
 - `finalize_strategy_version`
 - `run_backtest`
 - `get_backtest`
 
-Recommended `validate_strategy` input shape:
-
-```json
-{
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["settings"],
-  "properties": {
-    "signalGraph": {
-      "type": "object",
-      "description": "Preferred AI authoring payload."
-    },
-    "strategyAst": {
-      "type": "object",
-      "description": "Canonical fallback payload."
-    },
-    "settings": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "positionStyle": {
-          "type": "string",
-          "enum": ["single", "pyramid", "accumulate"]
-        },
-        "maxConcurrentPositions": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100
-        },
-        "warmupPeriod": {
-          "type": "integer",
-          "minimum": 0
-        }
-      }
-    }
-  },
-  "anyOf": [{ "required": ["signalGraph"] }, { "required": ["strategyAst"] }]
-}
-```
+`validate_strategy` uses the SDK authoring schema, not a shallow
+`signalGraph: object` wrapper. The generated tool schema requires nested fields
+such as `signalGraph.strategy.entry.action.sizing`,
+`signalGraph.strategy.risk`, and `settings.positionStyle`; use
+`assemble_signal_graph` and `preflight_strategy_draft` before calling the remote
+validator.
 
 ## Suggested system prompt
 
@@ -415,16 +396,21 @@ Before composing any strategy:
 1. Call get_workspace_context.
 2. Call get_usage.
 3. Call get_capabilities.
-4. Use usage and capabilities as the only source of truth for current budget, limits, supported node kinds, bindings, indicators, operators, and enums.
+4. Use usage and capabilities as the only source of truth for current budget, limits, supported node kinds, strategy bindings, risk metadata, indicators, operators, and enums.
 
 Authoring rules:
-- Prefer signalGraph over strategyAst unless the user explicitly asks for canonical AST.
+- Author only SignalGraph v2 payloads.
 - Keep the first payload minimal and valid.
 - Reuse simple, stable node ids such as close_price, ema_fast, entry_trigger.
-- Do not invent unsupported fields, params, or operators.
-- Do not use tokens as the primary write format.
+- Use kind: "market" with field for candle data; do not use a price node.
+- Use indicator, args, and optional top-level output on indicator nodes.
+- Use args.length for indicator lookbacks; put source inside args.source.
+- Use offset for historical bars; do not use shift.
+- Bind entry.trigger to one bool ref and exits[0].when to one bool ref when an exit is present.
+- Do not invent unsupported fields, args, bindings, risk paths, or operators.
 
 Validation rules:
+- Use resolve_strategy_semantics, assemble_signal_graph, and preflight_strategy_draft before validate_strategy.
 - Always call validate_strategy before create_strategy or finalize_strategy_version.
 - Treat issue code, path, message, and suggestion as the repair source of truth.
 - Modify the minimum subtree needed to resolve each blocking issue.

@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  assembleSignalGraphDraft,
+  buildStrategyAuthoringPayloadJsonSchema,
   buildStrategyDraftJsonSchema,
+  preflightStrategyDraft,
+  STRATEGY_AUTHORING_PAYLOAD_JSON_SCHEMA,
   STRATEGY_DRAFT_JSON_SCHEMA,
   validateStrategyDraft,
 } from '../dist/index.js';
@@ -89,14 +93,135 @@ test('STRATEGY_DRAFT_JSON_SCHEMA exposes node-level signalGraph union', () => {
   );
 });
 
+test('STRATEGY_AUTHORING_PAYLOAD_JSON_SCHEMA exposes nested validate_strategy contract', () => {
+  const schema = STRATEGY_AUTHORING_PAYLOAD_JSON_SCHEMA.schema;
+
+  assert.deepEqual(schema.required, ['signalGraph', 'settings']);
+  assert.equal(
+    schema.properties.signalGraph.properties.strategy.properties.entry.properties.action.properties.sizing.required.includes(
+      'mode',
+    ),
+    true,
+  );
+
+  const dynamic = buildStrategyAuthoringPayloadJsonSchema({
+    indicators: [
+      {
+        id: 'ema',
+        args: [{ name: 'length', type: 'integer', required: true }],
+      },
+    ],
+  });
+  const indicatorSchemas =
+    dynamic.schema.properties.signalGraph.properties.nodes.items.oneOf.filter(
+      (nodeSchema) => nodeSchema.properties.kind.const === 'indicator',
+    );
+  assert.equal(indicatorSchemas.length, 1);
+  assert.equal(indicatorSchemas[0].properties.indicator.const, 'ema');
+});
+
+test('preflightStrategyDraft returns flat validation issues', () => {
+  const draft = createValidDraft();
+  draft.signalGraph.strategy.entry.trigger = { ref: 'close' };
+
+  const result = preflightStrategyDraft(draft);
+
+  assert.equal(result.valid, false);
+  assert.equal(result.summary.errors > 0, true);
+  assert.ok(
+    result.issues.some(
+      (issue) =>
+        issue.path === 'signalGraph.strategy.entry.trigger' &&
+        issue.field === 'signalGraph' &&
+        issue.severity === 'error',
+    ),
+  );
+});
+
+test('assembleSignalGraphDraft assembles resolver fragments into a valid draft', () => {
+  const result = assembleSignalGraphDraft({
+    name: 'Assembled trend',
+    fragments: [
+      {
+        nodes: [
+          { id: 'close', kind: 'market', field: 'close' },
+          {
+            id: 'sma_50',
+            kind: 'indicator',
+            indicator: 'sma',
+            args: { length: 50 },
+          },
+          {
+            id: 'entry_cross',
+            kind: 'cross',
+            op: 'cross_up',
+            left: { ref: 'close' },
+            right: { ref: 'sma_50' },
+          },
+          {
+            id: 'exit_signal',
+            kind: 'compare',
+            op: 'lt',
+            left: { ref: 'close' },
+            right: { ref: 'sma_50' },
+          },
+        ],
+        assemblyHints: {
+          entryTrigger: { ref: 'entry_cross' },
+          signalExit: { ref: 'exit_signal' },
+          risk: { trailingStop: { distancePercent: 5 } },
+        },
+      },
+    ],
+  });
+
+  assert.equal(
+    result.valid,
+    true,
+    result.valid ? undefined : JSON.stringify(result.issues, null, 2),
+  );
+  assert.equal(
+    result.draft.signalGraph.strategy.entry.trigger.ref,
+    'entry_cross',
+  );
+  assert.equal(
+    result.draft.signalGraph.strategy.risk.trailingStop.distancePercent,
+    5,
+  );
+});
+
+test('assembleSignalGraphDraft rejects duplicate ids and legacy bindings', () => {
+  const result = assembleSignalGraphDraft({
+    fragments: [
+      {
+        nodes: [
+          { id: 'same', kind: 'market', field: 'close' },
+          { id: 'same', kind: 'market', field: 'open' },
+        ],
+        bindings: { entryTrigger: { ref: 'same' } },
+      },
+    ],
+  });
+
+  assert.equal(result.valid, false);
+  assert.ok(
+    result.issues.some((issue) => issue.path === 'fragments[0].bindings'),
+  );
+  assert.ok(
+    result.issues.some((issue) =>
+      issue.message.includes('Duplicate signalGraph node id'),
+    ),
+  );
+});
+
 test('buildStrategyDraftJsonSchema derives indicator args from capabilities', () => {
   const dynamicSchema = buildStrategyDraftJsonSchema({
     indicators: [
       {
         id: 'rsi',
-        params: [
+        args: [
           {
-            name: 'period',
+            name: 'length',
             type: 'integer',
             required: true,
             minimum: 1,
@@ -105,9 +230,9 @@ test('buildStrategyDraftJsonSchema derives indicator args from capabilities', ()
       },
       {
         id: 'ema',
-        params: [
+        args: [
           {
-            name: 'period',
+            name: 'length',
             type: 'integer',
             required: true,
             minimum: 1,
@@ -143,7 +268,7 @@ test('buildStrategyDraftJsonSchema promotes indicator output from args into top-
       {
         id: 'macd',
         structuralType: 'oscillator_operand',
-        params: [
+        args: [
           {
             name: 'fast',
             type: 'integer',
@@ -156,13 +281,13 @@ test('buildStrategyDraftJsonSchema promotes indicator output from args into top-
             required: true,
             minimum: 1,
           },
-          {
-            name: 'output',
-            type: 'enum',
-            required: true,
-            enumValues: ['macd', 'signal', 'hist'],
-          },
         ],
+        output: {
+          name: 'output',
+          type: 'enum',
+          required: true,
+          enumValues: ['macd', 'signal', 'hist'],
+        },
       },
     ],
   });
@@ -267,7 +392,7 @@ test('validateStrategyDraft enforces capability-derived indicator output contrac
       {
         id: 'macd',
         structuralType: 'oscillator_operand',
-        params: [
+        args: [
           {
             name: 'fast',
             type: 'integer',
@@ -280,13 +405,13 @@ test('validateStrategyDraft enforces capability-derived indicator output contrac
             required: true,
             minimum: 1,
           },
-          {
-            name: 'output',
-            type: 'enum',
-            required: true,
-            enumValues: ['macd', 'signal', 'hist'],
-          },
         ],
+        output: {
+          name: 'output',
+          type: 'enum',
+          required: true,
+          enumValues: ['macd', 'signal', 'hist'],
+        },
       },
     ],
   });
@@ -316,7 +441,7 @@ test('validateStrategyDraft rejects unsupported indicator output selectors', () 
     kind: 'indicator',
     indicator: 'ema',
     args: {
-      period: 20,
+      length: 20,
     },
     output: 'middle',
   });
@@ -326,9 +451,9 @@ test('validateStrategyDraft rejects unsupported indicator output selectors', () 
       {
         id: 'ema',
         structuralType: 'price_indicator_operand',
-        params: [
+        args: [
           {
-            name: 'period',
+            name: 'length',
             type: 'integer',
             required: true,
             minimum: 1,
@@ -442,5 +567,58 @@ test('validateStrategyDraft enforces capability-derived node input cardinality a
           issue.message.includes('ref object'),
       ),
     );
+  }
+});
+
+test('validateStrategyDraft rejects legacy public authoring vocabulary', () => {
+  const draft = createValidDraft();
+  draft.signalGraph.nodes.push(
+    {
+      id: 'legacy_price',
+      kind: 'price',
+      field: 'close',
+    },
+    {
+      id: 'legacy_indicator',
+      kind: 'indicator',
+      name: 'sma',
+      indicator: 'sma',
+      params: {
+        length: 200,
+      },
+      source: 'close',
+      shift: 1,
+      args: {
+        period: 200,
+      },
+    },
+    {
+      id: 'legacy_event',
+      kind: 'event',
+      name: 'pivot_confirmed',
+      params: {
+        pivotKind: 'high',
+        left: 5,
+        right: 5,
+      },
+    },
+  );
+  draft.signalGraph.strategy.entry.conditions = [{ ref: 'trend_ok' }];
+  draft.signalGraph.strategy.entry.side = 'long';
+
+  const result = validateStrategyDraft(draft);
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    const paths = result.issues.map((issue) => issue.path);
+    assert.ok(paths.includes('signalGraph.nodes[2].kind'));
+    assert.ok(paths.includes('signalGraph.nodes[3].name'));
+    assert.ok(paths.includes('signalGraph.nodes[3].params'));
+    assert.ok(paths.includes('signalGraph.nodes[3].source'));
+    assert.ok(paths.includes('signalGraph.nodes[3].shift'));
+    assert.ok(paths.includes('signalGraph.nodes[3].args.period'));
+    assert.ok(paths.includes('signalGraph.nodes[4].params'));
+    assert.ok(paths.includes('signalGraph.strategy.entry.conditions'));
+    assert.ok(paths.includes('signalGraph.strategy.entry.side'));
   }
 });

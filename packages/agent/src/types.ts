@@ -4,6 +4,8 @@ import type {
   StrategySettings as SdkStrategySettings,
 } from '@traseq/sdk';
 
+import type { UsageStatus } from './usage-hints.js';
+
 export type SectionName = 'skill' | 'tools' | 'references' | 'templates';
 
 export interface AgentContextOptions {
@@ -70,17 +72,20 @@ export interface StrategyDraftLike {
 export interface ValidationIssueLike {
   code?: string;
   path?: string;
+  field?: string;
   message: string;
   suggestion?: string;
   severity?: 'error' | 'warning';
   details?: string;
+  blockA?: { id: string; name: string };
+  blockB?: { id: string; name: string };
 }
 
 export interface ValidationSummaryLike {
   valid: boolean;
   summary: { errors: number; warnings: number };
   issues: {
-    tokens?: ValidationIssueLike[];
+    signalGraph?: ValidationIssueLike[];
     settings?: ValidationIssueLike[];
     conflicts?: ValidationIssueLike[];
   };
@@ -264,6 +269,7 @@ export interface ResearchEngagementBrief {
   decisionPoints: ResearchDecisionPoint[];
   authoringInstructions: string;
   live: AutoAgentResearchResult['live'];
+  usageStatus: UsageStatus;
   recommendedWorkflow: ResearchWorkflowStep[];
   evidenceBoundaries: string[];
 }
@@ -287,7 +293,10 @@ export type ResearchRunnerClient = Pick<
   | 'finalizeStrategyVersion'
   | 'runBacktest'
   | 'waitForBacktestCompletion'
->;
+> &
+  // estimateBacktestCost is best-effort: callers may stub a client without it
+  // (older SDKs, fixtures), so the runner falls back gracefully when absent.
+  Partial<Pick<SdkTraseqClient, 'estimateBacktestCost'>>;
 
 export interface ResearchRunnerLiveContext {
   manifest: unknown;
@@ -327,6 +336,22 @@ export interface ResearchRunnerOptions {
   pollIntervalMs?: number;
   timeoutMs?: number;
   producerTimeoutMs?: number;
+  /**
+   * Continue iterating on an existing strategy. When set, the runner skips
+   * `createStrategy` and persists each round's draft as a new
+   * `createStrategyVersion` under this strategy. Omit to author a brand-new
+   * strategy.
+   */
+  strategyId?: string;
+  /**
+   * Lineage seed for round 1 when iterating on an existing strategy. The
+   * runner already chains `forkedFromVersionId` between rounds within a single
+   * call; this lets callers preserve that chain across calls (e.g. resuming a
+   * research session from a specific finalized version). Ignored when
+   * `strategyId` is omitted, since a brand-new strategy has no prior version
+   * to fork from.
+   */
+  forkedFromVersionId?: string;
 }
 
 export interface GuidedResearchRoundInput extends ResearchEngagementInput {
@@ -334,6 +359,18 @@ export interface GuidedResearchRoundInput extends ResearchEngagementInput {
   pollIntervalMs?: number;
   timeoutMs?: number;
   producerTimeoutMs?: number;
+  /**
+   * Continue iterating on an existing strategy by passing its id. The runner
+   * persists the validated draft as a new version under that strategy instead
+   * of creating a new one. Omit to create a brand-new strategy.
+   */
+  strategyId?: string;
+  /**
+   * Optional lineage seed: the prior finalized version this round forks from.
+   * Only meaningful alongside `strategyId`. Lets callers preserve the
+   * `forkedFromVersionId` chain across separate guided-research calls.
+   */
+  forkedFromVersionId?: string;
 }
 
 export interface GuidedResearchEvidence {
@@ -349,9 +386,18 @@ export interface GuidedResearchRoundResult {
   serviceMessages: ServiceMessage[];
   evidence: GuidedResearchEvidence;
   verdict: ResearchVerdict;
+  usageStatus: UsageStatus;
   result: ResearchRunnerResult;
   evaluation: ResearchResultEvaluation;
   report: string;
+}
+
+export interface ResearchRunnerCostEstimate {
+  estimatedCostUsd: number;
+  currentBalanceUsd: number;
+  afterBalanceUsd: number;
+  wouldCauseOverage: boolean;
+  overageAmountUsd: number;
 }
 
 export interface ResearchRunnerRound {
@@ -360,13 +406,20 @@ export interface ResearchRunnerRound {
   objective: string;
   inputPrompt: string;
   status: ResearchRunnerStatus;
-  draft: StrategyDraftLike;
-  validation: ValidationSummaryLike;
+  draft?: StrategyDraftLike;
+  validation?: ValidationSummaryLike;
   validationAttempts: number;
   createdStrategyId?: string;
   createdStrategyVersionId?: string;
   finalizedStrategyVersionId?: string;
   forkedFromVersionId?: string;
+  /**
+   * Pre-flight cost estimate captured between finalize and runBacktest.
+   * Absent when the SDK doesn't support it, the draft has no range, or the
+   * estimate call fails — the round still proceeds (backend remains the
+   * authoritative budget gate).
+   */
+  costEstimate?: ResearchRunnerCostEstimate;
   backtest?: NormalizedBacktestResult;
   score?: ScoreBreakdown;
   analysis?: RoundAnalysis;

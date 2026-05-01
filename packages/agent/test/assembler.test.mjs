@@ -75,6 +75,20 @@ describe('getAgentContext', () => {
     const skillIdx = context.indexOf('# Traseq Strategy Agent');
     assert.ok(templatesIdx < skillIdx, 'templates should come before skill');
   });
+
+  it('does not advertise legacy public authoring vocabulary', () => {
+    const context = getAgentContext();
+    assert.doesNotMatch(context, /\bstrategyAst\b/);
+    assert.doesNotMatch(context, /indicator parameters/i);
+    assert.doesNotMatch(context, /indicator params/i);
+    assert.doesNotMatch(context, /\bfastLength\b/);
+    assert.doesNotMatch(context, /\bslowLength\b/);
+    assert.doesNotMatch(context, /\bsignalLength\b/);
+    assert.doesNotMatch(context, /\bstdDev\b/);
+    assert.doesNotMatch(context, /\bentry\.conditions\b/);
+    assert.doesNotMatch(context, /\bentry\.side\b/);
+    assert.doesNotMatch(context, /kind:\s*["']price["']/);
+  });
 });
 
 describe('SKILL_CONTENT', () => {
@@ -129,6 +143,79 @@ describe('references', () => {
 });
 
 describe('templates', () => {
+  const LIVE_AGENT_CAPABILITIES = {
+    indicators: [
+      {
+        id: 'ema',
+        args: [{ name: 'length', type: 'integer', required: true, minimum: 1 }],
+      },
+      {
+        id: 'sma',
+        args: [{ name: 'length', type: 'integer', required: true, minimum: 1 }],
+      },
+      {
+        id: 'rsi',
+        args: [{ name: 'length', type: 'integer', required: true, minimum: 1 }],
+      },
+      {
+        id: 'atr',
+        args: [{ name: 'length', type: 'integer', required: true, minimum: 1 }],
+      },
+      {
+        id: 'macd',
+        args: [
+          { name: 'fast_length', type: 'integer', required: true, minimum: 1 },
+          { name: 'slow_length', type: 'integer', required: true, minimum: 1 },
+          {
+            name: 'signal_length',
+            type: 'integer',
+            required: true,
+            minimum: 1,
+          },
+        ],
+        output: {
+          name: 'output',
+          type: 'enum',
+          required: true,
+          enumValues: ['macd', 'signal', 'hist'],
+        },
+      },
+      {
+        id: 'adx',
+        args: [{ name: 'length', type: 'integer', required: true, minimum: 1 }],
+        output: {
+          name: 'output',
+          type: 'enum',
+          required: true,
+          enumValues: ['adx', 'plus_di', 'minus_di'],
+        },
+      },
+      {
+        id: 'bbands',
+        args: [
+          { name: 'length', type: 'integer', required: true, minimum: 1 },
+          { name: 'multiplier', type: 'number', required: true, minimum: 0 },
+        ],
+        output: {
+          name: 'output',
+          type: 'enum',
+          required: true,
+          enumValues: ['lower', 'middle', 'upper'],
+        },
+      },
+      {
+        id: 'donchian',
+        args: [{ name: 'length', type: 'integer', required: true, minimum: 1 }],
+        output: {
+          name: 'output',
+          type: 'enum',
+          required: true,
+          enumValues: ['lower', 'middle', 'upper'],
+        },
+      },
+    ],
+  };
+
   it('has 5 templates', () => {
     assert.equal(templates.all.length, 5);
   });
@@ -205,6 +292,20 @@ describe('templates', () => {
     }
   });
 
+  it('each template draft follows live indicator args and output selectors', () => {
+    for (const t of templates.all) {
+      const result = validateStrategyDraft(t.draft, LIVE_AGENT_CAPABILITIES);
+      if (!result.ok) {
+        assert.fail(
+          `${t.id} capability issues: ${result.issues
+            .slice(0, 6)
+            .map((issue) => `${issue.path}: ${issue.message}`)
+            .join(' | ')}`,
+        );
+      }
+    }
+  });
+
   it('byId returns correct template', () => {
     const tf = templates.byId('trend-following');
     assert.ok(tf !== undefined);
@@ -257,6 +358,7 @@ describe('tools', () => {
   });
 
   it('covers every public OpenAPI endpoint in the operation registry', () => {
+    const intentionallySkipped = new Set();
     const spec = JSON.parse(
       readFileSync(
         resolve(
@@ -283,7 +385,7 @@ describe('tools', () => {
         if (method === 'parameters') continue;
 
         const key = `${method.toUpperCase()} ${path.replace(/\{[^}]+\}/g, ':param')}`;
-        if (!registryEndpoints.has(key)) {
+        if (!registryEndpoints.has(key) && !intentionallySkipped.has(key)) {
           uncovered.push(key);
         }
       }
@@ -360,6 +462,9 @@ const TOOL_INPUTS = {
   create_strategy: { name: 'Agent strategy', ...STRATEGY_PAYLOAD },
   get_strategy: { strategyId: ID },
   update_strategy: { strategyId: ID, name: 'Renamed strategy' },
+  trash_strategy: { strategyId: ID, confirm: true },
+  restore_strategy: { strategyId: ID },
+  purge_strategy: { strategyId: ID, confirm: true },
   create_strategy_version: { strategyId: ID, ...STRATEGY_PAYLOAD },
   get_strategy_version: { strategyId: ID, version: 1 },
   update_strategy_version: { strategyId: ID, version: 1, ...STRATEGY_PAYLOAD },
@@ -368,7 +473,6 @@ const TOOL_INPUTS = {
   archive_strategy_version: { strategyId: ID, version: 1 },
   restore_strategy_version: { strategyId: ID, version: 1 },
   create_pine_export: { strategyId: ID, version: 1 },
-  validate_conflicts: { blocks: [] },
   list_backtests: {},
   run_backtest: {
     strategyVersionId: ID,
@@ -393,13 +497,26 @@ const TOOL_INPUTS = {
   create_comparison_set: { name: 'Comparison', backtestIds: [ID] },
   update_comparison_set: { comparisonSetId: ID, name: 'Updated comparison' },
   delete_comparison_set: { comparisonSetId: ID, confirm: true },
-  list_blocks: {},
-  get_block: { blockId: ID },
-  create_block: { name: 'Reusable signal', tokens: [] },
-  update_block: { blockId: ID, name: 'Updated block' },
-  delete_block: { blockId: ID, confirm: true },
-  pin_block: { blockId: ID },
-  unpin_block: { blockId: ID },
+  create_signal_monitor: {
+    strategyVersionId: ID,
+    symbol: 'BTCUSDT',
+    timeframe: '1h',
+    conditionRole: 'entry_condition',
+  },
+  list_signal_monitors: {},
+  get_signal_monitor: { monitorId: ID },
+  update_signal_monitor: { monitorId: ID, status: 'paused' },
+  delete_signal_monitor: { monitorId: ID, confirm: true },
+  list_signal_events: {},
+  get_signal_event: { eventId: ID },
+  create_webhook_endpoint: { url: 'https://example.com/traseq-webhook' },
+  list_webhook_endpoints: {},
+  update_webhook_endpoint: {
+    webhookEndpointId: ID,
+    status: 'paused',
+  },
+  delete_webhook_endpoint: { webhookEndpointId: ID, confirm: true },
+  test_webhook_endpoint: { webhookEndpointId: ID },
 };
 
 const CLIENT_METHOD_BY_TOOL = {
@@ -416,6 +533,9 @@ const CLIENT_METHOD_BY_TOOL = {
   create_strategy: 'createStrategy',
   get_strategy: 'getStrategy',
   update_strategy: 'updateStrategy',
+  trash_strategy: 'trashStrategy',
+  restore_strategy: 'restoreStrategy',
+  purge_strategy: 'purgeStrategy',
   create_strategy_version: 'createStrategyVersion',
   get_strategy_version: 'getStrategyVersion',
   update_strategy_version: 'updateStrategyVersion',
@@ -424,7 +544,6 @@ const CLIENT_METHOD_BY_TOOL = {
   archive_strategy_version: 'archiveStrategyVersion',
   restore_strategy_version: 'restoreStrategyVersion',
   create_pine_export: 'createPineExport',
-  validate_conflicts: 'validateConflicts',
   list_backtests: 'listBacktests',
   run_backtest: 'runBacktest',
   get_backtest: 'getBacktest',
@@ -446,13 +565,18 @@ const CLIENT_METHOD_BY_TOOL = {
   create_comparison_set: 'createComparisonSet',
   update_comparison_set: 'updateComparisonSet',
   delete_comparison_set: 'deleteComparisonSet',
-  list_blocks: 'listBlocks',
-  get_block: 'getBlock',
-  create_block: 'createBlock',
-  update_block: 'updateBlock',
-  delete_block: 'deleteBlock',
-  pin_block: 'pinBlock',
-  unpin_block: 'unpinBlock',
+  create_signal_monitor: 'createSignalMonitor',
+  list_signal_monitors: 'listSignalMonitors',
+  get_signal_monitor: 'getSignalMonitor',
+  update_signal_monitor: 'updateSignalMonitor',
+  delete_signal_monitor: 'deleteSignalMonitor',
+  list_signal_events: 'listSignalEvents',
+  get_signal_event: 'getSignalEvent',
+  create_webhook_endpoint: 'createWebhookEndpoint',
+  list_webhook_endpoints: 'listWebhookEndpoints',
+  update_webhook_endpoint: 'updateWebhookEndpoint',
+  delete_webhook_endpoint: 'deleteWebhookEndpoint',
+  test_webhook_endpoint: 'testWebhookEndpoint',
 };
 
 describe('platform tool dispatch', () => {
@@ -493,5 +617,56 @@ describe('platform tool dispatch', () => {
       );
       assert.equal(result.method, CLIENT_METHOD_BY_TOOL[tool.name]);
     }
+  });
+
+  it('maps strategy trash lifecycle tools to explicit lifecycle methods', async () => {
+    const calls = [];
+    const client = {
+      trashStrategy: (...args) => {
+        calls.push(['trashStrategy', ...args]);
+        return { args };
+      },
+      restoreStrategy: (...args) => {
+        calls.push(['restoreStrategy', ...args]);
+        return { args };
+      },
+      purgeStrategy: (...args) => {
+        calls.push(['purgeStrategy', ...args]);
+        return { args };
+      },
+    };
+
+    await runPlatformTool(client, 'trash_strategy', {
+      strategyId: ID,
+      confirm: true,
+    });
+    await runPlatformTool(client, 'restore_strategy', { strategyId: ID });
+    await runPlatformTool(client, 'purge_strategy', {
+      strategyId: ID,
+      confirm: true,
+    });
+
+    assert.deepEqual(calls, [
+      ['trashStrategy', ID, { confirm: true }],
+      ['restoreStrategy', ID],
+      ['purgeStrategy', ID, { confirm: true }],
+    ]);
+  });
+
+  it('keeps update_strategy limited to metadata updates', async () => {
+    const calls = [];
+    const client = {
+      updateStrategy: (...args) => {
+        calls.push(args);
+        return { args };
+      },
+    };
+
+    await runPlatformTool(client, 'update_strategy', {
+      strategyId: ID,
+      name: 'Renamed',
+    });
+
+    assert.deepEqual(calls, [[ID, { name: 'Renamed' }]]);
   });
 });

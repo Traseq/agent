@@ -28,6 +28,8 @@ const KNOWN_STOP_REASONS = new Set([
   'backtest_timeout',
   'producer_timeout',
   'producer_error',
+  'persistence_failed',
+  'context_failed',
 ]);
 
 const CONFIDENCE_RANK: Record<ResearchConfidence, number> = {

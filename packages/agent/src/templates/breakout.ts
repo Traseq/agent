@@ -28,6 +28,7 @@ export const breakoutTemplate: StrategyTemplate = {
           kind: 'indicator',
           indicator: 'donchian',
           args: { length: 20 },
+          output: 'upper',
         },
         {
           id: 'atr_14',

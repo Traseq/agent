@@ -3,7 +3,9 @@ export const INDICATOR_GUIDE_REFERENCE = `\
 
 All indicators are used as \`kind: "indicator"\` nodes in the signalGraph.
 The \`indicator\` field must match the ID below. The \`args\` field contains
-indicator-specific parameters.
+indicator-specific arguments from \`capabilities.indicators[].args\`. For
+multi-output indicators, put the selector in top-level \`output\`, never inside
+\`args\`.
 
 Common pattern:
 \`\`\`json
@@ -42,9 +44,9 @@ Identify trend direction and strength. Output: numeric series (sometimes multi-o
 
 | ID | Name | Key Args | Typical Values | Notes |
 |----|------|----------|---------------|-------|
-| macd | MACD | fastLength, slowLength, signalLength | 12, 26, 9 | Histogram = macd - signal line |
-| adx | ADX | length | 14 | Measures trend strength (0-100), >25 = trending |
-| ichimoku | Ichimoku Cloud | conversionPeriod, basePeriod, spanPeriod, displacement | 9, 26, 52, 26 | Multiple outputs, complex |
+| macd | MACD | fast_length, slow_length, signal_length + output | 12, 26, 9 | Use output: "macd", "signal", or "hist" |
+| adx | ADX | length + output | 14 | Use output: "adx", "plus_di", or "minus_di" |
+| ichimoku | Ichimoku Cloud | conversion_length, base_length, lagging_span_length, displacement + output | 9, 26, 52, 26 | Multiple outputs, complex |
 | psar | Parabolic SAR | step, max | 0.02, 0.2 | Trailing stop indicator |
 | supertrend | SuperTrend | length, multiplier | 10, 3 | ATR-based trend follower |
 
@@ -62,10 +64,10 @@ Define price envelopes for breakout or reversion strategies. Output: numeric ser
 
 | ID | Name | Key Args | Typical Values | Notes |
 |----|------|----------|---------------|-------|
-| bbands | Bollinger Bands | length, stdDev | 20, 2 | Upper/lower/middle band |
-| donchian | Donchian Channel | length | 20, 55 | Highest high / lowest low |
-| keltner_channel | Keltner Channel | length, multiplier | 20, 1.5 | ATR-based envelope |
-| chandelier_exit | Chandelier Exit | length, multiplier | 22, 3 | ATR-based trailing stop level |
+| bbands | Bollinger Bands | length, multiplier + output | 20, 2 | Use output: "upper", "middle", "lower", "width", or "percent_b" |
+| donchian | Donchian Channel | length + output | 20, 55 | Use output: "upper", "middle", or "lower" |
+| keltner_channel | Keltner Channel | ema_length, atr_length, multiplier + output | 20, 10, 1.5 | ATR-based envelope |
+| chandelier_exit | Chandelier Exit | length, atr_length, multiplier + output | 22, 22, 3 | ATR-based trailing stop level |
 
 **Bollinger usage**: Price near lower band + RSI oversold = mean-reversion long.
 Band squeeze (width narrows) = breakout imminent.
@@ -81,17 +83,17 @@ Measure momentum and overbought/oversold conditions. Output: numeric series (bou
 | ID | Name | Key Args | Typical Values | Range | Notes |
 |----|------|----------|---------------|-------|-------|
 | rsi | RSI | length | 14 | 0-100 | Most versatile oscillator |
-| stoch | Stochastic | kLength, kSmoothing, dSmoothing | 14, 3, 3 | 0-100 | %K and %D lines |
-| stoch_rsi | Stochastic RSI | rsiLength, stochLength, kSmoothing, dSmoothing | 14, 14, 3, 3 | 0-100 | More sensitive than RSI alone |
+| stoch | Stochastic | k_length, d_length, smooth_k + output | 14, 3, 3 | 0-100 | Use output: "k" or "d" |
+| stoch_rsi | Stochastic RSI | length, rsi_length, k_length, d_length + output | 14, 14, 3, 3 | 0-100 | Use output: "k" or "d" |
 | williams_r | Williams %R | length | 14 | -100 to 0 | Inverted stochastic |
 | cci | CCI | length | 20 | Unbounded | >100 overbought, <-100 oversold |
 | roc | Rate of Change | length | 12 | Unbounded | % change over N bars |
 | momentum | Momentum | length | 10 | Unbounded | Price difference over N bars |
 | ultimate_osc | Ultimate Oscillator | fast, medium, slow | 7, 14, 28 | 0-100 | Multi-timeframe momentum |
 | mfi | Money Flow Index | length | 14 | 0-100 | Volume-weighted RSI |
-| tsi | True Strength Index | longLength, shortLength | 25, 13 | -100 to 100 | Double-smoothed momentum |
+| tsi | True Strength Index | long_length, short_length | 25, 13 | -100 to 100 | Double-smoothed momentum |
 | fisher | Fisher Transform | length | 10 | Unbounded | Gaussian-normalized oscillator |
-| awesome_osc | Awesome Oscillator | fastLength, slowLength | 5, 34 | Unbounded | Median price momentum |
+| awesome_osc | Awesome Oscillator | fast_length, slow_length | 5, 34 | Unbounded | Median price momentum |
 
 **RSI levels**:
 - Oversold: < 30 (buy signal for mean-reversion)
@@ -130,7 +132,7 @@ Analyze volume to confirm price moves. Output: numeric series.
 |----|------|----------|---------------|-------|
 | vma | Volume MA | length | 20 | Simple MA of volume |
 | vroc | Volume ROC | length | 14 | Volume rate of change |
-| vol_osc | Volume Oscillator | fastLength, slowLength | 5, 20 | Fast vs slow volume MA |
+| vol_osc | Volume Oscillator | fast_length, slow_length | 5, 20 | Fast vs slow volume MA |
 | obv | On-Balance Volume | — | — | Cumulative volume by direction |
 | ad_line | AD Line | — | — | Accumulation/Distribution |
 | cmf | Chaikin Money Flow | length | 20 | -1 to 1, volume-weighted A/D |

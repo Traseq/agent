@@ -1,6 +1,8 @@
 // Generated from the Traseq public platform surface snapshot.
 // Keep endpoint behavior in sync with services/app-api /public/v1.
 
+import { STRATEGY_AUTHORING_PAYLOAD_JSON_SCHEMA } from '@traseq/sdk';
+
 export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
 export interface OperationDefinition {
@@ -39,6 +41,32 @@ const numberProp = { type: 'number' } as const;
 const integerProp = { type: 'integer' } as const;
 const booleanProp = { type: 'boolean' } as const;
 const objectProp = { type: 'object', additionalProperties: true } as const;
+const strategyAuthoringPayloadSchema =
+  STRATEGY_AUTHORING_PAYLOAD_JSON_SCHEMA.schema;
+const strategyListStatusProp = {
+  type: 'string',
+  enum: ['active', 'trashed', 'all'],
+} as const;
+const signalConditionRoleProp = {
+  type: 'string',
+  enum: ['entry_condition', 'exit_condition'],
+} as const;
+const signalTriggerPolicyProp = {
+  type: 'string',
+  enum: ['rising_edge', 'every_closed_bar_true'],
+} as const;
+const signalMonitorStatusProp = {
+  type: 'string',
+  enum: ['active', 'paused', 'archived'],
+} as const;
+const signalWebhookStatusProp = {
+  type: 'string',
+  enum: ['active', 'disabled', 'archived'],
+} as const;
+const signalEventTypeProp = {
+  type: 'string',
+  enum: ['strategy.condition.satisfied'],
+} as const;
 
 const OPERATIONS = [
   {
@@ -107,23 +135,16 @@ const OPERATIONS = [
   },
   {
     name: 'validate_strategy',
-    description: 'Validate a strategyAst or signalGraph authoring payload.',
+    description: 'Validate a SignalGraph v2 authoring payload.',
     endpoint: { method: 'POST', path: '/public/v1/strategies/validate' },
-    input_schema: objectSchema(
-      {
-        strategyAst: objectProp,
-        signalGraph: objectProp,
-        settings: objectProp,
-      },
-      ['settings'],
-    ),
+    input_schema: strategyAuthoringPayloadSchema,
   },
   {
     name: 'list_strategies',
     description: 'List workspace strategies.',
     endpoint: { method: 'GET', path: '/public/v1/strategies' },
     input_schema: objectSchema({
-      status: stringProp,
+      status: strategyListStatusProp,
       page: integerProp,
       limit: integerProp,
       search: stringProp,
@@ -138,11 +159,10 @@ const OPERATIONS = [
       {
         name: stringProp,
         description: stringProp,
-        strategyAst: objectProp,
         signalGraph: objectProp,
         settings: objectProp,
       },
-      ['name', 'settings'],
+      ['name', 'signalGraph', 'settings'],
     ),
   },
   {
@@ -153,16 +173,61 @@ const OPERATIONS = [
   },
   {
     name: 'update_strategy',
-    description: 'Update strategy metadata.',
+    description: 'Update active strategy metadata or set the primary version.',
     endpoint: { method: 'PATCH', path: '/public/v1/strategies/{strategyId}' },
     input_schema: objectSchema(
       {
         strategyId: stringProp,
         name: stringProp,
         description: { oneOf: [stringProp, { type: 'null' }] },
+        primaryVersionId: stringProp,
       },
       ['strategyId'],
     ),
+  },
+  {
+    name: 'trash_strategy',
+    description:
+      'Move an active strategy to Trash so it no longer counts toward the active strategy limit. Requires confirm=true.',
+    endpoint: {
+      method: 'POST',
+      path: '/public/v1/strategies/{strategyId}/trash',
+    },
+    input_schema: objectSchema(
+      {
+        strategyId: stringProp,
+        confirm: booleanProp,
+      },
+      ['strategyId', 'confirm'],
+    ),
+    destructive: true,
+  },
+  {
+    name: 'restore_strategy',
+    description:
+      'Restore a strategy from Trash. This can fail if the active strategy limit is already full.',
+    endpoint: {
+      method: 'POST',
+      path: '/public/v1/strategies/{strategyId}/restore',
+    },
+    input_schema: objectSchema({ strategyId: stringProp }, ['strategyId']),
+  },
+  {
+    name: 'purge_strategy',
+    description:
+      'Permanently delete a trashed strategy. This cannot be restored and requires confirm=true.',
+    endpoint: {
+      method: 'POST',
+      path: '/public/v1/strategies/{strategyId}/purge',
+    },
+    input_schema: objectSchema(
+      {
+        strategyId: stringProp,
+        confirm: booleanProp,
+      },
+      ['strategyId', 'confirm'],
+    ),
+    destructive: true,
   },
   {
     name: 'create_strategy_version',
@@ -175,11 +240,10 @@ const OPERATIONS = [
       {
         strategyId: stringProp,
         forkedFromVersionId: stringProp,
-        strategyAst: objectProp,
         signalGraph: objectProp,
         settings: objectProp,
       },
-      ['strategyId', 'settings'],
+      ['strategyId', 'signalGraph', 'settings'],
     ),
   },
   {
@@ -208,7 +272,6 @@ const OPERATIONS = [
       {
         strategyId: stringProp,
         version: integerProp,
-        strategyAst: objectProp,
         signalGraph: objectProp,
         settings: objectProp,
       },
@@ -228,11 +291,10 @@ const OPERATIONS = [
         version: integerProp,
         ignoreWarnings: booleanProp,
         forkedFromVersionId: stringProp,
-        strategyAst: objectProp,
         signalGraph: objectProp,
         settings: objectProp,
       },
-      ['strategyId', 'settings'],
+      ['strategyId', 'signalGraph', 'settings'],
     ),
   },
   {
@@ -291,18 +353,6 @@ const OPERATIONS = [
         strategyName: stringProp,
       },
       ['strategyId', 'version'],
-    ),
-  },
-  {
-    name: 'validate_conflicts',
-    description: 'Check conflicts between strategy blocks.',
-    endpoint: {
-      method: 'POST',
-      path: '/public/v1/strategies/validate-conflicts',
-    },
-    input_schema: objectSchema(
-      { blocks: { type: 'array', items: objectProp } },
-      ['blocks'],
     ),
   },
   {
@@ -564,87 +614,149 @@ const OPERATIONS = [
     destructive: true,
   },
   {
-    name: 'list_blocks',
-    description: 'List reusable custom and system blocks.',
-    endpoint: { method: 'GET', path: '/public/v1/blocks' },
+    name: 'create_signal_monitor',
+    description:
+      'Create a closed-bar neutral strategy condition monitor for a ready strategy version.',
+    endpoint: { method: 'POST', path: '/public/v1/signal-monitors' },
+    input_schema: objectSchema(
+      {
+        strategyVersionId: stringProp,
+        symbol: stringProp,
+        timeframe: { type: 'string', enum: ['15m', '1h', '4h', '1d'] },
+        conditionRole: signalConditionRoleProp,
+        triggerPolicy: signalTriggerPolicyProp,
+        metadata: objectProp,
+      },
+      ['strategyVersionId', 'symbol', 'timeframe', 'conditionRole'],
+    ),
+  },
+  {
+    name: 'list_signal_monitors',
+    description: 'List strategy condition monitors.',
+    endpoint: { method: 'GET', path: '/public/v1/signal-monitors' },
     input_schema: objectSchema({
-      filter: stringProp,
-      search: stringProp,
-      tags: stringProp,
-      type: stringProp,
-      category: stringProp,
-      page: integerProp,
+      status: signalMonitorStatusProp,
+      strategyVersionId: stringProp,
+      symbol: stringProp,
+      timeframe: { type: 'string', enum: ['15m', '1h', '4h', '1d'] },
       limit: integerProp,
+      cursor: stringProp,
     }),
   },
   {
-    name: 'get_block',
-    description: 'Get reusable block detail.',
-    endpoint: { method: 'GET', path: '/public/v1/blocks/{blockId}' },
-    input_schema: objectSchema({ blockId: stringProp }, ['blockId']),
+    name: 'get_signal_monitor',
+    description: 'Get a strategy condition monitor.',
+    endpoint: { method: 'GET', path: '/public/v1/signal-monitors/{monitorId}' },
+    input_schema: objectSchema({ monitorId: stringProp }, ['monitorId']),
   },
   {
-    name: 'create_block',
-    description: 'Create a reusable block.',
-    endpoint: { method: 'POST', path: '/public/v1/blocks' },
+    name: 'update_signal_monitor',
+    description: 'Pause, resume, archive, or update metadata for a monitor.',
+    endpoint: {
+      method: 'PATCH',
+      path: '/public/v1/signal-monitors/{monitorId}',
+    },
     input_schema: objectSchema(
       {
-        name: stringProp,
-        description: stringProp,
-        type: stringProp,
-        category: stringProp,
-        tokens: { type: 'array', items: objectProp },
-        tags: { type: 'array', items: stringProp },
-        indicatorFamily: stringProp,
-        direction: stringProp,
-        exclusiveGroup: stringProp,
-        ignoreWarnings: booleanProp,
+        monitorId: stringProp,
+        status: signalMonitorStatusProp,
+        triggerPolicy: signalTriggerPolicyProp,
+        metadata: { oneOf: [objectProp, { type: 'null' }] },
       },
-      ['name', 'tokens'],
+      ['monitorId'],
     ),
   },
   {
-    name: 'update_block',
-    description: 'Update a reusable block.',
-    endpoint: { method: 'PATCH', path: '/public/v1/blocks/{blockId}' },
+    name: 'delete_signal_monitor',
+    description: 'Archive a strategy condition monitor. Requires confirm=true.',
+    endpoint: {
+      method: 'DELETE',
+      path: '/public/v1/signal-monitors/{monitorId}',
+    },
     input_schema: objectSchema(
-      {
-        blockId: stringProp,
-        name: stringProp,
-        description: stringProp,
-        type: stringProp,
-        category: stringProp,
-        tokens: { type: 'array', items: objectProp },
-        tags: { type: 'array', items: stringProp },
-        indicatorFamily: stringProp,
-        direction: stringProp,
-        exclusiveGroup: stringProp,
-        ignoreWarnings: booleanProp,
-      },
-      ['blockId'],
+      { monitorId: stringProp, confirm: booleanProp },
+      ['monitorId', 'confirm'],
     ),
-  },
-  {
-    name: 'delete_block',
-    description: 'Delete a reusable block. Requires confirm=true.',
-    endpoint: { method: 'DELETE', path: '/public/v1/blocks/{blockId}' },
-    input_schema: objectSchema({ blockId: stringProp, confirm: booleanProp }, [
-      'blockId',
-      'confirm',
-    ]),
     destructive: true,
   },
   {
-    name: 'pin_block',
-    description: 'Pin a reusable block.',
-    endpoint: { method: 'POST', path: '/public/v1/blocks/{blockId}/pin' },
-    input_schema: objectSchema({ blockId: stringProp }, ['blockId']),
+    name: 'list_signal_events',
+    description: 'Poll neutral strategy condition events by opaque cursor.',
+    endpoint: { method: 'GET', path: '/public/v1/signal-events' },
+    input_schema: objectSchema({
+      cursor: stringProp,
+      limit: integerProp,
+      monitorId: stringProp,
+    }),
   },
   {
-    name: 'unpin_block',
-    description: 'Unpin a reusable block.',
-    endpoint: { method: 'DELETE', path: '/public/v1/blocks/{blockId}/pin' },
-    input_schema: objectSchema({ blockId: stringProp }, ['blockId']),
+    name: 'get_signal_event',
+    description: 'Get a neutral strategy condition event.',
+    endpoint: { method: 'GET', path: '/public/v1/signal-events/{eventId}' },
+    input_schema: objectSchema({ eventId: stringProp }, ['eventId']),
+  },
+  {
+    name: 'create_webhook_endpoint',
+    description:
+      'Register a signed webhook endpoint for neutral strategy condition events.',
+    endpoint: { method: 'POST', path: '/public/v1/webhook-endpoints' },
+    input_schema: objectSchema(
+      {
+        url: stringProp,
+        eventTypes: { type: 'array', items: signalEventTypeProp },
+        description: stringProp,
+      },
+      ['url'],
+    ),
+  },
+  {
+    name: 'list_webhook_endpoints',
+    description: 'List webhook endpoints.',
+    endpoint: { method: 'GET', path: '/public/v1/webhook-endpoints' },
+    input_schema: EMPTY_SCHEMA,
+  },
+  {
+    name: 'update_webhook_endpoint',
+    description:
+      'Update a webhook endpoint URL, status, events, or description.',
+    endpoint: {
+      method: 'PATCH',
+      path: '/public/v1/webhook-endpoints/{webhookEndpointId}',
+    },
+    input_schema: objectSchema(
+      {
+        webhookEndpointId: stringProp,
+        url: stringProp,
+        status: signalWebhookStatusProp,
+        eventTypes: { type: 'array', items: signalEventTypeProp },
+        description: { oneOf: [stringProp, { type: 'null' }] },
+      },
+      ['webhookEndpointId'],
+    ),
+  },
+  {
+    name: 'delete_webhook_endpoint',
+    description: 'Archive a webhook endpoint.',
+    endpoint: {
+      method: 'DELETE',
+      path: '/public/v1/webhook-endpoints/{webhookEndpointId}',
+    },
+    input_schema: objectSchema(
+      { webhookEndpointId: stringProp, confirm: booleanProp },
+      ['webhookEndpointId', 'confirm'],
+    ),
+    destructive: true,
+  },
+  {
+    name: 'test_webhook_endpoint',
+    description: 'Send a signed test webhook to an endpoint.',
+    endpoint: {
+      method: 'POST',
+      path: '/public/v1/webhook-endpoints/{webhookEndpointId}/test',
+    },
+    input_schema: objectSchema({ webhookEndpointId: stringProp }, [
+      'webhookEndpointId',
+    ]),
   },
 ] as const satisfies readonly OperationDefinition[];
 

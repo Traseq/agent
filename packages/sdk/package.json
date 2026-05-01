@@ -1,6 +1,6 @@
 {
   "name": "@traseq/sdk",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Low-level Traseq API client, types, and signalGraph schema validation.",
   "license": "MIT",

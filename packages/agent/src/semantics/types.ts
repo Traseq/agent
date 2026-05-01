@@ -50,7 +50,7 @@ export interface SemanticRequiredCapabilities {
 
 export interface SignalGraphFragment {
   nodes: Record<string, unknown>[];
-  bindings: Record<string, unknown>;
+  assemblyHints: Record<string, unknown>;
   settingsHints?: Record<string, unknown>;
 }
 

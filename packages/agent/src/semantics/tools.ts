@@ -1,4 +1,9 @@
-import type { CapabilityDocument, TraseqClient } from '../client/index.js';
+import {
+  assembleSignalGraphDraft,
+  preflightStrategyDraft,
+  type CapabilityDocument,
+  type TraseqClient,
+} from '../client/index.js';
 import { asJsonObject } from '../normalize.js';
 import { evaluateResearchResult } from '../evaluation.js';
 import {
@@ -8,7 +13,9 @@ import {
 } from '../guided-research.js';
 import { formatResearchReport } from '../report.js';
 import { runResearchRunner } from '../research-runner.js';
+import { summarizeUsageHints } from '../usage-hints.js';
 import { getSemantics, resolveStrategySemantics } from './resolver.js';
+import { explainValidationIssues, suggestMinimalRepairs } from './repair.js';
 import type {
   GuidedResearchRoundInput,
   ResearchContextClient,
@@ -18,6 +25,7 @@ import type {
   ResearchRunnerResult,
   StrategyDraftLike,
   Timeframe,
+  ValidationSummaryLike,
 } from '../types.js';
 import type {
   GetSemanticsInput,
@@ -28,12 +36,16 @@ export interface AgentToolDefinition {
   readonly name:
     | 'get_semantics'
     | 'resolve_strategy_semantics'
+    | 'assemble_signal_graph'
+    | 'preflight_strategy_draft'
     | 'start_research_engagement'
     | 'run_guided_research_round'
     | 'summarize_research_engagement'
     | 'run_research_draft'
     | 'evaluate_research_result'
-    | 'format_research_report';
+    | 'format_research_report'
+    | 'explain_validation_issues'
+    | 'suggest_minimal_repairs';
   readonly description: string;
   readonly input_schema: Record<string, unknown>;
   readonly local: true;
@@ -109,6 +121,58 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
     }),
   },
   {
+    name: 'assemble_signal_graph',
+    description:
+      'Assemble resolver fragments with assemblyHints into a complete SignalGraph strategy draft, then run local preflight validation. Pure local JSON tool.',
+    local: true,
+    input_schema: objectSchema(
+      {
+        name: stringProp,
+        description: stringProp,
+        fragments: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            additionalProperties: true,
+            required: ['nodes'],
+            properties: {
+              nodes: {
+                type: 'array',
+                minItems: 1,
+                items: objectProp,
+              },
+              assemblyHints: objectProp,
+              settingsHints: objectProp,
+            },
+          },
+        },
+        settings: objectProp,
+        backtest: objectProp,
+        instrument: stringProp,
+        timeframe: enumProp(TIMEFRAME_VALUES),
+        initialBalance: numberProp,
+        side: enumProp(['long', 'short'] as const),
+        sizing: objectProp,
+        capabilities: objectProp,
+      },
+      ['fragments'],
+    ),
+  },
+  {
+    name: 'preflight_strategy_draft',
+    description:
+      'Validate a complete strategy draft locally before calling remote validate_strategy. Catches schema, ref, and bool/value/series issues without API budget.',
+    local: true,
+    input_schema: objectSchema(
+      {
+        draft: objectProp,
+        capabilities: objectProp,
+      },
+      ['draft'],
+    ),
+  },
+  {
     name: 'start_research_engagement',
     description:
       'Start a service-style Traseq research engagement. Reads live workspace context, usage, and capabilities, then returns assumptions, decision points, evidence boundaries, and provider-agnostic authoring instructions.',
@@ -132,7 +196,7 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
   {
     name: 'run_guided_research_round',
     description:
-      'Run one externally-authored strategy draft as a guided research service round: validate, create/finalize only after validation, backtest, evaluate evidence, and return a service memo. Provider-agnostic; caller authors the draft.',
+      'Run one externally-authored strategy draft as a guided research service round: validate, persist (create or version) only after validation, backtest, evaluate evidence, and return a service memo. Provider-agnostic; caller authors the draft. Pass `strategyId` when iterating on an existing strategy — the runner persists the draft as a new version under that id instead of creating a new strategy. Omit `strategyId` to create a brand-new strategy. Optionally pass `forkedFromVersionId` alongside `strategyId` to preserve lineage from a prior finalized version.',
     local: true,
     input_schema: objectSchema(
       {
@@ -148,6 +212,8 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
         pollIntervalMs: numberProp,
         timeoutMs: numberProp,
         producerTimeoutMs: numberProp,
+        strategyId: stringProp,
+        forkedFromVersionId: stringProp,
       },
       ['prompt', 'draft'],
     ),
@@ -168,7 +234,7 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
   {
     name: 'run_research_draft',
     description:
-      'Run one externally-authored strategy draft through validate, create, finalize, backtest, wait, evaluate, and report. Single round, no validation-repair loop — caller is responsible for repairing rejected drafts. Uses the configured Traseq client.',
+      'Run one externally-authored strategy draft through validate, persist (create or version), finalize, backtest, wait, evaluate, and report. Single round, no validation-repair loop — caller is responsible for repairing rejected drafts. Pass `strategyId` to persist the draft as a new version under that strategy; omit it to create a brand-new strategy. Optionally pass `forkedFromVersionId` alongside `strategyId` to preserve lineage from a prior finalized version. Uses the configured Traseq client.',
     local: true,
     input_schema: objectSchema(
       {
@@ -183,6 +249,8 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
         pollIntervalMs: numberProp,
         timeoutMs: numberProp,
         producerTimeoutMs: numberProp,
+        strategyId: stringProp,
+        forkedFromVersionId: stringProp,
       },
       ['prompt', 'draft'],
     ),
@@ -205,6 +273,32 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
         evaluation: objectProp,
       },
       ['result'],
+    ),
+  },
+  {
+    name: 'explain_validation_issues',
+    description:
+      'Map a validateStrategy result into structured human reasons, suggested fixes, and ontology hints per issue. Pure local JSON tool; deterministic mapping, no AI calls.',
+    local: true,
+    input_schema: objectSchema(
+      {
+        validation: objectProp,
+        draft: objectProp,
+      },
+      ['validation'],
+    ),
+  },
+  {
+    name: 'suggest_minimal_repairs',
+    description:
+      'Propose the smallest set of JSON patches that would make a rejected draft validate. Heuristic and deterministic; the agent applies and re-validates. Returns unaddressed structural issues separately.',
+    local: true,
+    input_schema: objectSchema(
+      {
+        draft: objectProp,
+        validation: objectProp,
+      },
+      ['draft', 'validation'],
     ),
   },
 ];
@@ -298,6 +392,50 @@ export async function runAgentTool(
         ...resolveInput,
         capabilities,
       });
+    }
+    case 'assemble_signal_graph': {
+      const fragments = Array.isArray(input.fragments)
+        ? input.fragments
+        : undefined;
+      if (!fragments) {
+        throw new Error('assemble_signal_graph requires fragments.');
+      }
+      return assembleSignalGraphDraft({
+        ...(typeof input.name === 'string' ? { name: input.name } : {}),
+        ...(typeof input.description === 'string'
+          ? { description: input.description }
+          : {}),
+        fragments: fragments as any,
+        ...(asJsonObject(input.settings)
+          ? { settings: input.settings as any }
+          : {}),
+        ...(asJsonObject(input.backtest)
+          ? { backtest: input.backtest as any }
+          : {}),
+        ...(typeof input.instrument === 'string'
+          ? { instrument: input.instrument }
+          : {}),
+        ...(typeof input.timeframe === 'string'
+          ? { timeframe: input.timeframe as Timeframe }
+          : {}),
+        ...(typeof input.initialBalance === 'number'
+          ? { initialBalance: input.initialBalance }
+          : {}),
+        ...(input.side === 'long' || input.side === 'short'
+          ? { side: input.side }
+          : {}),
+        ...(asJsonObject(input.sizing) ? { sizing: input.sizing as any } : {}),
+        ...(input.capabilities !== undefined
+          ? { capabilities: input.capabilities }
+          : {}),
+      });
+    }
+    case 'preflight_strategy_draft': {
+      const draft = asJsonObject(input.draft);
+      if (!draft) {
+        throw new Error('preflight_strategy_draft requires draft.');
+      }
+      return preflightStrategyDraft(draft, input.capabilities);
     }
     case 'start_research_engagement': {
       if (!isResearchContextClient(options.client)) {
@@ -440,11 +578,23 @@ export async function runAgentTool(
         ...(typeof input.producerTimeoutMs === 'number'
           ? { producerTimeoutMs: input.producerTimeoutMs }
           : {}),
+        ...(typeof input.strategyId === 'string' && input.strategyId.length > 0
+          ? { strategyId: input.strategyId }
+          : {}),
+        ...(typeof input.forkedFromVersionId === 'string' &&
+        input.forkedFromVersionId.length > 0
+          ? { forkedFromVersionId: input.forkedFromVersionId }
+          : {}),
       });
       const evaluation = evaluateResearchResult(result);
-      const report = formatResearchReport(result, evaluation);
+      const usageStatus = summarizeUsageHints({
+        usage: result.live.usage,
+        workspace: result.live.workspace,
+        manifest: result.live.manifest,
+      });
+      const report = formatResearchReport(result, evaluation, { usageStatus });
 
-      return { status: result.status, result, evaluation, report };
+      return { status: result.status, usageStatus, result, evaluation, report };
     }
     case 'evaluate_research_result': {
       const result = asJsonObject(input.result);
@@ -469,6 +619,31 @@ export async function runAgentTool(
             )
           : formatResearchReport(result as unknown as ResearchRunnerResult),
       };
+    }
+    case 'explain_validation_issues': {
+      const validation = asJsonObject(input.validation);
+      if (!validation) {
+        throw new Error('explain_validation_issues requires validation.');
+      }
+      const draft = asJsonObject(input.draft);
+      return explainValidationIssues({
+        validation: validation as unknown as ValidationSummaryLike,
+        ...(draft ? { draft: draft as unknown as StrategyDraftLike } : {}),
+      });
+    }
+    case 'suggest_minimal_repairs': {
+      const draft = asJsonObject(input.draft);
+      const validation = asJsonObject(input.validation);
+      if (!draft) {
+        throw new Error('suggest_minimal_repairs requires draft.');
+      }
+      if (!validation) {
+        throw new Error('suggest_minimal_repairs requires validation.');
+      }
+      return suggestMinimalRepairs({
+        draft: draft as unknown as StrategyDraftLike,
+        validation: validation as unknown as ValidationSummaryLike,
+      });
     }
     default: {
       const _exhaustive: never = name;

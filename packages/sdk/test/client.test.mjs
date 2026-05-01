@@ -92,7 +92,7 @@ test('TraseqClient.validateStrategy sends payload and returns validation result'
         return jsonResponse({
           valid: true,
           summary: { errors: 0, warnings: 0 },
-          issues: {},
+          issues: [],
         });
       },
     }),
@@ -103,6 +103,50 @@ test('TraseqClient.validateStrategy sends payload and returns validation result'
     settings: {},
   });
   assert.equal(result.valid, true);
+  assert.deepEqual(result.issues, []);
+});
+
+test('TraseqClient preserves flat public validation issues on errors', async () => {
+  const body = {
+    statusCode: 400,
+    message: 'Validation failed',
+    error: 'Bad Request',
+    errorCode: 'validation_failed',
+    valid: false,
+    summary: { errors: 1, warnings: 0 },
+    issues: [
+      {
+        code: 'invalid_type',
+        path: 'signalGraph.strategy.entry.action',
+        field: 'signalGraph',
+        message: 'Required',
+        severity: 'error',
+      },
+    ],
+  };
+  const client = new TraseqClient({
+    baseUrl: 'https://api.traseq.test',
+    apiKey: 'key',
+    fetch: createMockFetch({
+      'POST /public/v1/strategies/validate': () => jsonResponse(body, 400),
+    }),
+  });
+
+  await assert.rejects(
+    () => client.validateStrategy({ signalGraph: {}, settings: {} }),
+    (error) => {
+      assert.ok(error instanceof TraseqApiError);
+      assert.deepEqual(error.parsedBody.issues, body.issues);
+      const explanation = explainTraseqError(error);
+      assert.equal(explanation.code, 'validation_failed');
+      assert.equal(explanation.category, 'validation');
+      assert.match(
+        formatTraseqAgentError(error),
+        /signalGraph\.strategy\.entry\.action/,
+      );
+      return true;
+    },
+  );
 });
 
 test('TraseqClient.createStrategy sends name and returns id', async () => {
@@ -188,7 +232,10 @@ test('TraseqClient parses publicAgent errors for agent explanations', async () =
       retryable: false,
       title: 'Strategy limit reached',
       explanation: 'The workspace has reached the strategy limit.',
-      nextSteps: ['Delete unused strategies.', 'Upgrade the workspace plan.'],
+      nextSteps: [
+        'Move unused active strategies to Trash using trash_strategy with confirm=true.',
+        'Upgrade the workspace plan.',
+      ],
       links: [
         {
           rel: 'billing_plan',

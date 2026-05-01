@@ -1,6 +1,8 @@
 export const TRASEQ_API_KEY_SETUP_URL =
   'https://app.traseq.com/login?redirectTo=%2Fsettings%2Fapi-keys&entry_surface=agent_cli&entry_source=missing_traseq_api_key&cta_id=start_with_free_tier';
 
+export const TRASEQ_APP_URL = 'https://app.traseq.com';
+
 export const TRASEQ_API_KEY_SETUP_HELP = [
   'Missing TRASEQ_API_KEY.',
   'Start with the free tier and create a workspace API key:',
@@ -45,4 +47,28 @@ export function requireEnv(name: string): string {
   }
 
   return value;
+}
+
+export const TRASEQ_API_KEY_REF_ENV = 'TRASEQ_API_KEY_REF';
+
+export async function resolveTraseqApiKey(): Promise<string> {
+  const direct = readEnv('TRASEQ_API_KEY');
+  if (direct) {
+    return direct;
+  }
+
+  const { parseSecretRef, resolveSecretRef, DEFAULT_SECRET_REF } =
+    await import('./secrets/index.js');
+
+  const refSpec = readEnv(TRASEQ_API_KEY_REF_ENV);
+  const ref = refSpec ? parseSecretRef(refSpec) : DEFAULT_SECRET_REF;
+
+  try {
+    return await resolveSecretRef(ref, { envFallback: 'TRASEQ_API_KEY' });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${TRASEQ_API_KEY_SETUP_HELP}\n\nResolver detail: ${detail}`,
+    );
+  }
 }

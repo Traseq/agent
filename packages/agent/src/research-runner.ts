@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { TraseqClient } from '@traseq/sdk';
+import { TraseqClient, preflightStrategyDraft } from '@traseq/sdk';
 
 import { analyzeRound } from './analysis.js';
 import { readEnv, requireEnv } from './env.js';
@@ -22,6 +22,7 @@ import type {
   ResearchDraftContext,
   ResearchRepairContext,
   ResearchRunnerClient,
+  ResearchRunnerCostEstimate,
   ResearchRunnerLiveContext,
   ResearchRunnerOptions,
   ResearchRunnerResult,
@@ -31,6 +32,7 @@ import type {
   ScoreBreakdown,
   StrategyDraftLike,
   StrategySettings,
+  Timeframe,
   ValidationSummaryLike,
 } from './types.js';
 
@@ -115,7 +117,7 @@ function createLog(
 
 function validationMessages(validation: ValidationSummaryLike): string[] {
   return [
-    ...(validation.issues.tokens ?? []),
+    ...(validation.issues.signalGraph ?? []),
     ...(validation.issues.settings ?? []),
     ...(validation.issues.conflicts ?? []),
   ].map((issue) => issue.message);
@@ -126,6 +128,22 @@ function buildAuthoringPayload(draft: StrategyDraftLike) {
     signalGraph: draft.signalGraph,
     settings: draft.settings,
   };
+}
+
+async function validateDraftForResearch(
+  client: ResearchRunnerClient,
+  draft: StrategyDraftLike,
+  capabilities: unknown,
+): Promise<ValidationSummaryLike> {
+  const preflight = normalizeValidation(
+    preflightStrategyDraft(draft, capabilities),
+  );
+  if (!preflight.valid) {
+    return preflight;
+  }
+  return normalizeValidation(
+    await client.validateStrategy(buildAuthoringPayload(draft)),
+  );
 }
 
 function versionNumberFrom(value: unknown): number | undefined {
@@ -485,6 +503,69 @@ interface CompletedRound extends ResearchRunnerRound {
   backtest: NonNullable<ResearchRunnerRound['backtest']>;
 }
 
+/**
+ * Best-effort pre-flight cost estimate. Returns:
+ *   - `{ estimate, log }` when the SDK supports it AND the draft has a range
+ *     (the only case where the estimate matches the eventual run)
+ *   - `{ estimate: undefined, log }` when we deliberately skip (older SDK, no
+ *     range) — in those cases the backend is the only authority
+ *   - `{ estimate: undefined, log, error }` when the estimate call fails — we
+ *     log and continue; the round still proceeds, the backend will reject if
+ *     budget is actually short
+ */
+async function tryEstimateBacktestCost(
+  client: ResearchRunnerClient,
+  config: BacktestConfigLike,
+): Promise<{
+  estimate?: ResearchRunnerCostEstimate;
+  message: string;
+  error?: string;
+}> {
+  if (typeof client.estimateBacktestCost !== 'function') {
+    return {
+      message:
+        'Pre-flight cost estimate skipped — client does not support estimateBacktestCost.',
+    };
+  }
+  if (!config.range) {
+    return {
+      message:
+        'Pre-flight cost estimate skipped — backtest config has no explicit range.',
+    };
+  }
+
+  try {
+    const response = await client.estimateBacktestCost({
+      timeframe: config.timeframe as Timeframe,
+      startTs: config.range.start,
+      endTs: config.range.end,
+      ...(config.signalInstrument?.symbol
+        ? { symbol: config.signalInstrument.symbol }
+        : {}),
+    });
+
+    const estimate: ResearchRunnerCostEstimate = {
+      estimatedCostUsd: response.estimatedCostUsd,
+      currentBalanceUsd: response.currentBalanceUsd,
+      afterBalanceUsd: response.afterBalanceUsd,
+      wouldCauseOverage: response.wouldCauseOverage,
+      overageAmountUsd: response.overageAmountUsd,
+    };
+
+    const message = response.wouldCauseOverage
+      ? `Pre-flight cost estimate $${response.estimatedCostUsd.toFixed(4)} exceeds remaining $${response.currentBalanceUsd.toFixed(2)} (overage $${response.overageAmountUsd.toFixed(4)}). Backend may reject runBacktest depending on tier.`
+      : `Pre-flight cost estimate $${response.estimatedCostUsd.toFixed(4)}; remaining $${response.currentBalanceUsd.toFixed(2)} → projected $${response.afterBalanceUsd.toFixed(2)}.`;
+
+    return { estimate, message };
+  } catch (caught) {
+    const detail = caught instanceof Error ? caught.message : String(caught);
+    return {
+      message: `Pre-flight cost estimate failed; continuing without it. Detail: ${detail}`,
+      error: detail,
+    };
+  }
+}
+
 function isCompletedRound(
   round: Partial<ResearchRunnerRound>,
 ): round is CompletedRound {
@@ -529,6 +610,33 @@ class ProducerTimeoutError extends Error {
   }
 }
 
+type RoundPhase =
+  | 'draft'
+  | 'repair'
+  | 'persist'
+  | 'backtest_queue'
+  | 'backtest_wait';
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isBacktestTimeoutError(error: unknown): boolean {
+  return error instanceof Error && /timed out after/i.test(error.message);
+}
+
+function stopReasonForPhase(phase: RoundPhase, error: unknown): string {
+  if (phase === 'draft' || phase === 'repair') {
+    return error instanceof ProducerTimeoutError
+      ? 'producer_timeout'
+      : 'producer_error';
+  }
+  if (phase === 'persist') {
+    return 'persistence_failed';
+  }
+  return isBacktestTimeoutError(error) ? 'backtest_timeout' : 'backtest_failed';
+}
+
 async function callWithTimeout<T>(
   fn: (signal: AbortSignal) => T | Promise<T>,
   timeoutMs: number,
@@ -571,12 +679,34 @@ export async function runResearchRunner(
   const producerTimeoutMs =
     options.producerTimeoutMs ?? DEFAULT_PRODUCER_TIMEOUT_MS;
 
-  const [manifest, workspace, usage, capabilities] = await Promise.all([
-    client.getManifest(),
-    client.getWorkspaceContext(),
-    client.getUsage(),
-    client.getCapabilities(),
-  ]);
+  let manifest: unknown;
+  let workspace: unknown;
+  let usage: unknown;
+  let capabilities: unknown;
+  try {
+    [manifest, workspace, usage, capabilities] = await Promise.all([
+      client.getManifest(),
+      client.getWorkspaceContext(),
+      client.getUsage(),
+      client.getCapabilities(),
+    ]);
+  } catch (caught) {
+    return completeResult({
+      runId,
+      startedAt,
+      input,
+      live: {
+        manifest: {},
+        workspace: {},
+        usage: {},
+        capabilities: {},
+        capabilitySummary: {},
+      },
+      rounds: [],
+      stopReason: 'context_failed',
+      errors: [errorMessage(caught)],
+    });
+  }
 
   const live: ResearchRunnerLiveContext = {
     manifest,
@@ -587,82 +717,222 @@ export async function runResearchRunner(
   };
 
   const rounds: ResearchRunnerRound[] = [];
-  let strategyId: string | undefined;
-  let previousFinalizedVersionId: string | undefined;
+  // Allow callers to continue iterating on an existing strategy. When set, the
+  // first round skips `createStrategy` and persists as a new version, matching
+  // the multi-round versioning path that subsequent rounds already use.
+  let strategyId: string | undefined = options.strategyId;
+  // Seed the lineage chain so callers resuming on an existing strategy can
+  // record the prior finalized version as round 1's parent. Ignored when
+  // `strategyId` is absent — a brand-new strategy has nothing to fork from.
+  let previousFinalizedVersionId: string | undefined =
+    options.strategyId && options.forkedFromVersionId
+      ? options.forkedFromVersionId
+      : undefined;
 
   for (let round = 1; round <= input.rounds; round++) {
     const logs: AgentStepLog[] = [
       createLog(round, 'draft', 'Requesting a strategy draft from producer.'),
     ];
     const context = createDraftContext(runId, round, input, live, rounds);
-    let draft = normalizeRunnerDraft(
-      input,
-      await callWithTimeout(
-        (signal) => options.draftProducer(context, signal),
-        producerTimeoutMs,
-        'draft',
-      ),
-    );
+    let phase: RoundPhase = 'draft';
+    let draft: StrategyDraftLike | undefined;
+    let validation: ValidationSummaryLike | undefined;
+    let validationAttempts = 0;
 
-    logs.push(
-      createLog(round, 'validate', 'Validating strategy draft.', {
-        validation: 1,
-      }),
-    );
-    let validation = normalizeValidation(
-      await client.validateStrategy(buildAuthoringPayload(draft)),
-    );
-    let validationAttempts = 1;
-    let repairAttempts = 0;
-
-    while (
-      !validation.valid &&
-      options.repairProducer &&
-      repairAttempts < maxRepairAttempts
-    ) {
-      repairAttempts += 1;
-      logs.push(
-        createLog(
-          round,
-          'repair',
-          'Requesting a validation repair from producer.',
-          { validation: validationAttempts, repair: repairAttempts },
-        ),
-      );
-      const repairContext = createRepairContext(
-        context,
-        repairAttempts,
-        draft,
-        validation,
-      );
-      const repairProducer = options.repairProducer;
+    try {
       draft = normalizeRunnerDraft(
         input,
         await callWithTimeout(
-          (signal) => repairProducer(repairContext, signal),
+          (signal) => options.draftProducer(context, signal),
           producerTimeoutMs,
-          'repair',
+          'draft',
         ),
       );
-      validationAttempts += 1;
+
       logs.push(
-        createLog(round, 'validate', 'Re-validating repaired strategy draft.', {
-          validation: validationAttempts,
-          repair: repairAttempts,
+        createLog(round, 'validate', 'Validating strategy draft.', {
+          validation: 1,
         }),
       );
-      validation = normalizeValidation(
-        await client.validateStrategy(buildAuthoringPayload(draft)),
+      validation = await validateDraftForResearch(
+        client,
+        draft,
+        live.capabilities,
       );
-    }
+      validationAttempts = 1;
+      let repairAttempts = 0;
 
-    if (!validation.valid) {
-      const errors = validationMessages(validation);
+      while (
+        !validation.valid &&
+        options.repairProducer &&
+        repairAttempts < maxRepairAttempts
+      ) {
+        phase = 'repair';
+        repairAttempts += 1;
+        logs.push(
+          createLog(
+            round,
+            'repair',
+            'Requesting a validation repair from producer.',
+            { validation: validationAttempts, repair: repairAttempts },
+          ),
+        );
+        const repairContext = createRepairContext(
+          context,
+          repairAttempts,
+          draft,
+          validation,
+        );
+        const repairProducer = options.repairProducer;
+        draft = normalizeRunnerDraft(
+          input,
+          await callWithTimeout(
+            (signal) => repairProducer(repairContext, signal),
+            producerTimeoutMs,
+            'repair',
+          ),
+        );
+        validationAttempts += 1;
+        logs.push(
+          createLog(
+            round,
+            'validate',
+            'Re-validating repaired strategy draft.',
+            {
+              validation: validationAttempts,
+              repair: repairAttempts,
+            },
+          ),
+        );
+        validation = await validateDraftForResearch(
+          client,
+          draft,
+          live.capabilities,
+        );
+      }
+
+      if (!validation.valid) {
+        const errors = validationMessages(validation);
+        logs.push(
+          createLog(
+            round,
+            'stop',
+            'Validation failed; no write or backtest calls were made.',
+          ),
+        );
+        rounds.push({
+          round,
+          label: `Round ${round}`,
+          objective: input.objective,
+          inputPrompt: input.prompt,
+          status: 'failed',
+          draft,
+          validation,
+          validationAttempts,
+          logs,
+          stopReason: 'validation_failed',
+          ...(errors.length > 0 ? { errors } : {}),
+        });
+        return completeResult({
+          runId,
+          startedAt,
+          input,
+          live,
+          rounds,
+          stopReason: 'validation_failed',
+          errors,
+        });
+      }
+
+      phase = 'persist';
+      const authoringPayload = buildAuthoringPayload(draft);
+      let versionNumber: number | undefined;
+      let createdStrategyVersionId: string | undefined;
+      const forkedFromVersionId = previousFinalizedVersionId;
+
+      if (!strategyId) {
+        logs.push(createLog(round, 'create', 'Creating the initial strategy.'));
+        const created = await client.createStrategy({
+          name: draft.name,
+          ...(draft.description ? { description: draft.description } : {}),
+          ...authoringPayload,
+        });
+        strategyId = idFrom(created, 'createStrategy');
+        versionNumber = versionNumberFrom(created);
+      } else {
+        logs.push(createLog(round, 'version', 'Creating a strategy revision.'));
+        const createdVersion = await client.createStrategyVersion(strategyId, {
+          ...authoringPayload,
+          ...(forkedFromVersionId ? { forkedFromVersionId } : {}),
+        });
+        createdStrategyVersionId = asString(asJsonObject(createdVersion)?.id);
+        versionNumber = versionNumberFrom(createdVersion);
+      }
+
+      logs.push(createLog(round, 'finalize', 'Finalizing strategy version.'));
+      const finalized = await client.finalizeStrategyVersion(strategyId, {
+        ...authoringPayload,
+        ...(versionNumber !== undefined ? { version: versionNumber } : {}),
+      });
+      const finalizedStrategyVersionId = idFrom(
+        finalized,
+        'finalizeStrategyVersion',
+      );
+
+      const estimate = await tryEstimateBacktestCost(client, draft.backtest);
+      logs.push(createLog(round, 'estimate', estimate.message));
+
+      phase = 'backtest_queue';
+      logs.push(createLog(round, 'backtest', 'Queueing backtest.'));
+      const queuedBacktest = await client.runBacktest({
+        strategyVersionId: finalizedStrategyVersionId,
+        config: draft.backtest,
+      });
+      const backtestId = idFrom(queuedBacktest, 'runBacktest');
+
+      phase = 'backtest_wait';
+      logs.push(
+        createLog(round, 'wait', 'Waiting for terminal backtest result.'),
+      );
+      const completedBacktest = await client.waitForBacktestCompletion(
+        backtestId,
+        {
+          intervalMs: pollIntervalMs,
+          timeoutMs,
+        },
+      );
+      const backtest = normalizeBacktest(completedBacktest);
+      const score: ScoreBreakdown = buildScoreBreakdown(backtest.summary);
+      const analysis = analyzeRound({ score, backtest });
+
+      rounds.push({
+        round,
+        label: `Round ${round}`,
+        objective: input.objective,
+        inputPrompt: input.prompt,
+        status: 'completed',
+        draft,
+        validation,
+        validationAttempts,
+        createdStrategyId: strategyId,
+        ...(createdStrategyVersionId ? { createdStrategyVersionId } : {}),
+        finalizedStrategyVersionId,
+        ...(forkedFromVersionId ? { forkedFromVersionId } : {}),
+        ...(estimate.estimate ? { costEstimate: estimate.estimate } : {}),
+        backtest,
+        score,
+        analysis,
+        logs,
+      });
+      previousFinalizedVersionId = finalizedStrategyVersionId;
+    } catch (caught) {
+      const stopReason = stopReasonForPhase(phase, caught);
+      const message = errorMessage(caught);
       logs.push(
         createLog(
           round,
           'stop',
-          'Validation failed; no write or backtest calls were made.',
+          `Stopped during ${phase}: ${stopReason}. ${message}`,
         ),
       );
       rounds.push({
@@ -671,12 +941,12 @@ export async function runResearchRunner(
         objective: input.objective,
         inputPrompt: input.prompt,
         status: 'failed',
-        draft,
-        validation,
+        ...(draft ? { draft } : {}),
+        ...(validation ? { validation } : {}),
         validationAttempts,
         logs,
-        stopReason: 'validation_failed',
-        ...(errors.length > 0 ? { errors } : {}),
+        stopReason,
+        errors: [message],
       });
       return completeResult({
         runId,
@@ -684,85 +954,10 @@ export async function runResearchRunner(
         input,
         live,
         rounds,
-        stopReason: 'validation_failed',
-        errors,
+        stopReason,
+        errors: [message],
       });
     }
-
-    const authoringPayload = buildAuthoringPayload(draft);
-    let versionNumber: number | undefined;
-    let createdStrategyVersionId: string | undefined;
-    const forkedFromVersionId = previousFinalizedVersionId;
-
-    if (!strategyId) {
-      logs.push(createLog(round, 'create', 'Creating the initial strategy.'));
-      const created = await client.createStrategy({
-        name: draft.name,
-        ...(draft.description ? { description: draft.description } : {}),
-        ...authoringPayload,
-      });
-      strategyId = idFrom(created, 'createStrategy');
-      versionNumber = versionNumberFrom(created);
-    } else {
-      logs.push(createLog(round, 'version', 'Creating a strategy revision.'));
-      const createdVersion = await client.createStrategyVersion(strategyId, {
-        ...authoringPayload,
-        ...(forkedFromVersionId ? { forkedFromVersionId } : {}),
-      });
-      createdStrategyVersionId = asString(asJsonObject(createdVersion)?.id);
-      versionNumber = versionNumberFrom(createdVersion);
-    }
-
-    logs.push(createLog(round, 'finalize', 'Finalizing strategy version.'));
-    const finalized = await client.finalizeStrategyVersion(strategyId, {
-      ...authoringPayload,
-      ...(versionNumber !== undefined ? { version: versionNumber } : {}),
-    });
-    const finalizedStrategyVersionId = idFrom(
-      finalized,
-      'finalizeStrategyVersion',
-    );
-
-    logs.push(createLog(round, 'backtest', 'Queueing backtest.'));
-    const queuedBacktest = await client.runBacktest({
-      strategyVersionId: finalizedStrategyVersionId,
-      config: draft.backtest,
-    });
-    const backtestId = idFrom(queuedBacktest, 'runBacktest');
-
-    logs.push(
-      createLog(round, 'wait', 'Waiting for terminal backtest result.'),
-    );
-    const completedBacktest = await client.waitForBacktestCompletion(
-      backtestId,
-      {
-        intervalMs: pollIntervalMs,
-        timeoutMs,
-      },
-    );
-    const backtest = normalizeBacktest(completedBacktest);
-    const score: ScoreBreakdown = buildScoreBreakdown(backtest.summary);
-    const analysis = analyzeRound({ score, backtest });
-
-    rounds.push({
-      round,
-      label: `Round ${round}`,
-      objective: input.objective,
-      inputPrompt: input.prompt,
-      status: 'completed',
-      draft,
-      validation,
-      validationAttempts,
-      createdStrategyId: strategyId,
-      ...(createdStrategyVersionId ? { createdStrategyVersionId } : {}),
-      finalizedStrategyVersionId,
-      ...(forkedFromVersionId ? { forkedFromVersionId } : {}),
-      backtest,
-      score,
-      analysis,
-      logs,
-    });
-    previousFinalizedVersionId = finalizedStrategyVersionId;
   }
 
   return completeResult({

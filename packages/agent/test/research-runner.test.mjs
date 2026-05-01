@@ -6,22 +6,21 @@ import { runResearchRunner, selectChampionRound } from '../dist/index.js';
 const VALIDATION_OK = {
   valid: true,
   summary: { errors: 0, warnings: 0 },
-  issues: {},
+  issues: [],
 };
 
 const VALIDATION_ERROR = {
   valid: false,
   summary: { errors: 1, warnings: 0 },
-  issues: {
-    tokens: [
-      {
-        code: 'missing_entry',
-        path: 'signalGraph.strategy.entry',
-        message: 'Entry trigger is required.',
-        severity: 'error',
-      },
-    ],
-  },
+  issues: [
+    {
+      code: 'missing_entry',
+      path: 'signalGraph.strategy.entry',
+      field: 'signalGraph',
+      message: 'Entry trigger is required.',
+      severity: 'error',
+    },
+  ],
 };
 
 function makeDraft(name = 'Agent strategy') {
@@ -31,8 +30,18 @@ function makeDraft(name = 'Agent strategy') {
     signalGraph: {
       protocol: 'traseq.signal-graph',
       version: 2,
-      nodes: [],
-      strategy: { kind: 'strategy' },
+      nodes: [{ id: 'entry_signal', kind: 'pattern', name: 'inside_bar' }],
+      strategy: {
+        kind: 'strategy',
+        entry: {
+          kind: 'entry',
+          trigger: { ref: 'entry_signal' },
+          action: {
+            side: 'long',
+            sizing: { mode: 'percent_equity', value: 10 },
+          },
+        },
+      },
     },
     settings: { positionStyle: 'single', warmupPeriod: 200 },
     backtest: {
@@ -288,30 +297,110 @@ describe('runResearchRunner', () => {
     assert.equal(createVersionCall.args[1].forkedFromVersionId, 'version-1');
     assert.equal(result.championRound, 2);
   });
+
+  it('versions an existing strategy when strategyId is supplied (no createStrategy call)', async () => {
+    const client = makeClient();
+
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Iterate on an existing BTC trend-following strategy.',
+        rounds: 1,
+      },
+      strategyId: 'strategy-existing',
+      draftProducer: () => makeDraft('Iteration'),
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.ok(
+      !methodNames(client).includes('createStrategy'),
+      'createStrategy must not be called when strategyId is provided',
+    );
+    const createVersionCall = client.calls.find(
+      (call) => call.method === 'createStrategyVersion',
+    );
+    assert.ok(createVersionCall, 'createStrategyVersion should be called');
+    assert.equal(createVersionCall.args[0], 'strategy-existing');
+    assert.equal(
+      createVersionCall.args[1].forkedFromVersionId,
+      undefined,
+      'no forkedFromVersionId when caller did not seed lineage',
+    );
+    assert.equal(result.rounds[0].createdStrategyId, 'strategy-existing');
+    assert.equal(result.rounds[0].forkedFromVersionId, undefined);
+  });
+
+  it('threads forkedFromVersionId into round 1 when caller seeds lineage', async () => {
+    const client = makeClient();
+
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Resume iteration from a known finalized version.',
+        rounds: 1,
+      },
+      strategyId: 'strategy-existing',
+      forkedFromVersionId: 'version-prior',
+      draftProducer: () => makeDraft('Resumed iteration'),
+    });
+
+    assert.equal(result.status, 'completed');
+    const createVersionCall = client.calls.find(
+      (call) => call.method === 'createStrategyVersion',
+    );
+    assert.ok(createVersionCall, 'createStrategyVersion should be called');
+    assert.equal(createVersionCall.args[0], 'strategy-existing');
+    assert.equal(
+      createVersionCall.args[1].forkedFromVersionId,
+      'version-prior',
+      'createStrategyVersion payload must carry the seeded lineage',
+    );
+    assert.equal(result.rounds[0].forkedFromVersionId, 'version-prior');
+  });
+
+  it('ignores forkedFromVersionId when strategyId is omitted (brand-new strategy has no parent)', async () => {
+    const client = makeClient();
+
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Author a brand-new strategy.',
+        rounds: 1,
+      },
+      forkedFromVersionId: 'version-prior',
+      draftProducer: () => makeDraft('Brand new'),
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.ok(
+      methodNames(client).includes('createStrategy'),
+      'createStrategy must run when strategyId is omitted',
+    );
+    assert.equal(result.rounds[0].forkedFromVersionId, undefined);
+  });
 });
 
 describe('runResearchRunner producer timeout', () => {
-  it('aborts a stalled draft producer once producerTimeoutMs elapses', async () => {
+  it('returns producer_timeout stopReason without throwing when the draft producer stalls', async () => {
     const client = makeClient();
 
-    await assert.rejects(
-      runResearchRunner({
-        client,
-        input: {
-          prompt: 'Research a simple BTC trend-following strategy.',
-          rounds: 1,
-        },
-        producerTimeoutMs: 50,
-        draftProducer: (_ctx, signal) =>
-          new Promise((_resolve, reject) => {
-            signal.addEventListener('abort', () =>
-              reject(new Error('aborted')),
-            );
-          }),
-      }),
-      /did not return within 50ms/,
-    );
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      producerTimeoutMs: 50,
+      draftProducer: (_ctx, signal) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    });
 
+    assert.equal(result.status, 'failed');
+    assert.equal(result.stopReason, 'producer_timeout');
+    assert.equal(result.rounds[0].stopReason, 'producer_timeout');
+    assert.match(result.rounds[0].errors[0], /did not return within 50ms/);
     assert.ok(!methodNames(client).includes('validateStrategy'));
   });
 
@@ -319,24 +408,108 @@ describe('runResearchRunner producer timeout', () => {
     const client = makeClient();
     let receivedSignal;
 
-    await assert.rejects(
-      runResearchRunner({
-        client,
-        input: {
-          prompt: 'Research a simple BTC trend-following strategy.',
-          rounds: 1,
-        },
-        producerTimeoutMs: 30,
-        draftProducer: (_ctx, signal) => {
-          receivedSignal = signal;
-          return new Promise(() => {});
-        },
-      }),
-      /did not return within/,
-    );
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      producerTimeoutMs: 30,
+      draftProducer: (_ctx, signal) => {
+        receivedSignal = signal;
+        return new Promise(() => {});
+      },
+    });
 
+    assert.equal(result.stopReason, 'producer_timeout');
     assert.ok(receivedSignal instanceof AbortSignal);
     assert.equal(receivedSignal.aborted, true);
+  });
+});
+
+describe('runResearchRunner structured stopReasons', () => {
+  it('returns producer_error when the draft producer throws', async () => {
+    const client = makeClient();
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      draftProducer: () => {
+        throw new Error('producer crashed');
+      },
+    });
+    assert.equal(result.status, 'failed');
+    assert.equal(result.stopReason, 'producer_error');
+    assert.match(result.rounds[0].errors[0], /producer crashed/);
+  });
+
+  it('returns persistence_failed when createStrategy fails', async () => {
+    const client = makeClient();
+    client.createStrategy = async () => {
+      throw new Error('persistence layer down');
+    };
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      draftProducer: () => makeDraft(),
+    });
+    assert.equal(result.stopReason, 'persistence_failed');
+    assert.match(result.rounds[0].errors[0], /persistence layer down/);
+  });
+
+  it('returns backtest_failed when runBacktest fails', async () => {
+    const client = makeClient();
+    client.runBacktest = async () => {
+      throw new Error('backtest queue rejected');
+    };
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      draftProducer: () => makeDraft(),
+    });
+    assert.equal(result.stopReason, 'backtest_failed');
+  });
+
+  it('returns backtest_timeout when waitForBacktestCompletion times out', async () => {
+    const client = makeClient();
+    client.waitForBacktestCompletion = async () => {
+      throw new Error('Backtest polling timed out after 1000 ms.');
+    };
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      draftProducer: () => makeDraft(),
+    });
+    assert.equal(result.stopReason, 'backtest_timeout');
+  });
+
+  it('returns context_failed when the upfront context fetch throws', async () => {
+    const client = makeClient();
+    client.getCapabilities = async () => {
+      throw new Error('capabilities endpoint 503');
+    };
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      draftProducer: () => makeDraft(),
+    });
+    assert.equal(result.status, 'failed');
+    assert.equal(result.stopReason, 'context_failed');
+    assert.equal(result.rounds.length, 0);
   });
 });
 
@@ -344,20 +517,20 @@ describe('runResearchRunner accumulate settings', () => {
   it('rejects accumulate drafts that omit a triggerMode', async () => {
     const client = makeClient();
 
-    await assert.rejects(
-      runResearchRunner({
-        client,
-        input: {
-          prompt: 'Research a simple BTC trend-following strategy.',
-          rounds: 1,
-        },
-        draftProducer: () => ({
-          ...makeDraft(),
-          settings: { positionStyle: 'accumulate' },
-        }),
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      draftProducer: () => ({
+        ...makeDraft(),
+        settings: { positionStyle: 'accumulate' },
       }),
-      /accumulation block/,
-    );
+    });
+    assert.equal(result.status, 'failed');
+    assert.equal(result.stopReason, 'producer_error');
+    assert.match(result.rounds[0].errors[0], /accumulation block/);
   });
 
   it('accepts accumulate drafts with a valid triggerMode', async () => {
@@ -373,13 +546,201 @@ describe('runResearchRunner accumulate settings', () => {
         ...makeDraft(),
         settings: {
           positionStyle: 'accumulate',
-          accumulation: { triggerMode: 'scheduled' },
+          accumulation: {
+            triggerMode: 'scheduled',
+            schedule: { cadence: 'weekly', weekday: 1 },
+            maxAdds: 12,
+          },
         },
       }),
     });
 
     assert.equal(result.status, 'completed');
     assert.equal(result.rounds[0].draft.settings.positionStyle, 'accumulate');
+  });
+
+  it('runs the pre-flight cost estimate before runBacktest and attaches it to the round', async () => {
+    const client = makeClient();
+    client.estimateBacktestCost = async (input) => {
+      client.calls.push({ method: 'estimateBacktestCost', args: [input] });
+      return {
+        estimatedCostUsd: 0.04,
+        breakdown: { candleCostUsd: 0.04 },
+        estimatedCandleCount: 1000,
+        currentBalanceUsd: 1.0,
+        afterBalanceUsd: 0.96,
+        wouldCauseOverage: false,
+        overageAmountUsd: 0,
+      };
+    };
+
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      draftProducer: () => ({
+        ...makeDraft(),
+        backtest: {
+          ...makeDraft().backtest,
+          range: { start: 1700000000000, end: 1701000000000 },
+        },
+      }),
+    });
+
+    assert.equal(result.status, 'completed');
+    const sequence = methodNames(client);
+    assert.ok(
+      sequence.indexOf('estimateBacktestCost') >
+        sequence.indexOf('finalizeStrategyVersion'),
+      'estimate must run after finalize',
+    );
+    assert.ok(
+      sequence.indexOf('estimateBacktestCost') <
+        sequence.indexOf('runBacktest'),
+      'estimate must run before runBacktest',
+    );
+    const round = result.rounds[0];
+    assert.ok(round.costEstimate, 'costEstimate should be attached');
+    assert.equal(round.costEstimate.estimatedCostUsd, 0.04);
+    assert.equal(round.costEstimate.wouldCauseOverage, false);
+    assert.ok(
+      round.logs.some(
+        (log) =>
+          log.step === 'estimate' &&
+          /Pre-flight cost estimate \$/.test(log.message),
+      ),
+      'log should record the estimate step',
+    );
+  });
+
+  it('captures wouldCauseOverage and continues to runBacktest (graceful — backend is the gate)', async () => {
+    const client = makeClient();
+    client.estimateBacktestCost = async () => ({
+      estimatedCostUsd: 1.5,
+      breakdown: { candleCostUsd: 1.5 },
+      estimatedCandleCount: 50000,
+      currentBalanceUsd: 0.5,
+      afterBalanceUsd: -1.0,
+      wouldCauseOverage: true,
+      overageAmountUsd: 1.0,
+    });
+
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      draftProducer: () => ({
+        ...makeDraft(),
+        backtest: {
+          ...makeDraft().backtest,
+          range: { start: 1700000000000, end: 1701000000000 },
+        },
+      }),
+    });
+
+    // Round still completes — agent does NOT short-circuit; backend is authoritative.
+    assert.equal(result.status, 'completed');
+    assert.equal(result.rounds[0].costEstimate.wouldCauseOverage, true);
+    assert.equal(result.rounds[0].costEstimate.overageAmountUsd, 1.0);
+    assert.ok(methodNames(client).includes('runBacktest'));
+  });
+
+  it('skips the estimate gracefully when the client lacks estimateBacktestCost', async () => {
+    const client = makeClient();
+    // Default makeClient has no estimateBacktestCost — confirms the runner survives older clients.
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      draftProducer: () => ({
+        ...makeDraft(),
+        backtest: {
+          ...makeDraft().backtest,
+          range: { start: 1700000000000, end: 1701000000000 },
+        },
+      }),
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.equal(result.rounds[0].costEstimate, undefined);
+    assert.ok(
+      result.rounds[0].logs.some(
+        (log) => log.step === 'estimate' && /skipped/.test(log.message),
+      ),
+    );
+  });
+
+  it('skips the estimate when the draft has no explicit backtest range', async () => {
+    const client = makeClient();
+    let estimateCalls = 0;
+    client.estimateBacktestCost = async () => {
+      estimateCalls += 1;
+      return {
+        estimatedCostUsd: 0,
+        breakdown: {},
+        estimatedCandleCount: 0,
+        currentBalanceUsd: 1,
+        afterBalanceUsd: 1,
+        wouldCauseOverage: false,
+        overageAmountUsd: 0,
+      };
+    };
+
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      draftProducer: () => makeDraft(), // no range
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.equal(
+      estimateCalls,
+      0,
+      'estimate should not be called when range is absent',
+    );
+    assert.equal(result.rounds[0].costEstimate, undefined);
+  });
+
+  it('continues with no estimate when estimateBacktestCost throws', async () => {
+    const client = makeClient();
+    client.estimateBacktestCost = async () => {
+      throw new Error('upstream estimate timeout');
+    };
+
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      draftProducer: () => ({
+        ...makeDraft(),
+        backtest: {
+          ...makeDraft().backtest,
+          range: { start: 1700000000000, end: 1701000000000 },
+        },
+      }),
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.equal(result.rounds[0].costEstimate, undefined);
+    assert.ok(
+      result.rounds[0].logs.some(
+        (log) =>
+          log.step === 'estimate' &&
+          /Pre-flight cost estimate failed/.test(log.message),
+      ),
+    );
+    assert.ok(methodNames(client).includes('runBacktest'));
   });
 });
 

@@ -3,22 +3,21 @@ const validationMode = process.env.TRASEQ_AGENT_TEST_VALIDATION ?? 'ok';
 const validationOk = {
   valid: true,
   summary: { errors: 0, warnings: 0 },
-  issues: {},
+  issues: [],
 };
 
 const validationError = {
   valid: false,
   summary: { errors: 1, warnings: 0 },
-  issues: {
-    tokens: [
-      {
-        code: 'missing_entry',
-        path: 'signalGraph.strategy.entry',
-        message: 'Entry trigger is required.',
-        severity: 'error',
-      },
-    ],
-  },
+  issues: [
+    {
+      code: 'missing_entry',
+      path: 'signalGraph.strategy.entry',
+      field: 'signalGraph',
+      message: 'Entry trigger is required.',
+      severity: 'error',
+    },
+  ],
 };
 
 function json(body, status = 200) {

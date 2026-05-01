@@ -1,4 +1,10 @@
-import type { StrategyDraft, StrategySettings, Timeframe } from './types.js';
+import type {
+  StrategyDraft,
+  StrategySettings,
+  Timeframe,
+  TraseqValidationIssue,
+  TraseqValidationResponse,
+} from './types.js';
 
 const TIMEFRAMES: Timeframe[] = ['15m', '1h', '4h', '1d'];
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -202,7 +208,8 @@ interface CapabilityParamLike {
 interface IndicatorCapabilityLike {
   id: string;
   structuralType?: string;
-  params: CapabilityParamLike[];
+  args: CapabilityParamLike[];
+  output?: CapabilityParamLike;
 }
 
 interface IndicatorCapabilityDescriptor {
@@ -234,13 +241,15 @@ interface CapabilitySignalNodeLike {
   kind: NodeKind;
   output: 'bool' | 'value';
   inputs: CapabilitySignalInputLike[];
-  params?: CapabilityParamLike[];
+  fields?: CapabilityParamLike[];
   usesIndicatorCatalog?: boolean;
 }
 
 export interface DraftSchemaIssue {
   path: string;
   message: string;
+  code?: string;
+  severity?: 'error' | 'warning';
 }
 
 const VALUE_NODE_KINDS = new Set<NodeKind>([
@@ -614,9 +623,9 @@ const BASE_SIGNAL_GRAPH_NODE_JSON_SCHEMAS = [
     ttlBars: integerJsonSchema(1),
     conflictPolicy: enumJsonSchema(CONFLICT_POLICIES),
   }),
-  createNodeJsonSchema('event', ['name', 'params'], {
+  createNodeJsonSchema('event', ['name', 'args'], {
     name: enumJsonSchema(['pivot_confirmed']),
-    params: {
+    args: {
       type: 'object',
       additionalProperties: false,
       required: ['pivotKind', 'left', 'right'],
@@ -688,9 +697,9 @@ function isCapabilitySignalNodeLike(
     (value.output === 'bool' || value.output === 'value') &&
     Array.isArray(value.inputs) &&
     value.inputs.every((input) => isCapabilitySignalInputLike(input)) &&
-    (value.params === undefined ||
-      (Array.isArray(value.params) &&
-        value.params.every((param) => isCapabilityParamLike(param)))) &&
+    (value.fields === undefined ||
+      (Array.isArray(value.fields) &&
+        value.fields.every((param) => isCapabilityParamLike(param)))) &&
     (value.usesIndicatorCatalog === undefined ||
       typeof value.usesIndicatorCatalog === 'boolean')
   );
@@ -704,8 +713,9 @@ function isIndicatorCapabilityLike(
     typeof value.id === 'string' &&
     (value.structuralType === undefined ||
       typeof value.structuralType === 'string') &&
-    Array.isArray(value.params) &&
-    value.params.every((param) => isCapabilityParamLike(param))
+    Array.isArray(value.args) &&
+    value.args.every((param) => isCapabilityParamLike(param)) &&
+    (value.output === undefined || isCapabilityParamLike(value.output))
   );
 }
 
@@ -812,16 +822,13 @@ function describeIndicatorStructuralType(
 function splitIndicatorCapability(
   indicator: IndicatorCapabilityLike,
 ): IndicatorCapabilityDescriptor {
-  const output = indicator.params.find((param) => param.name === 'output');
-  const args = indicator.params.filter((param) => param.name !== 'output');
-
   return {
     id: indicator.id,
-    args,
+    args: indicator.args,
     ...(indicator.structuralType === undefined
       ? {}
       : { structuralType: indicator.structuralType }),
-    ...(output === undefined ? {} : { output }),
+    ...(indicator.output === undefined ? {} : { output: indicator.output }),
   };
 }
 
@@ -1382,6 +1389,29 @@ export function buildStrategyDraftJsonSchema(capabilities?: unknown) {
 
 export const STRATEGY_DRAFT_JSON_SCHEMA = buildStrategyDraftJsonSchema();
 
+export function buildStrategyAuthoringPayloadJsonSchema(
+  capabilities?: unknown,
+) {
+  const draftSchema = buildStrategyDraftJsonSchema(capabilities).schema;
+  const properties = draftSchema.properties as Record<string, unknown>;
+
+  return {
+    name: 'traseq_strategy_authoring_payload',
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['signalGraph', 'settings'],
+      properties: {
+        signalGraph: properties.signalGraph,
+        settings: properties.settings,
+      },
+    },
+  };
+}
+
+export const STRATEGY_AUTHORING_PAYLOAD_JSON_SCHEMA =
+  buildStrategyAuthoringPayloadJsonSchema();
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -1399,7 +1429,37 @@ function pushIssue(
   path: string,
   message: string,
 ): void {
-  issues.push({ path, message });
+  issues.push({
+    code: 'strategy_draft_schema',
+    path,
+    message,
+    severity: 'error',
+  });
+}
+
+function issueFieldFromPath(path: string): string {
+  if (path.startsWith('signalGraph')) {
+    return 'signalGraph';
+  }
+  if (path.startsWith('settings')) {
+    return 'settings';
+  }
+  if (path.startsWith('backtest')) {
+    return 'backtest';
+  }
+  return path === '$' ? 'request' : path.split('.')[0] || 'request';
+}
+
+export function draftSchemaIssuesToValidationIssues(
+  issues: readonly DraftSchemaIssue[],
+): TraseqValidationIssue[] {
+  return issues.map((issue) => ({
+    code: issue.code ?? 'strategy_draft_schema',
+    path: issue.path,
+    field: issueFieldFromPath(issue.path),
+    message: issue.message,
+    severity: issue.severity ?? 'error',
+  }));
 }
 
 function validateNonEmptyString(
@@ -2070,6 +2130,10 @@ function validateNodeInputsFromCapabilities(
   });
 }
 
+const LEGACY_NODE_KINDS: Record<string, string> = {
+  price: 'Use kind: "market" with a field such as "close".',
+};
+
 function validateNodeBase(
   path: string,
   node: Record<string, unknown>,
@@ -2092,6 +2156,84 @@ function validateNodeBase(
   }
 
   return node.kind as NodeKind;
+}
+
+/**
+ * Single source of truth for legacy public-authoring vocabulary the agent /
+ * SDK no longer accepts. Runs *before* `validateNodeBase` so legacy kinds
+ * surface a precise migration message instead of a generic "kind must be
+ * one of" enum error.
+ *
+ * Returns true when a legacy kind was matched so the caller can short-circuit.
+ */
+function validateNoLegacyNodeFields(
+  path: string,
+  node: Record<string, unknown>,
+  issues: DraftSchemaIssue[],
+): boolean {
+  let legacyKindMatched = false;
+
+  if (typeof node.kind === 'string' && node.kind in LEGACY_NODE_KINDS) {
+    pushIssue(
+      issues,
+      `${path}.kind`,
+      `${path}.kind is not supported. ${LEGACY_NODE_KINDS[node.kind]}`,
+    );
+    legacyKindMatched = true;
+  }
+
+  if ('shift' in node) {
+    pushIssue(
+      issues,
+      `${path}.shift`,
+      `${path}.shift is not supported. Use ${path}.offset for historical bars.`,
+    );
+  }
+
+  if (node.kind !== 'indicator') {
+    if (node.kind === 'event' && 'params' in node) {
+      pushIssue(
+        issues,
+        `${path}.params`,
+        `${path}.params is not supported on event nodes. Use ${path}.args.`,
+      );
+    }
+    return legacyKindMatched;
+  }
+
+  if ('name' in node) {
+    pushIssue(
+      issues,
+      `${path}.name`,
+      `${path}.name is not supported on indicator nodes. Use ${path}.indicator.`,
+    );
+  }
+
+  if ('params' in node) {
+    pushIssue(
+      issues,
+      `${path}.params`,
+      `${path}.params is not supported on indicator nodes. Use ${path}.args.`,
+    );
+  }
+
+  if ('source' in node) {
+    pushIssue(
+      issues,
+      `${path}.source`,
+      `${path}.source is not supported on indicator nodes. Put source inside ${path}.args.source.`,
+    );
+  }
+
+  if (isPlainObject(node.args) && 'period' in node.args) {
+    pushIssue(
+      issues,
+      `${path}.args.period`,
+      `${path}.args.period is not supported for indicator lookbacks. Use ${path}.args.length.`,
+    );
+  }
+
+  return legacyKindMatched;
 }
 
 function validateStrategyDefaults(
@@ -2244,6 +2386,22 @@ function validateStrategyNode(
     pushIssue(issues, `${path}.entry`, `${path}.entry must be an object.`);
   } else {
     validateEnum(`${path}.entry.kind`, value.entry.kind, ['entry'], issues);
+
+    if ('conditions' in value.entry) {
+      pushIssue(
+        issues,
+        `${path}.entry.conditions`,
+        `${path}.entry.conditions is not supported. Combine bool nodes with all/any and reference the result from ${path}.entry.trigger.`,
+      );
+    }
+
+    if ('side' in value.entry) {
+      pushIssue(
+        issues,
+        `${path}.entry.side`,
+        `${path}.entry.side is not supported. Use ${path}.entry.action.side.`,
+      );
+    }
 
     if (value.entry.instrument !== undefined) {
       validateInstrumentRef(
@@ -2439,6 +2597,10 @@ function validateNode(
     return null;
   }
 
+  const legacyKindMatched = validateNoLegacyNodeFields(path, node, issues);
+  if (legacyKindMatched) {
+    return null;
+  }
   const kind = validateNodeBase(path, node, issues);
   if (!kind) {
     return null;
@@ -2963,32 +3125,20 @@ function validateNode(
       break;
     case 'event':
       validateEnum(`${path}.name`, node.name, ['pivot_confirmed'], issues);
-      if (!isPlainObject(node.params)) {
-        pushIssue(
-          issues,
-          `${path}.params`,
-          `${path}.params must be an object.`,
-        );
+      if (!isPlainObject(node.args)) {
+        pushIssue(issues, `${path}.args`, `${path}.args must be an object.`);
       } else {
         validateEnum(
-          `${path}.params.pivotKind`,
-          node.params.pivotKind,
+          `${path}.args.pivotKind`,
+          node.args.pivotKind,
           PIVOT_KINDS,
           issues,
         );
-        validateIntegerPositive(
-          `${path}.params.left`,
-          node.params.left,
-          issues,
-        );
-        validateIntegerPositive(
-          `${path}.params.right`,
-          node.params.right,
-          issues,
-        );
+        validateIntegerPositive(`${path}.args.left`, node.args.left, issues);
+        validateIntegerPositive(`${path}.args.right`, node.args.right, issues);
         validateOptionalEnum(
-          `${path}.params.timeframe`,
-          node.params.timeframe,
+          `${path}.args.timeframe`,
+          node.args.timeframe,
           TIMEFRAMES,
           issues,
         );
@@ -3526,5 +3676,30 @@ export function validateStrategyDraft(
   return {
     ok: true,
     draft: value as unknown as StrategyDraft,
+  };
+}
+
+export function preflightStrategyDraft(
+  value: unknown,
+  capabilities?: unknown,
+): TraseqValidationResponse & { draft?: StrategyDraft } {
+  const result = validateStrategyDraft(value, capabilities);
+  if (result.ok) {
+    return {
+      valid: true,
+      summary: { errors: 0, warnings: 0 },
+      issues: [],
+      draft: result.draft,
+    };
+  }
+
+  const issues = draftSchemaIssuesToValidationIssues(result.issues);
+  return {
+    valid: false,
+    summary: {
+      errors: issues.filter((issue) => issue.severity === 'error').length,
+      warnings: issues.filter((issue) => issue.severity === 'warning').length,
+    },
+    issues,
   };
 }

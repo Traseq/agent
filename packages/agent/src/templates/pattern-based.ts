@@ -9,7 +9,7 @@ export const patternBasedTemplate: StrategyTemplate = {
     'Bullish engulfing patterns at trend-supported levels signal strong buying pressure. Combining with a trend filter ensures the pattern occurs in a favorable macro context.',
   adaptationHints: [
     'Swap bullish_engulfing for other patterns: hammer, morning_star, piercing_line.',
-    'Change EMA period (20-100) for faster/slower trend confirmation.',
+    'Change EMA length (20-100) for faster/slower trend confirmation.',
     'Replace time-based exit with a signal-based exit (e.g., bearish pattern).',
     'Add a support level check (close near pivot low) for higher-quality setups.',
     'Add volume spike confirmation for the pattern bar.',

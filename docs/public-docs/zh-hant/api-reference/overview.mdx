@@ -38,21 +38,15 @@ Base path：
 - 讀取 workspace context
 - 在產生 payload 前讀取 authoring capabilities
 - 讀取 system strategies
-- 驗證 canonical 策略 payload
+- 驗證 SignalGraph v2 策略 payload
 - 建立策略草稿
 - 定案版本
 - 建立與輪詢回測
 
-目前的 canonical 策略 contract 是 `StrategyAstV1`，也就是
-`protocol: "traseq.strategy"`、`version: 1`。Agent 也可以傳送
-`SignalGraphV2`（`protocol: "traseq.signal-graph"`、`version: 2`）作為更高階的
-authoring graph；後端會先把它編譯成 canonical `strategyAst` 再驗證與持久化。
-`entryTokens` / `exitTokens` 仍可能出現在回應中，但應視為 editor /
-derived representation，而不是長期 source of truth。策略寫入 API 現在要求
-`strategyAst` 或 `signalGraph` 至少一者。若 editor 仍以 token authoring，應先透過
-`POST /workspaces/:workspaceId/backtests/validate-strategy` 編譯成 canonical
-payload，AI agent 若採用 `signalGraph` authoring 則可使用
-`POST /workspaces/:workspaceId/backtests/validate-signal-graph`。
+Public Agent API 的策略 authoring contract 是 `SignalGraphV2`
+（`protocol: "traseq.signal-graph"`、`version: 2`）。外部 agent 只需要送
+`signalGraph` 與 `settings`；後端可能再編譯成內部執行格式，但那些內部格式不屬於
+公開寫入 contract。
 
 建議驗證方式：
 
@@ -71,8 +65,8 @@ x-api-key: trsq_live_<keyId>_<secret>
 2. 先呼叫 `GET /public/v1` 取得高階 contract。
 3. 再呼叫 `GET /public/v1/workspace` 確認 role、scopes 與 tier。
 4. 在 write 或 backtest workflow 前呼叫 `GET /public/v1/usage`，檢查目前 budget 與 hard limits。
-5. 在組 payload 前先呼叫 `GET /public/v1/capabilities`，讓 agent 使用受支援的 indicators、node inputs、bindings、operators、params 與 tier limits。
-6. 先把 editor token flow 編譯成 `strategyAst`，或直接送 `signalGraph`，再以 canonical payload 驗證與寫入。
+5. 在組 payload 前先呼叫 `GET /public/v1/capabilities`，讓 agent 使用受支援的 indicators、indicator args、node fields、strategy bindings、risk metadata、operators 與 tier limits。
+6. 產生 `signalGraph` payload；若使用 SDK/MCP tools，先跑本地 preflight，再驗證與建立或定案策略。
 7. 讀回測結果時，先看 `result.summaryJson.strategyTrace` 與
    `result.summaryJson.ruleStatsSummary`，需要完整鑽取時再抓 artifact。
 

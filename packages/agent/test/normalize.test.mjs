@@ -131,7 +131,7 @@ describe('normalizeValidation', () => {
       valid: true,
       summary: { errors: 0, warnings: 1 },
       issues: {
-        tokens: [{ message: 'test warning', severity: 'warning' }],
+        signalGraph: [{ message: 'test warning', severity: 'warning' }],
         settings: [],
         conflicts: [],
       },
@@ -140,9 +140,60 @@ describe('normalizeValidation', () => {
     assert.equal(result.valid, true);
     assert.equal(result.summary.errors, 0);
     assert.equal(result.summary.warnings, 1);
-    assert.equal(result.issues.tokens.length, 1);
-    assert.equal(result.issues.tokens[0].message, 'test warning');
-    assert.equal(result.issues.tokens[0].severity, 'warning');
+    assert.equal(result.issues.signalGraph.length, 1);
+    assert.equal(result.issues.signalGraph[0].message, 'test warning');
+    assert.equal(result.issues.signalGraph[0].severity, 'warning');
+  });
+
+  it('normalizes flat public validation issues into internal groups', () => {
+    const result = normalizeValidation({
+      valid: false,
+      summary: { errors: 2, warnings: 0 },
+      issues: [
+        {
+          code: 'invalid_type',
+          path: 'signalGraph.strategy.entry.action',
+          field: 'signalGraph',
+          message: 'Required',
+          severity: 'error',
+        },
+        {
+          code: 'invalid_type',
+          path: 'settings.positionStyle',
+          field: 'settings',
+          message: 'Required',
+          severity: 'error',
+        },
+      ],
+    });
+
+    assert.equal(result.issues.signalGraph.length, 1);
+    assert.equal(result.issues.settings.length, 1);
+  });
+
+  it('routes flat issues with blockA/blockB into the conflicts group', () => {
+    const result = normalizeValidation({
+      valid: false,
+      summary: { errors: 1, warnings: 0 },
+      issues: [
+        {
+          code: 'CONFLICTING_BLOCKS',
+          path: 'signalGraph.strategy.entry.filters',
+          field: 'signalGraph',
+          message: 'These blocks contradict each other.',
+          severity: 'error',
+          blockA: { id: 'block-a', name: 'MACD hist > 0' },
+          blockB: { id: 'block-b', name: 'MACD hist < 0' },
+        },
+      ],
+    });
+
+    assert.equal(result.issues.conflicts.length, 1);
+    assert.equal(result.issues.signalGraph.length, 0);
+    assert.deepEqual(result.issues.conflicts[0].blockA, {
+      id: 'block-a',
+      name: 'MACD hist > 0',
+    });
   });
 
   it('handles empty/null input', () => {

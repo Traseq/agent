@@ -89,6 +89,16 @@ export async function runPlatformTool(
         requiredString(input, 'strategyId'),
         omit(input, ['strategyId']),
       );
+    case 'trash_strategy':
+      return client.trashStrategy(requiredString(input, 'strategyId'), {
+        confirm: true,
+      });
+    case 'restore_strategy':
+      return client.restoreStrategy(requiredString(input, 'strategyId'));
+    case 'purge_strategy':
+      return client.purgeStrategy(requiredString(input, 'strategyId'), {
+        confirm: true,
+      });
     case 'create_strategy_version':
       return client.createStrategyVersion(
         requiredString(input, 'strategyId'),
@@ -131,8 +141,6 @@ export async function runPlatformTool(
         requiredNumber(input, 'version'),
         omit(input, ['strategyId', 'version']),
       );
-    case 'validate_conflicts':
-      return client.validateConflicts(input as any);
     case 'list_backtests':
       return client.listBacktests(input as any);
     case 'run_backtest':
@@ -201,23 +209,40 @@ export async function runPlatformTool(
       return client.deleteComparisonSet(
         requiredString(input, 'comparisonSetId'),
       );
-    case 'list_blocks':
-      return client.listBlocks(input as any);
-    case 'get_block':
-      return client.getBlock(requiredString(input, 'blockId'));
-    case 'create_block':
-      return client.createBlock(input as any);
-    case 'update_block':
-      return client.updateBlock(
-        requiredString(input, 'blockId'),
-        omit(input, ['blockId']) as any,
+    case 'create_signal_monitor':
+      return client.createSignalMonitor(input as any);
+    case 'list_signal_monitors':
+      return client.listSignalMonitors(input as any);
+    case 'get_signal_monitor':
+      return client.getSignalMonitor(requiredString(input, 'monitorId'));
+    case 'update_signal_monitor':
+      return client.updateSignalMonitor(
+        requiredString(input, 'monitorId'),
+        omit(input, ['monitorId']) as any,
       );
-    case 'delete_block':
-      return client.deleteBlock(requiredString(input, 'blockId'));
-    case 'pin_block':
-      return client.pinBlock(requiredString(input, 'blockId'));
-    case 'unpin_block':
-      return client.unpinBlock(requiredString(input, 'blockId'));
+    case 'delete_signal_monitor':
+      return client.deleteSignalMonitor(requiredString(input, 'monitorId'));
+    case 'list_signal_events':
+      return client.listSignalEvents(input as any);
+    case 'get_signal_event':
+      return client.getSignalEvent(requiredString(input, 'eventId'));
+    case 'create_webhook_endpoint':
+      return client.createWebhookEndpoint(input as any);
+    case 'list_webhook_endpoints':
+      return client.listWebhookEndpoints();
+    case 'update_webhook_endpoint':
+      return client.updateWebhookEndpoint(
+        requiredString(input, 'webhookEndpointId'),
+        omit(input, ['webhookEndpointId']) as any,
+      );
+    case 'delete_webhook_endpoint':
+      return client.deleteWebhookEndpoint(
+        requiredString(input, 'webhookEndpointId'),
+      );
+    case 'test_webhook_endpoint':
+      return client.testWebhookEndpoint(
+        requiredString(input, 'webhookEndpointId'),
+      );
     default: {
       const _exhaustive: never = name;
       throw new Error(`Unhandled operation: ${_exhaustive}`);

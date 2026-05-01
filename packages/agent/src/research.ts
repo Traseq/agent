@@ -150,9 +150,9 @@ function buildAuthoringPrompt(input: AutoAgentRequest): string {
     'Optimization objective:',
     input.objective,
     '',
-    'Use get_capabilities before authoring. Resolve intent with resolve_strategy_semantics before writing signalGraph JSON.',
-    'Explain the semantic facets you inferred, compare 2-3 resolver candidates, then assemble the smallest complete signalGraph.',
-    'Validate with validate_strategy before create/finalize.',
+    'Use get_capabilities before authoring. Resolve intent with resolve_strategy_semantics, then assemble_signal_graph from assemblyHints.',
+    'Explain the semantic facets you inferred, compare 2-3 resolver candidates, then preflight_strategy_draft before remote validation.',
+    'Call validate_strategy only after local preflight passes, and before create/finalize.',
     'Prefer a few strong conditions over many weak filters.',
   ].join('\n');
 }
@@ -189,17 +189,18 @@ function buildWorkflow(): ResearchWorkflowStep[] {
     },
     {
       phase: 'seed',
-      tools: ['list_system_strategies', 'get_system_strategy', 'list_blocks'],
-      goal: 'Find templates or reusable blocks that match the research brief.',
+      tools: ['list_system_strategies', 'get_system_strategy'],
+      goal: 'Find system templates that match the research brief.',
     },
     {
       phase: 'author',
       tools: [
         'resolve_strategy_semantics',
+        'assemble_signal_graph',
+        'preflight_strategy_draft',
         'validate_strategy',
-        'validate_conflicts',
       ],
-      goal: 'Resolve intent into fragments, draft signalGraph/settings locally, and repair all blocking validation issues before persisting.',
+      goal: 'Resolve intent into fragments, assemble a complete draft, preflight local diagnostics, and repair blocking validation issues before persisting.',
     },
     {
       phase: 'persist',

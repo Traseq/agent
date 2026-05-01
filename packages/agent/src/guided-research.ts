@@ -6,6 +6,7 @@ import { asJsonObject } from './normalize.js';
 import { formatResearchReport, representativeBacktest } from './report.js';
 import { normalizeRequest, runResearch } from './research.js';
 import { runResearchRunner } from './research-runner.js';
+import { summarizeUsageHints, type UsageStatus } from './usage-hints.js';
 import type {
   GuidedResearchEvidence,
   GuidedResearchRoundInput,
@@ -166,6 +167,44 @@ function buildEvidenceBoundaries(): string[] {
   ];
 }
 
+function buildUsageStatusMessage(
+  usageStatus: UsageStatus,
+): ServiceMessage | undefined {
+  if (usageStatus.level === 'ok') {
+    return undefined;
+  }
+
+  // Prefer the cleanup deeplink for count bottlenecks at the cap (cheaper and
+  // reversible than upgrade); otherwise fall back to billing_plan, then to
+  // whatever the first link is. Keeps the surfaced "Next" suggestion aligned
+  // with `nextSteps[0]` ordering.
+  const exhaustedStrategies = usageStatus.bottlenecks.some(
+    (b) => b.level === 'exhausted' && b.resource === 'strategies',
+  );
+  const exhaustedSavedResults = usageStatus.bottlenecks.some(
+    (b) => b.level === 'exhausted' && b.resource === 'savedResults',
+  );
+  const preferredRel = exhaustedStrategies
+    ? 'manage_strategies'
+    : exhaustedSavedResults
+      ? 'manage_backtests'
+      : 'billing_plan';
+
+  const link =
+    usageStatus.links.find((candidate) => candidate.rel === preferredRel) ??
+    usageStatus.links[0];
+
+  return {
+    level: usageStatus.level === 'exhausted' ? 'critical' : 'warning',
+    title:
+      usageStatus.level === 'exhausted'
+        ? 'Workspace usage exhausted'
+        : 'Workspace usage running low',
+    message: usageStatus.message,
+    ...(link ? { nextAction: `${link.label}: ${link.href}` } : {}),
+  };
+}
+
 function buildGuidedEvidence(
   result: ResearchRunnerResult,
   evaluation: ResearchResultEvaluation,
@@ -183,6 +222,27 @@ function buildGuidedEvidence(
 
 function sentence(value: string): string {
   return /[.!?]$/.test(value) ? value : `${value}.`;
+}
+
+function buildCostOverageMessage(
+  result: ResearchRunnerResult,
+): ServiceMessage | undefined {
+  // First overage takes precedence — guided round runs a single round, but
+  // research-runner can carry multi-round results and we want the earliest signal.
+  const overaged = result.rounds.find(
+    (round) => round.costEstimate?.wouldCauseOverage,
+  );
+  const estimate = overaged?.costEstimate;
+  if (!estimate) {
+    return undefined;
+  }
+  return {
+    level: 'warning',
+    title: 'Pre-flight cost estimate exceeded remaining budget',
+    message: `Estimated cost $${estimate.estimatedCostUsd.toFixed(4)} exceeds remaining $${estimate.currentBalanceUsd.toFixed(2)} (overage $${estimate.overageAmountUsd.toFixed(4)}). The backend will hard-block on Free/Plus API keys; on higher tiers the run continues with overage tracked.`,
+    nextAction:
+      'Reduce the backtest range or move to a higher timeframe to lower cost, or upgrade for more research credits.',
+  };
 }
 
 function buildRoundMessages(
@@ -244,6 +304,17 @@ export async function startResearchEngagement(
     ...(options.client ? { client: options.client } : {}),
   });
 
+  const usageStatus = summarizeUsageHints({
+    usage: research.live.usage,
+    workspace: research.live.workspace,
+    manifest: research.live.manifest,
+  });
+  const serviceMessages = buildEngagementMessages(normalized, riskTolerance);
+  const usageMessage = buildUsageStatusMessage(usageStatus);
+  if (usageMessage) {
+    serviceMessages.push(usageMessage);
+  }
+
   return {
     runId: research.runId,
     startedAt: research.startedAt,
@@ -251,10 +322,11 @@ export async function startResearchEngagement(
     input: normalized,
     riskTolerance,
     assumptions: buildAssumptions(input, normalized, riskTolerance),
-    serviceMessages: buildEngagementMessages(normalized, riskTolerance),
+    serviceMessages,
     decisionPoints: buildDecisionPoints(normalized, riskTolerance),
     authoringInstructions: research.prompts.authoring,
     live: research.live,
+    usageStatus,
     recommendedWorkflow: research.recommendedWorkflow,
     evidenceBoundaries: buildEvidenceBoundaries(),
   };
@@ -341,15 +413,37 @@ export async function runGuidedResearchRound(
     ...(typeof input.producerTimeoutMs === 'number'
       ? { producerTimeoutMs: input.producerTimeoutMs }
       : {}),
+    ...(typeof input.strategyId === 'string' && input.strategyId.length > 0
+      ? { strategyId: input.strategyId }
+      : {}),
+    ...(typeof input.forkedFromVersionId === 'string' &&
+    input.forkedFromVersionId.length > 0
+      ? { forkedFromVersionId: input.forkedFromVersionId }
+      : {}),
   });
   const evaluation = evaluateResearchResult(result);
-  const report = formatResearchReport(result, evaluation);
+  const usageStatus = summarizeUsageHints({
+    usage: result.live.usage,
+    workspace: result.live.workspace,
+    manifest: result.live.manifest,
+  });
+  const report = formatResearchReport(result, evaluation, { usageStatus });
+  const serviceMessages = buildRoundMessages(result, evaluation);
+  const overageMessage = buildCostOverageMessage(result);
+  if (overageMessage) {
+    serviceMessages.push(overageMessage);
+  }
+  const usageMessage = buildUsageStatusMessage(usageStatus);
+  if (usageMessage) {
+    serviceMessages.push(usageMessage);
+  }
 
   return {
     status: result.status,
-    serviceMessages: buildRoundMessages(result, evaluation),
+    serviceMessages,
     evidence: buildGuidedEvidence(result, evaluation),
     verdict: evaluation.verdict,
+    usageStatus,
     result,
     evaluation,
     report,

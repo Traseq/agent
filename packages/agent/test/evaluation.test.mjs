@@ -276,7 +276,7 @@ describe('evaluateResearchResult', () => {
         valid: false,
         summary: { errors: 1, warnings: 0 },
         issues: {
-          tokens: [{ message: 'Entry trigger is required.' }],
+          signalGraph: [{ message: 'Entry trigger is required.' }],
         },
       },
       validationAttempts: 1,

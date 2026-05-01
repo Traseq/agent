@@ -148,7 +148,7 @@ Returns are positive without fees but negative with realistic execution costs.
 
 ### Warmup Period
 - Should never need tuning once set correctly (2× longest lookback).
-- If changing indicator periods, update warmup accordingly.
+- If changing indicator lengths, update warmup accordingly.
 
 ## Iteration Tracking Template
 

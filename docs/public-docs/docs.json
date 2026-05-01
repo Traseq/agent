@@ -56,7 +56,8 @@
                 "pages": [
                   "api-reference/overview",
                   "api-reference/authentication",
-                  "api-reference/api-keys"
+                  "api-reference/api-keys",
+                  "api-reference/signal-events"
                 ]
               },
               {
@@ -146,7 +147,8 @@
                 "pages": [
                   "zh-hant/api-reference/overview",
                   "zh-hant/api-reference/authentication",
-                  "zh-hant/api-reference/api-keys"
+                  "zh-hant/api-reference/api-keys",
+                  "zh-hant/api-reference/signal-events"
                 ]
               },
               {

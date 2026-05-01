@@ -1,16 +1,4 @@
 #!/usr/bin/env node
-import { spawnSync } from 'node:child_process';
-import {
-  accessSync,
-  constants as fsConstants,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs';
-import { delimiter, dirname, join } from 'node:path';
-
-import { getAgentContext } from './assembler.js';
 import {
   readEnv,
   requireEnv,
@@ -23,6 +11,7 @@ import {
 } from './generated/operation-registry.js';
 import { references } from './references/index.js';
 import { templates } from './templates/index.js';
+import { getAgentContext } from './assembler.js';
 import {
   runPlatformTool,
   TraseqClient,
@@ -36,18 +25,6 @@ import {
   runAgentTool,
   type AgentToolName,
 } from './semantics/index.js';
-import {
-  MCP_CLIENTS,
-  MCP_SCOPES,
-  buildClientInstallPlan,
-  formatShellCommand,
-  probeTraseqMcpSetup,
-  redactMcpInstallPlan,
-  type McpClient,
-  type McpInstallPlan,
-  type McpScope,
-  type ResolvedMcpClient,
-} from './mcp/index.js';
 import type {
   JsonObject,
   GuidedResearchRoundInput,
@@ -105,6 +82,11 @@ const ENV_VARS = [
     desc: 'Backtest poll interval (ms)',
     fallback: '3000',
   },
+  {
+    name: 'TRASEQ_WEBHOOK_SECRET',
+    required: false,
+    desc: 'Signal webhook HMAC secret for events serve-webhook',
+  },
 ];
 
 const args = process.argv.slice(2);
@@ -139,11 +121,22 @@ function printUsage(): void {
       '  report --stdin                                  Format a research runner JSON result as Markdown',
       '  guide --prompt "..." [--json]                    Start a guided research engagement',
       '  guide-run --prompt "..." --draft <json>          Run a guided research round and print a service memo',
-      '  setup-mcp --client <client> [--write] [--probe] [--api-key <key>]',
-      '                                                  Generate or install Claude/Codex MCP config (--api-key for one-shot local setup; prefer TRASEQ_API_KEY)',
-      '  mcp-doctor [--client <client>] [--probe] [--api-key <key>]',
-      '                                                  Print the expected MCP install plan; --probe validates the key and required scopes',
-      '  mcp                                             Run the stdio MCP server',
+      '  events listen --mode poll [--once] [--adapter <name|path>]  Poll neutral condition events and run a local adapter.',
+      '  events serve-webhook --port 8787 [--adapter <name|path>]   Serve a signed local webhook bridge.',
+      '  events test-adapter ./adapter.js                 Run a neutral test event through a local adapter.',
+      '  setup [--target=<client>:<location>] [--profile=guided|full] [--api-key <key>]',
+      '                                                  Interactive wizard: probe key → install → doctor. Recommended first-time path.',
+      '  login [--api-key <key>] [--store keychain|env|inline] [--base-url <url>]',
+      '                                                  Probe an API key and persist it to the OS keychain (default).',
+      '  logout                                          Remove the keychain entry.',
+      '  install --target=<client>:<location> [--inline] [--package-version <semver>] [--dry-run]',
+      '                                                  Write MCP config. Targets: claude-code:user|project, claude-desktop:user, codex:user, file:<path>|file:-.',
+      '  uninstall --target=<client>:<location>          Remove a previously installed MCP config entry.',
+      '  upgrade [--package-version <semver>]            Clear the npx cache and re-pin to the current package version.',
+      '  doctor [--api-key <key>] [--json] [--timeout <ms>]',
+      '                                                  Run an end-to-end diagnostic across keychain, configs, npx pin, and live handshake.',
+      '  print-config [--target=<client>:<location>]     Print the redacted MCP JSON for manual paste.',
+      '  mcp                                             Run the stdio MCP server (used by clients).',
       '  research --prompt "..." [options]               Create a tool-first research brief',
       '  research-run --prompt "..." --draft <json>      Execute a single research draft (single-round)',
       '  research-run --prompt "..." --stdin             Execute a single research draft from stdin (single-round)',
@@ -635,494 +628,6 @@ async function runCheckEnvCommand(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// MCP setup / doctor subcommands
-// ---------------------------------------------------------------------------
-
-function parseMcpClientFlag(): McpClient {
-  const raw = getFlag('client') ?? 'auto';
-  if ((MCP_CLIENTS as readonly string[]).includes(raw)) {
-    return raw as McpClient;
-  }
-
-  process.stderr.write(
-    `Error: --client must be one of: ${MCP_CLIENTS.join(', ')}.\n`,
-  );
-  process.exit(1);
-}
-
-function parseMcpScopeFlag(): McpScope {
-  const raw = getFlag('scope') ?? 'user';
-  if ((MCP_SCOPES as readonly string[]).includes(raw)) {
-    return raw as McpScope;
-  }
-
-  process.stderr.write(
-    `Error: --scope must be one of: ${MCP_SCOPES.join(', ')}.\n`,
-  );
-  process.exit(1);
-}
-
-function readSecretFlag(name: string): string | undefined {
-  const value = getFlag(name);
-  if (value === undefined) {
-    return undefined;
-  }
-  const normalized = value.trim();
-  if (normalized.length === 0) {
-    return undefined;
-  }
-  // Guard against `--api-key --probe` (forgotten value); the positional
-  // `getFlag` would otherwise swallow the next flag name as the secret.
-  if (normalized.startsWith('--')) {
-    throw new Error(
-      `--${name} expects a value but got "${normalized}". Pass it as: --${name} <value>`,
-    );
-  }
-  return normalized;
-}
-
-function resolveMcpCredentials(): {
-  apiKey: string | undefined;
-  apiKeyFromFlag: boolean;
-  baseUrl: string | undefined;
-} {
-  const apiKeyFromFlag = readSecretFlag('api-key');
-  return {
-    apiKey: apiKeyFromFlag ?? readEnv('TRASEQ_API_KEY'),
-    apiKeyFromFlag: apiKeyFromFlag !== undefined,
-    baseUrl: readEnv('TRASEQ_BASE_URL'),
-  };
-}
-
-function setupMcpCommandExample(input: {
-  client: McpClient;
-  scope: McpScope;
-  write: boolean;
-  probe: boolean;
-  printConfig: boolean;
-  claudeDesktopConfigPath?: string;
-}): string {
-  const args = [
-    'npx',
-    '-y',
-    '--package',
-    '@traseq/agent',
-    'traseq-agent',
-    'setup-mcp',
-    '--client',
-    input.client,
-  ];
-
-  if (input.scope !== 'user') {
-    args.push('--scope', input.scope);
-  }
-  if (input.write) {
-    args.push('--write');
-  }
-  if (input.probe) {
-    args.push('--probe');
-  }
-  if (input.printConfig) {
-    args.push('--print-config');
-  }
-  if (input.claudeDesktopConfigPath) {
-    args.push('--claude-desktop-config', input.claudeDesktopConfigPath);
-  }
-
-  return formatShellCommand(args);
-}
-
-function missingMcpApiKeyHelp(command: string): string {
-  return [
-    'Missing TRASEQ_API_KEY for MCP setup.',
-    '',
-    'Create or copy a workspace API key here:',
-    TRASEQ_API_KEY_SETUP_URL,
-    '',
-    'Set it for the current terminal, then rerun setup:',
-    '```sh',
-    'export TRASEQ_API_KEY="trsq_..."',
-    command,
-    '```',
-    '',
-    'Or, for a one-shot install, pass the key inline (keeps it out of `ps` argv):',
-    '```sh',
-    `TRASEQ_API_KEY="trsq_..." ${command}`,
-    '```',
-    '',
-    'For future terminals, add the export line to your shell profile (~/.zshrc for zsh, ~/.bashrc for bash).',
-    '',
-    'Do not paste API keys into AI prompts or commit them into project config.',
-  ].join('\n');
-}
-
-function warnApiKeyFlag(): void {
-  process.stderr.write(
-    'Note: --api-key is convenient for local setup, but the value may remain in shell history and is briefly visible to other processes via `ps`. Prefer TRASEQ_API_KEY for regular use, especially on shared hosts and CI.\n',
-  );
-}
-
-function isExecutable(path: string): boolean {
-  try {
-    accessSync(path, fsConstants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function commandExists(command: string): boolean {
-  const pathValue = process.env.PATH ?? '';
-  const isWindows = process.platform === 'win32';
-  const extensions = isWindows
-    ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';').filter(Boolean)
-    : [''];
-
-  for (const dir of pathValue.split(delimiter).filter(Boolean)) {
-    for (const ext of extensions) {
-      const candidate = join(dir, `${command}${ext}`);
-      // On Windows, presence in PATH with a PATHEXT extension is the
-      // executable contract. On Unix we additionally require the +x bit so we
-      // do not falsely detect a same-named non-executable file.
-      if (isWindows ? existsSync(candidate) : isExecutable(candidate)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
-function detectedMcpClients(): Partial<Record<ResolvedMcpClient, boolean>> {
-  return {
-    codex: commandExists('codex'),
-    'claude-code': commandExists('claude'),
-  };
-}
-
-function printMcpPlan(plan: McpInstallPlan): void {
-  process.stdout.write(`# Traseq MCP setup\n\n`);
-  process.stdout.write(`- Client: ${plan.client}\n`);
-  process.stdout.write(`- Scope: ${plan.scope}\n`);
-  process.stdout.write(`- Server name: ${plan.serverName}\n`);
-  if (plan.writeTarget) {
-    process.stdout.write(`- Config path: ${plan.writeTarget}\n`);
-  }
-  process.stdout.write('\n');
-
-  if (plan.command) {
-    process.stdout.write('Install command:\n\n');
-    process.stdout.write(
-      `\`\`\`sh\n${formatShellCommand(plan.command)}\n\`\`\`\n\n`,
-    );
-  }
-
-  if (plan.addJsonCommand) {
-    process.stdout.write('Claude Code add-json alternative:\n\n');
-    process.stdout.write(
-      `\`\`\`sh\n${formatShellCommand(plan.addJsonCommand)}\n\`\`\`\n\n`,
-    );
-  }
-
-  process.stdout.write('MCP config:\n\n');
-  process.stdout.write(
-    `\`\`\`json\n${JSON.stringify(plan.config, null, 2)}\n\`\`\`\n\n`,
-  );
-
-  if (plan.warnings.length > 0) {
-    process.stdout.write('Warnings:\n');
-    for (const warning of plan.warnings) {
-      process.stdout.write(`- ${warning}\n`);
-    }
-    process.stdout.write('\n');
-  }
-
-  process.stdout.write('After install, try this prompt:\n\n');
-  process.stdout.write(`> ${plan.nextPrompt}\n\n`);
-  process.stdout.write('Next steps:\n');
-  for (const step of plan.nextSteps) {
-    process.stdout.write(`- ${step}\n`);
-  }
-}
-
-function readJsonFile(path: string): JsonObject {
-  if (!existsSync(path)) {
-    return {};
-  }
-
-  const raw = readFileSync(path, 'utf8');
-  try {
-    return parseJsonInput(raw);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Existing config at ${path} is not valid JSON (${reason}). Refusing to overwrite. Back up or fix the file, then re-run setup-mcp.`,
-    );
-  }
-}
-
-function writeClaudeDesktopConfig(plan: McpInstallPlan): void {
-  if (!plan.writeTarget) {
-    throw new Error(
-      'Claude Desktop config path could not be detected. Use --print-config and paste the JSON manually.',
-    );
-  }
-
-  const current = readJsonFile(plan.writeTarget);
-  const currentServers = asJsonObject(current.mcpServers) ?? {};
-  const next = {
-    ...current,
-    mcpServers: {
-      ...currentServers,
-      ...plan.config.mcpServers,
-    },
-  };
-
-  mkdirSync(dirname(plan.writeTarget), { recursive: true });
-  writeFileSync(plan.writeTarget, `${JSON.stringify(next, null, 2)}\n`);
-}
-
-const CLIENT_INSTALL_DOC: Partial<Record<ResolvedMcpClient, string>> = {
-  codex: 'https://github.com/openai/codex',
-  'claude-code': 'https://docs.claude.com/en/docs/claude-code',
-};
-
-function missingClientBinaryHelp(
-  plan: McpInstallPlan,
-  binary: string,
-  setupCommandExample: string,
-): string {
-  const docUrl = CLIENT_INSTALL_DOC[plan.client];
-  const printConfigCommand = setupCommandExample.replace(
-    /\s--write\b/,
-    ' --print-config',
-  );
-  const lines = [
-    `Cannot run \`${binary}\`: not found on PATH.`,
-    '',
-    `setup-mcp --client ${plan.client} --write needs the ${plan.client} CLI to register the MCP server, but it is not installed on this machine.`,
-    '',
-    'Choose one of:',
-    `  • Install ${plan.client}${docUrl ? ` (${docUrl})` : ''}, then re-run the same command.`,
-    '  • Print the MCP JSON and paste it into the client config manually:',
-    `      ${printConfigCommand}`,
-    '  • Re-run setup-mcp with a different --client (e.g. claude-code, claude-desktop, or generic).',
-  ];
-  return lines.join('\n');
-}
-
-function assertWriteSupported(
-  plan: McpInstallPlan,
-  detectedClients: Partial<Record<ResolvedMcpClient, boolean>>,
-  setupCommandExample: string,
-): void {
-  if (plan.client === 'claude-desktop' || plan.client === 'generic') {
-    return;
-  }
-  if (!plan.command) {
-    return;
-  }
-  if (detectedClients[plan.client]) {
-    return;
-  }
-  const binary = plan.command[0] ?? plan.client;
-  throw new Error(missingClientBinaryHelp(plan, binary, setupCommandExample));
-}
-
-function executeInstallCommand(plan: McpInstallPlan): void {
-  if (!plan.command) {
-    if (plan.client === 'claude-desktop') {
-      writeClaudeDesktopConfig(plan);
-      process.stdout.write(
-        `Updated Claude Desktop MCP config: ${plan.writeTarget}\n`,
-      );
-      return;
-    }
-    throw new Error('This MCP client does not support automatic install.');
-  }
-
-  const [command, ...commandArgs] = plan.command;
-  if (!command) {
-    throw new Error('Install command was empty.');
-  }
-  const result = spawnSync(command, commandArgs, { stdio: 'inherit' });
-  if (result.error) {
-    const code = (result.error as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') {
-      throw new Error(
-        [
-          `Cannot run \`${command}\`: not found on PATH.`,
-          'Install the client CLI, then re-run setup-mcp; or re-run with --print-config and paste the JSON into the client config manually.',
-        ].join('\n'),
-      );
-    }
-    if (code === 'EACCES') {
-      throw new Error(
-        `Cannot execute \`${command}\`: permission denied. Check file permissions on the binary in PATH.`,
-      );
-    }
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    throw new Error(
-      `\`${command}\` exited with status ${result.status}. See the output above for details, or re-run with --print-config to apply the JSON manually.`,
-    );
-  }
-}
-
-async function printMcpProbe(
-  options: {
-    apiKey?: string;
-    baseUrl?: string;
-  } = {},
-): Promise<void> {
-  const client = createPlatformClient(options);
-  const result = await probeTraseqMcpSetup({ client });
-
-  process.stdout.write('\nTraseq probe:\n');
-  for (const check of result.checks) {
-    process.stdout.write(`  + ${check}\n`);
-  }
-  process.stdout.write(`  workspace: ${result.workspace}\n`);
-  process.stdout.write(`  tier: ${result.tier}\n`);
-  process.stdout.write(
-    `  scopes: ${result.scopes.length > 0 ? result.scopes.join(', ') : 'none reported'}\n`,
-  );
-
-  if (result.missingScopes.length > 0) {
-    process.stdout.write(
-      `  missing guided-research scopes: ${result.missingScopes.join(', ')}\n`,
-    );
-  }
-
-  process.stdout.write('\nProbe next steps:\n');
-  for (const step of result.nextSteps) {
-    process.stdout.write(`- ${step}\n`);
-  }
-
-  if (!result.ok) {
-    process.exitCode = 1;
-  }
-}
-
-async function runSetupMcpCommand(): Promise<void> {
-  const client = parseMcpClientFlag();
-  const scope = parseMcpScopeFlag();
-  const { apiKey, apiKeyFromFlag, baseUrl } = resolveMcpCredentials();
-  const write = hasFlag('write');
-  const probe = hasFlag('probe');
-  const inlineSecrets = write && scope !== 'project';
-  const claudeDesktopConfigPath = getFlag('claude-desktop-config');
-  const detectedClients = detectedMcpClients();
-  const commandExample = setupMcpCommandExample({
-    client,
-    scope,
-    write,
-    probe,
-    printConfig: hasFlag('print-config'),
-    ...(claudeDesktopConfigPath ? { claudeDesktopConfigPath } : {}),
-  });
-  const plan = buildClientInstallPlan({
-    client,
-    scope,
-    inlineSecrets,
-    detectedClients,
-    ...(apiKey ? { apiKey } : {}),
-    ...(baseUrl ? { baseUrl } : {}),
-    ...(claudeDesktopConfigPath ? { claudeDesktopConfigPath } : {}),
-  });
-
-  if (hasFlag('print-config')) {
-    process.stdout.write(
-      `${JSON.stringify(redactMcpInstallPlan(plan).config, null, 2)}\n`,
-    );
-    return;
-  }
-
-  // Validate credentials BEFORE touching local config. A bad key or missing
-  // scope should not leave the user's MCP config half-written. Probe is also
-  // independent of whether the client CLI is installed locally, so running it
-  // first surfaces auth issues even when --write would later fail.
-  if (probe) {
-    if (!apiKey) {
-      throw new Error(missingMcpApiKeyHelp(commandExample));
-    }
-    if (apiKeyFromFlag && !write) {
-      warnApiKeyFlag();
-    }
-    await printMcpProbe({ apiKey, ...(baseUrl ? { baseUrl } : {}) });
-    if (process.exitCode && process.exitCode !== 0) {
-      // probe printed remediation already; do not proceed to install.
-      return;
-    }
-  }
-
-  if (write) {
-    if (plan.scope !== 'project' && !apiKey) {
-      throw new Error(missingMcpApiKeyHelp(commandExample));
-    }
-    if (apiKeyFromFlag && !probe) {
-      // probe path already warned; avoid double-warning.
-      warnApiKeyFlag();
-    }
-    if (inlineSecrets && apiKey && plan.client !== 'claude-desktop') {
-      // claude/codex CLIs accept env values via argv. On shared hosts that
-      // value is briefly visible to other users via `ps`. There is no
-      // upstream interface to avoid this, so warn rather than block.
-      process.stderr.write(
-        'Note: TRASEQ_API_KEY will be passed as a command argument to the install CLI. On shared hosts, prefer dry-run + manual edit to avoid argv exposure.\n',
-      );
-    }
-    // Refuse the spawn early when the target client CLI is not on PATH.
-    // The raw ENOENT message is unactionable; this surfaces install/fallback
-    // options the user actually has.
-    assertWriteSupported(plan, detectedClients, commandExample);
-    executeInstallCommand(plan);
-    process.stdout.write('\nTraseq MCP server installed.\n\n');
-    process.stdout.write(`Try this prompt:\n> ${plan.nextPrompt}\n`);
-  } else {
-    printMcpPlan(redactMcpInstallPlan(plan));
-  }
-}
-
-async function runMcpDoctorCommand(): Promise<void> {
-  const client = parseMcpClientFlag();
-  const scope = parseMcpScopeFlag();
-  const claudeDesktopConfigPath = getFlag('claude-desktop-config');
-  const { apiKey, apiKeyFromFlag, baseUrl } = resolveMcpCredentials();
-  const plan = buildClientInstallPlan({
-    client,
-    scope,
-    detectedClients: detectedMcpClients(),
-    ...(apiKey ? { apiKey } : {}),
-    ...(baseUrl ? { baseUrl } : {}),
-    ...(claudeDesktopConfigPath ? { claudeDesktopConfigPath } : {}),
-  });
-
-  printMcpPlan(redactMcpInstallPlan(plan));
-  if (hasFlag('probe')) {
-    if (!apiKey) {
-      throw new Error(
-        missingMcpApiKeyHelp(
-          setupMcpCommandExample({
-            client,
-            scope,
-            write: false,
-            probe: true,
-            printConfig: false,
-            ...(claudeDesktopConfigPath ? { claudeDesktopConfigPath } : {}),
-          }),
-        ),
-      );
-    }
-    if (apiKeyFromFlag) {
-      warnApiKeyFlag();
-    }
-    await printMcpProbe({ apiKey, ...(baseUrl ? { baseUrl } : {}) });
-  }
-}
-
-// ---------------------------------------------------------------------------
 // platform tools subcommands
 // ---------------------------------------------------------------------------
 
@@ -1283,6 +788,65 @@ async function runReportCommand(): Promise<void> {
   process.stdout.write(report);
 }
 
+async function runEventsCommand(): Promise<void> {
+  const action = args[1];
+  const adapter = getFlag('adapter');
+  const dryRun = !hasFlag('live');
+
+  if (action === 'listen') {
+    const mode = getFlag('mode') ?? 'poll';
+    if (mode !== 'poll') {
+      process.stderr.write('Error: events listen only supports --mode poll.\n');
+      process.exit(1);
+    }
+    const intervalMs = optionalNumberFlag('interval-ms');
+    const limit = optionalNumberFlag('limit');
+    await (
+      await import('./events/index.js')
+    ).listenForSignalEvents(createPlatformClient(), {
+      dryRun,
+      once: hasFlag('once'),
+      ...(adapter ? { adapter } : {}),
+      ...(intervalMs !== undefined ? { intervalMs } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
+    return;
+  }
+
+  if (action === 'serve-webhook') {
+    const port = optionalNumberFlag('port') ?? 8787;
+    const webhookSecret = readEnv('TRASEQ_WEBHOOK_SECRET');
+    await (
+      await import('./events/index.js')
+    ).serveSignalWebhook({
+      dryRun,
+      port,
+      ...(adapter ? { adapter } : {}),
+      ...(webhookSecret ? { secret: webhookSecret } : {}),
+    });
+    return;
+  }
+
+  if (action === 'test-adapter') {
+    const adapterRef = args[2] ?? adapter;
+    if (!adapterRef) {
+      process.stderr.write(
+        'Error: events test-adapter requires an adapter path or --adapter.\n',
+      );
+      process.exit(1);
+    }
+    await (
+      await import('./events/index.js')
+    ).testEventAdapter(adapterRef, { dryRun });
+    return;
+  }
+
+  process.stderr.write(
+    'Error: events requires one of: listen, serve-webhook, test-adapter.\n',
+  );
+  process.exit(1);
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -1325,15 +889,69 @@ async function main(): Promise<void> {
     case 'guide-run':
       await runGuideRunCommand();
       break;
-    case 'setup-mcp':
-      await runSetupMcpCommand();
+    case 'setup': {
+      const { runSetupCommand } = await import('./cli/setup.js');
+      const code = await runSetupCommand(args.slice(1));
+      process.exitCode = code;
       break;
+    }
+    case 'login': {
+      const { runLoginCommand } = await import('./cli/commands.js');
+      const code = await runLoginCommand(args.slice(1));
+      process.exitCode = code;
+      break;
+    }
+    case 'logout': {
+      const { runLogoutCommand } = await import('./cli/commands.js');
+      const code = await runLogoutCommand(args.slice(1));
+      process.exitCode = code;
+      break;
+    }
+    case 'install': {
+      const { runInstallCommand } = await import('./cli/commands.js');
+      const code = await runInstallCommand(args.slice(1));
+      process.exitCode = code;
+      break;
+    }
+    case 'uninstall': {
+      const { runUninstallCommand } = await import('./cli/commands.js');
+      const code = await runUninstallCommand(args.slice(1));
+      process.exitCode = code;
+      break;
+    }
+    case 'upgrade': {
+      const { runUpgradeCommand } = await import('./cli/commands.js');
+      const code = await runUpgradeCommand(args.slice(1));
+      process.exitCode = code;
+      break;
+    }
+    case 'doctor': {
+      const { runDoctorCommand } = await import('./cli/commands.js');
+      const code = await runDoctorCommand(args.slice(1));
+      process.exitCode = code;
+      break;
+    }
+    case 'print-config': {
+      const { runPrintConfigCommand } = await import('./cli/commands.js');
+      const code = await runPrintConfigCommand(args.slice(1));
+      process.exitCode = code;
+      break;
+    }
+    case 'setup-mcp':
     case 'mcp-doctor':
-      await runMcpDoctorCommand();
+      process.stderr.write(
+        `\`${subcommand}\` was removed in 0.2.0. Use \`traseq-agent install\`, \`traseq-agent doctor\`, or \`traseq-agent login\` instead.\nSee README 'Upgrading from 0.1.x' for migration steps.\n`,
+      );
+      process.exitCode = 1;
       break;
     case 'mcp': {
-      const { startMcpServer } = await import('./mcp/index.js');
-      startMcpServer();
+      const { startMcpServer } = await import('./mcp/server.js');
+      const { parseMcpProfile } = await import('./mcp/profile.js');
+      const profileArg = args.slice(1).find((a) => a.startsWith('--profile='));
+      const profile = profileArg
+        ? parseMcpProfile(profileArg.slice('--profile='.length))
+        : undefined;
+      await startMcpServer(profile ? { profile } : {});
       break;
     }
     case 'research':
@@ -1347,6 +965,9 @@ async function main(): Promise<void> {
       break;
     case 'report':
       await runReportCommand();
+      break;
+    case 'events':
+      await runEventsCommand();
       break;
     case 'score':
       await runScoreCommand();

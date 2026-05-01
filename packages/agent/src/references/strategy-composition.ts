@@ -126,8 +126,8 @@ Number of bars to skip before the strategy starts evaluating signals.
    positions but never close them, producing misleading results.
 
 6. **Inventing field names**: Using made-up fields like \`sourceA\`, \`lhs\`, \`rhs\`,
-   \`params\`, or \`conditions\` instead of the actual field names (\`left\`, \`right\`,
-   \`items\`, \`args\`, etc.).
+   indicator-node \`params\`, \`conditions\`, or \`shift\` instead of the actual
+   fields (\`left\`, \`right\`, \`items\`, \`args\`, \`trigger\`, \`offset\`, etc.).
 
 7. **Referencing non-existent state**: Using \`{ ref: "entry_price" }\` as if it
    were a built-in. You must create a state node with

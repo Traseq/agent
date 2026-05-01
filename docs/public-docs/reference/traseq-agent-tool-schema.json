@@ -141,7 +141,7 @@
   },
   {
     "name": "validate_strategy",
-    "description": "Validate a strategyAst or signalGraph authoring payload.",
+    "description": "Validate a SignalGraph v2 authoring payload.",
     "endpoint": {
       "method": "POST",
       "path": "/public/v1/strategies/validate"
@@ -149,19 +149,1751 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["settings"],
+      "required": ["signalGraph", "settings"],
       "properties": {
-        "strategyAst": {
-          "type": "object",
-          "additionalProperties": true
-        },
         "signalGraph": {
           "type": "object",
-          "additionalProperties": true
+          "additionalProperties": false,
+          "required": ["protocol", "version", "nodes", "strategy"],
+          "properties": {
+            "protocol": {
+              "type": "string",
+              "const": "traseq.signal-graph"
+            },
+            "version": {
+              "type": "integer",
+              "const": 2
+            },
+            "meta": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "source": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "editor": {
+                      "type": "string"
+                    },
+                    "blockIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "nodes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "value"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "const"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "field"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "market"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "field": {
+                        "type": "string",
+                        "enum": [
+                          "open",
+                          "high",
+                          "low",
+                          "close",
+                          "hl2",
+                          "hlc3",
+                          "ohlc4",
+                          "typical",
+                          "median",
+                          "volume"
+                        ]
+                      },
+                      "timeframe": {
+                        "type": "string",
+                        "enum": ["15m", "1h", "4h", "1d"]
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "instrument": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["symbol"],
+                        "properties": {
+                          "symbol": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "indicator", "args"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "indicator"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "indicator": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "args": {
+                        "type": "object",
+                        "additionalProperties": true
+                      },
+                      "output": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "timeframe": {
+                        "type": "string",
+                        "enum": ["15m", "1h", "4h", "1d"]
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "instrument": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["symbol"],
+                        "properties": {
+                          "symbol": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "field"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "state"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "field": {
+                        "type": "string",
+                        "enum": [
+                          "position_exists",
+                          "position_unrealized_pnl",
+                          "position_realized_pnl",
+                          "position_bars_since_entry",
+                          "position_bars_since_exit",
+                          "account_balance",
+                          "account_equity",
+                          "account_drawdown",
+                          "account_max_drawdown",
+                          "trades_count_total",
+                          "trades_count_today",
+                          "wins_streak",
+                          "losses_streak",
+                          "last_trade_pnl",
+                          "last_entry_price",
+                          "last_exit_price",
+                          "account_gross_exposure",
+                          "account_used_margin",
+                          "account_available_collateral",
+                          "account_margin_utilization"
+                        ]
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "instrument": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["symbol"],
+                        "properties": {
+                          "symbol": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "op", "period", "source"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "rolling"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "op": {
+                        "type": "string",
+                        "enum": ["max", "min", "sum", "avg"]
+                      },
+                      "period": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "source": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["ref"],
+                            "description": "Reference to another signalGraph node",
+                            "properties": {
+                              "ref": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["const"],
+                            "properties": {
+                              "const": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "op", "args"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "math"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "op": {
+                        "type": "string",
+                        "enum": [
+                          "add",
+                          "sub",
+                          "mul",
+                          "div",
+                          "abs",
+                          "min",
+                          "max",
+                          "pow",
+                          "log",
+                          "sqrt"
+                        ]
+                      },
+                      "args": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["ref"],
+                              "description": "Reference to another signalGraph node",
+                              "properties": {
+                                "ref": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              }
+                            },
+                            {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["const"],
+                              "properties": {
+                                "const": {
+                                  "type": "number"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "value", "when"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "capture"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["ref"],
+                            "description": "Reference to another signalGraph node",
+                            "properties": {
+                              "ref": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["const"],
+                            "properties": {
+                              "const": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "when": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["ref"],
+                        "description": "Reference to a bool node",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "lookback": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "kind",
+                      "pivotKind",
+                      "left",
+                      "right",
+                      "select"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "pivot"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "pivotKind": {
+                        "type": "string",
+                        "enum": ["high", "low"]
+                      },
+                      "left": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "right": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "select": {
+                        "type": "string",
+                        "enum": ["last", "prev"]
+                      },
+                      "n": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "timeframe": {
+                        "type": "string",
+                        "enum": ["15m", "1h", "4h", "1d"]
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "id",
+                      "kind",
+                      "metric",
+                      "pivotKind",
+                      "left",
+                      "right"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "pivot_meta"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "metric": {
+                        "type": "string",
+                        "enum": [
+                          "bars_since_last_pivot",
+                          "bars_between_last_two_pivots",
+                          "last_pivot_index"
+                        ]
+                      },
+                      "pivotKind": {
+                        "type": "string",
+                        "enum": ["high", "low"]
+                      },
+                      "left": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "right": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "select": {
+                        "type": "string",
+                        "enum": ["last", "prev"]
+                      },
+                      "n": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "timeframe": {
+                        "type": "string",
+                        "enum": ["15m", "1h", "4h", "1d"]
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "items"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "all"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "items": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["ref"],
+                          "description": "Reference to a bool node",
+                          "properties": {
+                            "ref": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "items"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "any"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "items": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["ref"],
+                          "description": "Reference to a bool node",
+                          "properties": {
+                            "ref": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "item"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "not"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "item": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["ref"],
+                        "description": "Reference to a bool node",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "op", "left", "right"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "compare"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "op": {
+                        "type": "string",
+                        "enum": ["gt", "lt", "gte", "lte", "eq", "neq"]
+                      },
+                      "left": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["ref"],
+                            "description": "Reference to another signalGraph node",
+                            "properties": {
+                              "ref": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["const"],
+                            "properties": {
+                              "const": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "right": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["ref"],
+                            "description": "Reference to another signalGraph node",
+                            "properties": {
+                              "ref": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["const"],
+                            "properties": {
+                              "const": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "op", "left", "right"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "cross"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "op": {
+                        "type": "string",
+                        "enum": ["cross_up", "cross_down"]
+                      },
+                      "left": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["ref"],
+                        "description": "Reference to a series-capable value node",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "right": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["ref"],
+                            "description": "Reference to another signalGraph node",
+                            "properties": {
+                              "ref": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["const"],
+                            "properties": {
+                              "const": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "value", "lower", "upper"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "between"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["ref"],
+                            "description": "Reference to another signalGraph node",
+                            "properties": {
+                              "ref": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["const"],
+                            "properties": {
+                              "const": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "lower": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["ref"],
+                            "description": "Reference to another signalGraph node",
+                            "properties": {
+                              "ref": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["const"],
+                            "properties": {
+                              "const": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "upper": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["ref"],
+                            "description": "Reference to another signalGraph node",
+                            "properties": {
+                              "ref": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["const"],
+                            "properties": {
+                              "const": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "inclusiveLower": {
+                        "type": "boolean"
+                      },
+                      "inclusiveUpper": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "left", "right", "tolerance"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "near"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "left": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["ref"],
+                            "description": "Reference to another signalGraph node",
+                            "properties": {
+                              "ref": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["const"],
+                            "properties": {
+                              "const": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "right": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["ref"],
+                            "description": "Reference to another signalGraph node",
+                            "properties": {
+                              "ref": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["const"],
+                            "properties": {
+                              "const": {
+                                "type": "number"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      "tolerance": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["mode", "value"],
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": ["absolute", "percent"]
+                          },
+                          "value": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "name"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "pattern"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string",
+                        "enum": [
+                          "doji",
+                          "hammer",
+                          "shooting_star",
+                          "bullish_engulfing",
+                          "bearish_engulfing",
+                          "morning_star",
+                          "evening_star",
+                          "three_white_soldiers",
+                          "three_black_crows",
+                          "bullish_harami",
+                          "bearish_harami",
+                          "piercing_line",
+                          "dark_cloud_cover",
+                          "abandoned_baby",
+                          "dragonfly_doji",
+                          "gravestone_doji",
+                          "tweezers_top",
+                          "tweezers_bottom",
+                          "inside_bar"
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "time_window"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "timezone": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "weekdays": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "Mon",
+                            "Tue",
+                            "Wed",
+                            "Thu",
+                            "Fri",
+                            "Sat",
+                            "Sun"
+                          ]
+                        }
+                      },
+                      "cadence": {
+                        "type": "string",
+                        "enum": ["daily", "weekly", "monthly"]
+                      },
+                      "interval": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "weekday": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 7
+                      },
+                      "dayOfMonth": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 31
+                      },
+                      "anchorMode": {
+                        "type": "string",
+                        "enum": ["backtest_start"]
+                      },
+                      "dates": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["start", "end"],
+                        "properties": {
+                          "start": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "end": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "between": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["start", "end"],
+                        "properties": {
+                          "start": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["hour", "minute"],
+                            "properties": {
+                              "hour": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 23
+                              },
+                              "minute": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 59
+                              }
+                            }
+                          },
+                          "end": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["hour", "minute"],
+                            "properties": {
+                              "hour": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 23
+                              },
+                              "minute": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 59
+                              }
+                            }
+                          },
+                          "inclusive": {
+                            "type": "boolean"
+                          }
+                        }
+                      },
+                      "at": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["hour", "minute"],
+                        "properties": {
+                          "hour": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 23
+                          },
+                          "minute": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 59
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "steps"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "sequence"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "steps": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["expr"],
+                          "properties": {
+                            "expr": {
+                              "type": "object",
+                              "additionalProperties": false,
+                              "required": ["ref"],
+                              "description": "Reference to a bool node",
+                              "properties": {
+                                "ref": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              }
+                            },
+                            "minBars": {
+                              "type": "integer",
+                              "minimum": 1
+                            },
+                            "maxBars": {
+                              "type": "integer",
+                              "minimum": 1
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "window", "mode", "expr"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "rolling_window"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "window": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "mode": {
+                        "type": "string",
+                        "enum": [
+                          "any",
+                          "none",
+                          "all",
+                          "streak",
+                          "count_gt",
+                          "count_lt",
+                          "count_eq"
+                        ]
+                      },
+                      "expr": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["ref"],
+                        "description": "Reference to a bool node",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "value": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "set"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "state_machine"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "set": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["ref"],
+                        "description": "Reference to a bool node",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "reset": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["ref"],
+                        "description": "Reference to a bool node",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "ttlBars": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "conflictPolicy": {
+                        "type": "string",
+                        "enum": ["set_priority", "reset_priority"]
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "kind", "name", "args"],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "event"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string",
+                        "enum": ["pivot_confirmed"]
+                      },
+                      "args": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["pivotKind", "left", "right"],
+                        "properties": {
+                          "pivotKind": {
+                            "type": "string",
+                            "enum": ["high", "low"]
+                          },
+                          "left": {
+                            "type": "integer",
+                            "minimum": 1
+                          },
+                          "right": {
+                            "type": "integer",
+                            "minimum": 1
+                          },
+                          "timeframe": {
+                            "type": "string",
+                            "enum": ["15m", "1h", "4h", "1d"]
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "strategy": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "entry"],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "strategy"
+                },
+                "defaults": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "instrument": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["symbol"],
+                      "properties": {
+                        "symbol": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    "timeframe": {
+                      "type": "string",
+                      "enum": ["15m", "1h", "4h", "1d"]
+                    },
+                    "timezone": {
+                      "type": "string"
+                    },
+                    "warmupBars": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "maxConcurrentPositions": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  }
+                },
+                "entry": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kind", "trigger", "action"],
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "entry"
+                    },
+                    "instrument": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["symbol"],
+                      "properties": {
+                        "symbol": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    "setup": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["ref"],
+                      "description": "Optional bool reference",
+                      "properties": {
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    "trigger": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["ref"],
+                      "description": "Required bool reference",
+                      "properties": {
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    },
+                    "filters": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["ref"],
+                        "description": "Bool reference",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      }
+                    },
+                    "action": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["side", "sizing"],
+                      "properties": {
+                        "side": {
+                          "type": "string",
+                          "enum": ["long", "short"]
+                        },
+                        "sizing": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["mode", "value"],
+                          "properties": {
+                            "mode": {
+                              "type": "string",
+                              "enum": [
+                                "fixed",
+                                "fixed_cash",
+                                "percent_equity",
+                                "percent_balance"
+                              ]
+                            },
+                            "value": {
+                              "type": "number",
+                              "exclusiveMinimum": 0
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "exits": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 1,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["kind", "when", "action"],
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "exit"
+                      },
+                      "reason": {
+                        "type": "string"
+                      },
+                      "when": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["ref"],
+                        "description": "Required bool reference",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        }
+                      },
+                      "priority": {
+                        "type": "integer"
+                      },
+                      "action": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["mode", "value"],
+                        "properties": {
+                          "mode": {
+                            "type": "string",
+                            "enum": ["fixed", "percent_position"]
+                          },
+                          "value": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "risk": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "stopLoss": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["mode", "value"],
+                      "properties": {
+                        "mode": {
+                          "type": "string",
+                          "const": "percent"
+                        },
+                        "value": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        }
+                      }
+                    },
+                    "takeProfits": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["triggerPercent", "closePercent"],
+                        "properties": {
+                          "triggerPercent": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "closePercent": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "closeBasis": {
+                            "type": "string",
+                            "enum": ["initial", "remaining"]
+                          },
+                          "moveStopToBreakeven": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "trailingStop": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["distancePercent"],
+                      "properties": {
+                        "distancePercent": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "activateAfterPercent": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         },
         "settings": {
-          "type": "object",
-          "additionalProperties": true
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["positionStyle"],
+              "properties": {
+                "positionStyle": {
+                  "const": "single"
+                },
+                "warmupPeriod": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["positionStyle", "maxConcurrentPositions"],
+              "properties": {
+                "positionStyle": {
+                  "const": "pyramid"
+                },
+                "maxConcurrentPositions": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "warmupPeriod": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["positionStyle", "accumulation"],
+              "properties": {
+                "positionStyle": {
+                  "const": "accumulate"
+                },
+                "warmupPeriod": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "accumulation": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["triggerMode"],
+                  "properties": {
+                    "triggerMode": {
+                      "type": "string",
+                      "enum": ["scheduled", "signal", "scheduled_and_signal"]
+                    },
+                    "schedule": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["cadence"],
+                      "properties": {
+                        "cadence": {
+                          "type": "string",
+                          "enum": ["daily", "weekly", "monthly"]
+                        },
+                        "interval": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "weekday": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 7
+                        },
+                        "dayOfMonth": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 31
+                        },
+                        "anchorMode": {
+                          "type": "string",
+                          "enum": ["backtest_start"]
+                        }
+                      }
+                    },
+                    "maxAdds": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "budgetCap": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "targetAllocationPct": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 100
+                    },
+                    "stopWhenNoCash": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          ]
         }
       }
     }
@@ -178,7 +1910,8 @@
       "additionalProperties": false,
       "properties": {
         "status": {
-          "type": "string"
+          "type": "string",
+          "enum": ["active", "trashed", "all"]
         },
         "page": {
           "type": "integer"
@@ -205,17 +1938,13 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "settings"],
+      "required": ["name", "signalGraph", "settings"],
       "properties": {
         "name": {
           "type": "string"
         },
         "description": {
           "type": "string"
-        },
-        "strategyAst": {
-          "type": "object",
-          "additionalProperties": true
         },
         "signalGraph": {
           "type": "object",
@@ -248,7 +1977,7 @@
   },
   {
     "name": "update_strategy",
-    "description": "Update strategy metadata.",
+    "description": "Update active strategy metadata or set the primary version.",
     "endpoint": {
       "method": "PATCH",
       "path": "/public/v1/strategies/{strategyId}"
@@ -273,9 +2002,74 @@
               "type": "null"
             }
           ]
+        },
+        "primaryVersionId": {
+          "type": "string"
         }
       }
     }
+  },
+  {
+    "name": "trash_strategy",
+    "description": "Move an active strategy to Trash so it no longer counts toward the active strategy limit. Requires confirm=true.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/strategies/{strategyId}/trash"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategyId", "confirm"],
+      "properties": {
+        "strategyId": {
+          "type": "string"
+        },
+        "confirm": {
+          "type": "boolean"
+        }
+      }
+    },
+    "destructive": true
+  },
+  {
+    "name": "restore_strategy",
+    "description": "Restore a strategy from Trash. This can fail if the active strategy limit is already full.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/strategies/{strategyId}/restore"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategyId"],
+      "properties": {
+        "strategyId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "purge_strategy",
+    "description": "Permanently delete a trashed strategy. This cannot be restored and requires confirm=true.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/strategies/{strategyId}/purge"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategyId", "confirm"],
+      "properties": {
+        "strategyId": {
+          "type": "string"
+        },
+        "confirm": {
+          "type": "boolean"
+        }
+      }
+    },
+    "destructive": true
   },
   {
     "name": "create_strategy_version",
@@ -287,17 +2081,13 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["strategyId", "settings"],
+      "required": ["strategyId", "signalGraph", "settings"],
       "properties": {
         "strategyId": {
           "type": "string"
         },
         "forkedFromVersionId": {
           "type": "string"
-        },
-        "strategyAst": {
-          "type": "object",
-          "additionalProperties": true
         },
         "signalGraph": {
           "type": "object",
@@ -349,10 +2139,6 @@
         "version": {
           "type": "integer"
         },
-        "strategyAst": {
-          "type": "object",
-          "additionalProperties": true
-        },
         "signalGraph": {
           "type": "object",
           "additionalProperties": true
@@ -374,7 +2160,7 @@
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["strategyId", "settings"],
+      "required": ["strategyId", "signalGraph", "settings"],
       "properties": {
         "strategyId": {
           "type": "string"
@@ -387,10 +2173,6 @@
         },
         "forkedFromVersionId": {
           "type": "string"
-        },
-        "strategyAst": {
-          "type": "object",
-          "additionalProperties": true
         },
         "signalGraph": {
           "type": "object",
@@ -494,28 +2276,6 @@
         },
         "strategyName": {
           "type": "string"
-        }
-      }
-    }
-  },
-  {
-    "name": "validate_conflicts",
-    "description": "Check conflicts between strategy blocks.",
-    "endpoint": {
-      "method": "POST",
-      "path": "/public/v1/strategies/validate-conflicts"
-    },
-    "input_schema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["blocks"],
-      "properties": {
-        "blocks": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": true
-          }
         }
       }
     }
@@ -1017,178 +2777,290 @@
     "destructive": true
   },
   {
-    "name": "list_blocks",
-    "description": "List reusable custom and system blocks.",
+    "name": "create_signal_monitor",
+    "description": "Create a closed-bar neutral strategy condition monitor for a ready strategy version.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/signal-monitors"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategyVersionId", "symbol", "timeframe", "conditionRole"],
+      "properties": {
+        "strategyVersionId": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "timeframe": {
+          "type": "string",
+          "enum": ["15m", "1h", "4h", "1d"]
+        },
+        "conditionRole": {
+          "type": "string",
+          "enum": ["entry_condition", "exit_condition"]
+        },
+        "triggerPolicy": {
+          "type": "string",
+          "enum": ["rising_edge", "every_closed_bar_true"]
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  },
+  {
+    "name": "list_signal_monitors",
+    "description": "List strategy condition monitors.",
     "endpoint": {
       "method": "GET",
-      "path": "/public/v1/blocks"
+      "path": "/public/v1/signal-monitors"
     },
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "filter": {
+        "status": {
+          "type": "string",
+          "enum": ["active", "paused", "archived"]
+        },
+        "strategyVersionId": {
           "type": "string"
         },
-        "search": {
+        "symbol": {
           "type": "string"
         },
-        "tags": {
-          "type": "string"
-        },
-        "type": {
-          "type": "string"
-        },
-        "category": {
-          "type": "string"
-        },
-        "page": {
-          "type": "integer"
+        "timeframe": {
+          "type": "string",
+          "enum": ["15m", "1h", "4h", "1d"]
         },
         "limit": {
           "type": "integer"
+        },
+        "cursor": {
+          "type": "string"
         }
       }
     }
   },
   {
-    "name": "get_block",
-    "description": "Get reusable block detail.",
+    "name": "get_signal_monitor",
+    "description": "Get a strategy condition monitor.",
     "endpoint": {
       "method": "GET",
-      "path": "/public/v1/blocks/{blockId}"
+      "path": "/public/v1/signal-monitors/{monitorId}"
     },
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["blockId"],
+      "required": ["monitorId", "confirm"],
       "properties": {
-        "blockId": {
-          "type": "string"
-        }
-      }
-    }
-  },
-  {
-    "name": "create_block",
-    "description": "Create a reusable block.",
-    "endpoint": {
-      "method": "POST",
-      "path": "/public/v1/blocks"
-    },
-    "input_schema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["name", "tokens"],
-      "properties": {
-        "name": {
+        "monitorId": {
           "type": "string"
         },
-        "description": {
-          "type": "string"
-        },
-        "type": {
-          "type": "string"
-        },
-        "category": {
-          "type": "string"
-        },
-        "tokens": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": true
-          }
-        },
-        "tags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "indicatorFamily": {
-          "type": "string"
-        },
-        "direction": {
-          "type": "string"
-        },
-        "exclusiveGroup": {
-          "type": "string"
-        },
-        "ignoreWarnings": {
+        "confirm": {
           "type": "boolean"
         }
       }
     }
   },
   {
-    "name": "update_block",
-    "description": "Update a reusable block.",
+    "name": "update_signal_monitor",
+    "description": "Pause, resume, archive, or update metadata for a monitor.",
     "endpoint": {
       "method": "PATCH",
-      "path": "/public/v1/blocks/{blockId}"
+      "path": "/public/v1/signal-monitors/{monitorId}"
     },
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["blockId"],
+      "required": ["monitorId"],
       "properties": {
-        "blockId": {
+        "monitorId": {
           "type": "string"
         },
-        "name": {
-          "type": "string"
+        "status": {
+          "type": "string",
+          "enum": ["active", "paused", "archived"]
         },
-        "description": {
-          "type": "string"
+        "triggerPolicy": {
+          "type": "string",
+          "enum": ["rising_edge", "every_closed_bar_true"]
         },
-        "type": {
-          "type": "string"
-        },
-        "category": {
-          "type": "string"
-        },
-        "tokens": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": true
-          }
-        },
-        "tags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "indicatorFamily": {
-          "type": "string"
-        },
-        "direction": {
-          "type": "string"
-        },
-        "exclusiveGroup": {
-          "type": "string"
-        },
-        "ignoreWarnings": {
-          "type": "boolean"
+        "metadata": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": true
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     }
   },
   {
-    "name": "delete_block",
-    "description": "Delete a reusable block. Requires confirm=true.",
+    "name": "delete_signal_monitor",
+    "description": "Archive a strategy condition monitor.",
     "endpoint": {
       "method": "DELETE",
-      "path": "/public/v1/blocks/{blockId}"
+      "path": "/public/v1/signal-monitors/{monitorId}"
     },
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["blockId", "confirm"],
+      "required": ["monitorId"],
       "properties": {
-        "blockId": {
+        "monitorId": {
+          "type": "string"
+        }
+      }
+    },
+    "destructive": true
+  },
+  {
+    "name": "list_signal_events",
+    "description": "Poll neutral strategy condition events by opaque cursor.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/signal-events"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer"
+        },
+        "monitorId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "get_signal_event",
+    "description": "Get a neutral strategy condition event.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/signal-events/{eventId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId"],
+      "properties": {
+        "eventId": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "create_webhook_endpoint",
+    "description": "Register a signed webhook endpoint for neutral strategy condition events.",
+    "endpoint": {
+      "method": "POST",
+      "path": "/public/v1/webhook-endpoints"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url"],
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "eventTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["strategy.condition.satisfied"]
+          }
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "list_webhook_endpoints",
+    "description": "List webhook endpoints.",
+    "endpoint": {
+      "method": "GET",
+      "path": "/public/v1/webhook-endpoints"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {}
+    }
+  },
+  {
+    "name": "update_webhook_endpoint",
+    "description": "Update a webhook endpoint URL, status, events, or description.",
+    "endpoint": {
+      "method": "PATCH",
+      "path": "/public/v1/webhook-endpoints/{webhookEndpointId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["webhookEndpointId"],
+      "properties": {
+        "webhookEndpointId": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "disabled", "archived"]
+        },
+        "eventTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["strategy.condition.satisfied"]
+          }
+        },
+        "description": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "delete_webhook_endpoint",
+    "description": "Archive a webhook endpoint.",
+    "endpoint": {
+      "method": "DELETE",
+      "path": "/public/v1/webhook-endpoints/{webhookEndpointId}"
+    },
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["webhookEndpointId", "confirm"],
+      "properties": {
+        "webhookEndpointId": {
           "type": "string"
         },
         "confirm": {
@@ -1199,36 +3071,18 @@
     "destructive": true
   },
   {
-    "name": "pin_block",
-    "description": "Pin a reusable block.",
+    "name": "test_webhook_endpoint",
+    "description": "Send a signed test webhook to an endpoint.",
     "endpoint": {
       "method": "POST",
-      "path": "/public/v1/blocks/{blockId}/pin"
+      "path": "/public/v1/webhook-endpoints/{webhookEndpointId}/test"
     },
     "input_schema": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["blockId"],
+      "required": ["webhookEndpointId"],
       "properties": {
-        "blockId": {
-          "type": "string"
-        }
-      }
-    }
-  },
-  {
-    "name": "unpin_block",
-    "description": "Unpin a reusable block.",
-    "endpoint": {
-      "method": "DELETE",
-      "path": "/public/v1/blocks/{blockId}/pin"
-    },
-    "input_schema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["blockId"],
-      "properties": {
-        "blockId": {
+        "webhookEndpointId": {
           "type": "string"
         }
       }

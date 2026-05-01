@@ -67,7 +67,10 @@ describe('environment onboarding help', () => {
           assert.match(error.message, /entry_source=missing_traseq_api_key/);
           assert.match(error.message, /cta_id=start_with_free_tier/);
           assert.match(error.message, /export TRASEQ_API_KEY="trsq_\.\.\."/);
-          assert.match(error.message, /~\/\.zshrc for zsh, ~\/\.bashrc for bash/);
+          assert.match(
+            error.message,
+            /~\/\.zshrc for zsh, ~\/\.bashrc for bash/,
+          );
           assert.doesNotMatch(error.message, /agent trial/i);
           return true;
         },

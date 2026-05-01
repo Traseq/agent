@@ -15,7 +15,7 @@ import {
 const VALIDATION_OK = {
   valid: true,
   summary: { errors: 0, warnings: 0 },
-  issues: {},
+  issues: [],
 };
 
 function draft() {
@@ -24,8 +24,18 @@ function draft() {
     signalGraph: {
       protocol: 'traseq.signal-graph',
       version: 2,
-      nodes: [],
-      strategy: { kind: 'strategy' },
+      nodes: [{ id: 'entry_signal', kind: 'pattern', name: 'inside_bar' }],
+      strategy: {
+        kind: 'strategy',
+        entry: {
+          kind: 'entry',
+          trigger: { ref: 'entry_signal' },
+          action: {
+            side: 'long',
+            sizing: { mode: 'percent_equity', value: 10 },
+          },
+        },
+      },
     },
     settings: { positionStyle: 'single', warmupPeriod: 200 },
     backtest: {
@@ -582,6 +592,56 @@ describe('agent workflow MCP tools', () => {
     assert.equal(output.evaluation.confidence, 'robust');
     assert.match(output.report, /Traseq Guided Research Memo/);
     assert.ok(client.calls.includes('runBacktest'));
+    assert.ok(output.usageStatus, 'run_research_draft must return usageStatus');
+    assert.ok(['ok', 'low', 'exhausted'].includes(output.usageStatus.level));
+    assert.ok(Array.isArray(output.usageStatus.nextSteps));
+    assert.ok(Array.isArray(output.usageStatus.links));
+  });
+
+  it('forwards strategyId and forkedFromVersionId from run_research_draft into createStrategyVersion', async () => {
+    const base = makeClient();
+    const versionCalls = [];
+    const client = {
+      ...base,
+      get calls() {
+        return base.calls;
+      },
+      async createStrategyVersion(strategyId, payload) {
+        versionCalls.push({ strategyId, payload });
+        return base.createStrategyVersion(strategyId, payload);
+      },
+    };
+
+    const output = await runAgentTool(
+      'run_research_draft',
+      {
+        prompt: 'Resume iteration on an existing strategy.',
+        draft: draft(),
+        instrument: 'BTCUSDT',
+        timeframe: '4h',
+        strategyId: 'strategy-existing',
+        forkedFromVersionId: 'version-prior',
+      },
+      { client },
+    );
+
+    assert.equal(output.status, 'completed');
+    assert.ok(
+      !base.calls.includes('createStrategy'),
+      'createStrategy must be skipped when strategyId is supplied',
+    );
+    assert.equal(
+      versionCalls.length,
+      1,
+      'createStrategyVersion should run once',
+    );
+    assert.equal(versionCalls[0].strategyId, 'strategy-existing');
+    assert.equal(versionCalls[0].payload.forkedFromVersionId, 'version-prior');
+    assert.equal(
+      output.result.rounds[0].createdStrategyId,
+      'strategy-existing',
+    );
+    assert.equal(output.result.rounds[0].forkedFromVersionId, 'version-prior');
   });
 
   it('runs run_research_draft through the CLI run command with a platform client', async () => {

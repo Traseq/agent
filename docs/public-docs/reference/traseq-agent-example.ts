@@ -266,7 +266,7 @@ export interface TraseqValidationResponse {
     warnings: number;
   };
   issues: {
-    tokens?: TraseqValidationIssue[];
+    signalGraph?: TraseqValidationIssue[];
     settings?: TraseqValidationIssue[];
     conflicts?: TraseqValidationIssue[];
   };
@@ -455,7 +455,7 @@ export async function validateWithRepairLoop<
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const validation = await client.validateStrategy(payload);
     const issues = [
-      ...(validation.issues.tokens ?? []),
+      ...(validation.issues.signalGraph ?? []),
       ...(validation.issues.settings ?? []),
       ...(validation.issues.conflicts ?? []),
     ];

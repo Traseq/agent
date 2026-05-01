@@ -2,8 +2,15 @@ export const NODE_KINDS_REFERENCE = `\
 # SignalGraph Node Kinds Reference
 
 The signalGraph protocol (v2) supports 22 node kinds. Each node has an \`id\`,
-a \`kind\`, and kind-specific parameters. Nodes reference each other via
+a \`kind\`, and kind-specific fields. Nodes reference each other via
 \`{ ref: "<node-id>" }\`.
+
+**Field naming**: capabilities expose two related shapes — node *fields* are
+the top-level configurable attributes of a node (e.g. \`field\`, \`length\`,
+\`offset\`, \`op\`, \`name\`); indicator *args* live under a node's \`args\` object
+and come from \`capabilities.indicators[].args\`. Multi-output indicators carry
+the selector at top-level \`output\` (from \`capabilities.indicators[].output\`),
+not inside \`args\`.
 
 Nodes are divided into two categories:
 - **Value nodes** produce a numeric series (used as inputs to comparisons).
@@ -31,10 +38,11 @@ A candle field from the price data.
 ### indicator
 A technical indicator computation.
 - \`indicator\`: the indicator ID from the capabilities catalog (e.g. "ema", "rsi", "macd")
-- \`args\`: indicator-specific parameters (e.g. { length: 14 })
-- \`source\` (optional): { ref: "<value-node>" } — defaults to close price if omitted
+- \`args\`: indicator-specific arguments from \`capabilities.indicators[].args\`
+- \`args.source\` (optional): market field such as "close" or "hl2" when the indicator supports it
+- \`output\` (optional/required by some indicators): selector from \`capabilities.indicators[].output\`
 \`\`\`json
-{ "id": "ema_100", "kind": "indicator", "indicator": "ema", "args": { "length": 100 } }
+{ "id": "ema_100", "kind": "indicator", "indicator": "ema", "args": { "length": 100, "source": "close" } }
 \`\`\`
 
 ### state
@@ -199,9 +207,9 @@ Stateful trigger with a trigger condition, optional reset, and optional TTL.
 ### event
 Detects discrete events like pivot confirmations.
 - \`name\`: "pivot_confirmed"
-- \`params\`: { pivotKind: "high" | "low", left: number, right: number, timeframe? }
+- \`args\`: { pivotKind: "high" | "low", left: number, right: number, timeframe? }
 \`\`\`json
-{ "id": "new_swing_low", "kind": "event", "name": "pivot_confirmed", "params": { "pivotKind": "low", "left": 5, "right": 5 } }
+{ "id": "new_swing_low", "kind": "event", "name": "pivot_confirmed", "args": { "pivotKind": "low", "left": 5, "right": 5 } }
 \`\`\`
 
 ---

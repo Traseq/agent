@@ -1,0 +1,42 @@
+---
+title: 策略條件事件
+description: 以 webhook 或 cursor polling 接收中性的 closed-bar 策略條件事件。
+---
+
+策略條件事件會在每根 K 線收盤後評估 ready strategy version 的使用者自訂條件。Traseq 只判斷條件是否成立，產生中性 automation event，不產生下單意圖。
+
+v1 唯一事件型別是 `strategy.condition.satisfied`。`conditionRole` 可為 `entry_condition` 或 `exit_condition`，但只代表被評估的條件來源，不代表買賣、開平倉或倉位建議。Payload 不包含 `side`、`buy/sell`、`qty`、`notional`、`orderType`、`leverage` 或 recommended position 欄位。
+
+## 流程
+
+1. 建立具備 `signal_monitors_write`、`signal_events_read`，以及視需要 `webhooks_write` 的 API key。
+2. 使用 `POST /public/v1/signal-monitors` 對 ready strategy version 建立 monitor。
+3. 註冊 webhook endpoint，或使用 `GET /public/v1/signal-events?cursor=...` polling 補漏。
+4. 在本機用 `@traseq/agent` 驗簽、冪等、dry-run，並把中性事件交給你自己的 adapter。
+
+## Webhook 簽章
+
+Webhook request 會包含：
+
+```text
+x-traseq-event-id: <event id>
+x-traseq-timestamp: <unix seconds>
+x-traseq-delivery-id: <delivery id>
+x-traseq-signature: v1=<hmac_sha256(timestamp + "." + rawBody)>
+```
+
+建立 endpoint 的回傳格式為 `{ endpoint, secret }`，plaintext secret 只在這次回傳一次——使用 `traseq-agent events serve-webhook` 時，請把它設為 `TRASEQ_WEBHOOK_SECRET`。
+
+## 投遞與重試
+
+每筆事件對每個 active 且訂閱該 `eventType` 的 endpoint 都會簽章並 POST 一次。2xx 視為成功；4xx（除 429 外）為永久失敗；429 與 5xx 會排入重試。重試節奏為 1m → 5m → 15m → 1h → 6h → 24h → 24h × 4，最多 10 次（約 4 天）。連線在 socket 層被釘到通過驗證的公網 IP，因此 URL 不可解析到 localhost、RFC1918、link-local、CGNAT、benchmark 或 documentation 等保留範圍。
+
+## Agent bridge
+
+```bash
+traseq-agent events listen --mode poll --adapter stdout
+traseq-agent events serve-webhook --port 8787 --adapter ./adapter.js
+traseq-agent events test-adapter ./adapter.js
+```
+
+官方 agent 只內建 `stdout`、`paper`、`webhook-forwarder` adapters。Broker adapter 是使用者自有程式碼。Agent 預設為 dry-run；只有在本機 adapter 具備自己的安全防線後才使用 `--live`。

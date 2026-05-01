@@ -31,18 +31,11 @@ model tool input 之外，把 key 注入 `x-api-key` HTTP header。
 
 只有在 agent 需要讀系統模板時，才額外加入 `system_strategies_read`。
 
-## 建議的 authoring contract
+## Strategy Authoring Contract
 
-建議使用以下其中一種 payload：
-
-- `signalGraph`
-  最適合 AI authoring。graph 比 AST 更高階，也更容易依 validation
-  feedback 修正。
-- `strategyAst`
-  只在你的 agent 已經能直接產 canonical payload 時使用。
-
-不要把 token lists 當成主要 write contract。它們目前比較像
-editor-oriented provenance / read-time compatibility data。
+Public Agent API 的策略寫入面只接受 **SignalGraph v2**。Agent 應送出
+`signalGraph` 與 `settings`；後端可能再編譯成內部執行格式，但那些內部格式不屬於
+公開 write contract。
 
 ## 最小 scopes
 
@@ -68,10 +61,10 @@ editor-oriented provenance / read-time compatibility data。
 3. `GET /public/v1/usage`
    在 write 或 backtest workflow 前檢查目前 budget、usage 與 hard limits。
 4. `GET /public/v1/capabilities`
-   在 authoring 前先拿可用 indicator、node inputs、bindings、operator、tier limits 與 validation
-   issue shape。
+   在 authoring 前先拿可用 indicator、indicator args、node fields、strategy bindings、risk authoring metadata、operator、tier limits
+   與 validation issue shape。
 5. `POST /public/v1/strategies/validate`
-   驗證草稿 payload，直到 `valid === true`。
+   在本地 assembly/preflight 後驗證草稿 payload，直到 `valid === true`。
 6. `POST /public/v1/strategies`
    建立 draft strategy。
 7. `POST /public/v1/strategies/:id/versions/finalize`
@@ -87,34 +80,38 @@ editor-oriented provenance / read-time compatibility data。
 
 這個回應會列出：
 
-- 可用的 `indicators`
-- 可用的 `signalGraph.nodes`
-- 可用的 `signalGraph.bindings`
+- 可用的 `indicators` 與 `args`
+- 可用的 `signalGraph.nodes` 與 node fields
+- 可用的 strategy bindings 與 risk authoring metadata
 - 可用的 `operators`
 - 可用 enum sets，例如 `timeframes`、`marketFields`、`patterns`
 - tier-aware 的 `limits`
-- validation issue shape，包括 `code`、`path`、`message`、`suggestion`
+- validation issue shape，包括 `code`、`path`、`field`、`message`、`severity`
 
 外部 agent 應把這個 endpoint 視為 authoring source of truth，而不是靠 prompt
-自己猜 node shape、indicator params 或 operator。
+自己猜 node shape、indicator args、binding、risk path 或 operator。
 
 ## 結構化 validation issues
 
-`POST /public/v1/strategies/validate` 現在會回傳 machine-readable issues。token、
-AST、graph 驗證問題至少包含：
+`POST /public/v1/strategies/validate` 現在會回傳 machine-readable issues。Graph
+驗證問題與 400 request schema failures 都使用相同的 flat `issues[]` shape；request
+schema failures 另外會帶 `errorCode: "validation_failed"`。
+
+Validation issue 至少包含：
 
 - `code`
 - `path`
+- `field`
 - `message`
-- `suggestion`
+- `severity`
 
 範例：
 
 ```json
 {
   "code": "WARMUP_TOO_SHORT",
-  "path": "strategyAst.Strategy.warmupPeriod",
-  "field": "strategyAst",
+  "path": "settings.warmupPeriod",
+  "field": "settings",
   "severity": "warning",
   "message": "Warmup setting is shorter than this strategy's inferred lookback.",
   "suggestion": "Set warmupPeriod to at least 200 for more consistent behavior when prehistory is limited or after gaps."
@@ -123,11 +120,12 @@ AST、graph 驗證問題至少包含：
 
 建議修復 loop：
 
-1. 產生 `signalGraph` 或 `strategyAst`
-2. validate
-3. 依 `severity` 分類問題
-4. 使用 `code`、`path`、`suggestion` 修 payload
-5. 重新 validate，直到 blocking issues 消失
+1. 把使用者意圖 resolve 成 strategy semantic fragments
+2. 把選定 fragments assemble 成完整 `signalGraph` draft
+3. 先跑本地 preflight；本地錯誤未清掉前不要呼叫遠端 validation
+4. 呼叫遠端 validate
+5. 使用 `code`、`path`、`message`、`suggestion` 修 payload
+6. 重新 validate，直到 blocking issues 消失
 
 ## cURL 範例
 
@@ -219,6 +217,12 @@ Dry-run 會印出安裝指令與 MCP JSON，不會改 client config：
 npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --probe
 ```
 
+如果 MCP server 已存在、你要重新安裝，加上 `--force`：
+
+```sh
+npx -y --package @traseq/agent traseq-agent setup-mcp --client codex --write --force --probe
+```
+
 其他 client 沿用同一套流程，依 client 特性帶不同 flags：
 
 ```sh
@@ -247,7 +251,7 @@ world-readable。`--scope project` 對 Claude Desktop 不適用，會被當成
 安裝後，給 client 一句任務導向 prompt：
 
 ```text
-Help me validate a BTCUSDT 4h strategy idea. Start with Traseq research engagement first.
+Use the Traseq MCP server. First call the MCP tool `start_research_engagement` with prompt "Validate a BTCUSDT 4h strategy idea." Do not search the repo; if the tool is unavailable, tell me the Traseq MCP server is not connected.
 ```
 
 MCP server 會透過 `prompts/list` 暴露 `traseq_guided_research`，並把 guided
@@ -355,51 +359,20 @@ JSON asset 可直接使用 `docs/public-docs/reference/traseq-agent-tool-schema.
 - `get_workspace_context`
 - `get_usage`
 - `get_capabilities`
+- `resolve_strategy_semantics`
+- `assemble_signal_graph`
+- `preflight_strategy_draft`
 - `validate_strategy`
 - `create_strategy`
 - `finalize_strategy_version`
 - `run_backtest`
 - `get_backtest`
 
-建議的 `validate_strategy` input shape：
-
-```json
-{
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["settings"],
-  "properties": {
-    "signalGraph": {
-      "type": "object",
-      "description": "Preferred AI authoring payload."
-    },
-    "strategyAst": {
-      "type": "object",
-      "description": "Canonical fallback payload."
-    },
-    "settings": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "positionStyle": {
-          "type": "string",
-          "enum": ["single", "pyramid", "accumulate"]
-        },
-        "maxConcurrentPositions": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100
-        },
-        "warmupPeriod": {
-          "type": "integer",
-          "minimum": 0
-        }
-      }
-    }
-  },
-  "anyOf": [{ "required": ["signalGraph"] }, { "required": ["strategyAst"] }]
-}
-```
+`validate_strategy` 使用 SDK authoring schema，而不是淺層的
+`signalGraph: object` wrapper。generated tool schema 會要求 nested fields，例如
+`signalGraph.strategy.entry.action.sizing`、`signalGraph.strategy.risk` 與
+`settings.positionStyle`；請先用 `assemble_signal_graph` 與
+`preflight_strategy_draft`，再呼叫遠端 validator。
 
 ## 建議 system prompt
 
@@ -412,16 +385,21 @@ Before composing any strategy:
 1. Call get_workspace_context.
 2. Call get_usage.
 3. Call get_capabilities.
-4. Use usage and capabilities as the only source of truth for current budget, limits, supported node kinds, bindings, indicators, operators, and enums.
+4. Use usage and capabilities as the only source of truth for current budget, limits, supported node kinds, strategy bindings, risk metadata, indicators, operators, and enums.
 
 Authoring rules:
-- Prefer signalGraph over strategyAst unless the user explicitly asks for canonical AST.
+- Author only SignalGraph v2 payloads.
 - Keep the first payload minimal and valid.
 - Reuse simple, stable node ids such as close_price, ema_fast, entry_trigger.
-- Do not invent unsupported fields, params, or operators.
-- Do not use tokens as the primary write format.
+- Use kind: "market" with field for candle data; do not use a price node.
+- Use indicator, args, and optional top-level output on indicator nodes.
+- Use args.length for indicator lookbacks; put source inside args.source.
+- Use offset for historical bars; do not use shift.
+- Bind entry.trigger to one bool ref and exits[0].when to one bool ref when an exit is present.
+- Do not invent unsupported fields, args, bindings, risk paths, or operators.
 
 Validation rules:
+- Use resolve_strategy_semantics, assemble_signal_graph, and preflight_strategy_draft before validate_strategy.
 - Always call validate_strategy before create_strategy or finalize_strategy_version.
 - Treat issue code, path, message, and suggestion as the repair source of truth.
 - Modify the minimum subtree needed to resolve each blocking issue.

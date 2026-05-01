@@ -311,7 +311,7 @@ export function resolveStrategySemantics(
         limitedCandidates.some((candidate) => candidate.id === id),
       ),
       notes: [
-        'Resolver returns signalGraph fragments only; assemble a complete strategy and validate it before writes.',
+        'Resolver returns signalGraph fragments with assemblyHints only; call assemble_signal_graph before validation or writes.',
         'Treat risky candidates as possible but not default recommendations.',
         'If trade count is too low, remove one confirmation or relax strict thresholds before adding more filters.',
       ],

@@ -14,6 +14,14 @@ export {
   runAgentTool,
 } from './tools.js';
 export type { AgentToolDefinition, AgentToolName } from './tools.js';
+export { explainValidationIssues, suggestMinimalRepairs } from './repair.js';
+export type {
+  ExplainValidationIssuesOutput,
+  ExplainedIssue,
+  RepairPatch,
+  SuggestMinimalRepairsOutput,
+  ValidationGroup,
+} from './repair.js';
 export type {
   GetSemanticsInput,
   ResolveStrategySemanticsInput,

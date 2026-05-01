@@ -1,4 +1,9 @@
 import { evaluateResearchResult } from './evaluation.js';
+import {
+  renderUsageStatusMarkdown,
+  summarizeUsageHints,
+  type UsageStatus,
+} from './usage-hints.js';
 import type {
   ResearchArtifactBundle,
   ResearchConfidence,
@@ -152,9 +157,19 @@ function roundEvidenceSection(round: ResearchRoundEvaluation): string[] {
   ];
 }
 
+export interface FormatResearchReportOptions {
+  /**
+   * Pre-computed usage status. If omitted, derived from `result.live.usage`
+   * and `result.live.workspace` so the upgrade hint stays in lock-step with
+   * the live snapshot the runner already captured.
+   */
+  usageStatus?: UsageStatus;
+}
+
 export function formatResearchReport(
   result: ResearchRunnerResult,
   evaluation: ResearchResultEvaluation = evaluateResearchResult(result),
+  options: FormatResearchReportOptions = {},
 ): string {
   const input = result.input;
   const backtest = representativeBacktest(result, evaluation);
@@ -170,6 +185,14 @@ export function formatResearchReport(
           '',
         ])
       : ['- No completed rounds produced backtest evidence.', ''];
+  const usageStatus =
+    options.usageStatus ??
+    summarizeUsageHints({
+      usage: result.live.usage,
+      workspace: result.live.workspace,
+      manifest: result.live.manifest,
+    });
+  const usageSection = renderUsageStatusMarkdown(usageStatus);
   const lines = [
     '# Traseq Guided Research Memo',
     '',
@@ -183,6 +206,7 @@ export function formatResearchReport(
     `- **Champion round:** ${evaluation.championRound ?? 'none'}`,
     '',
     ...formatOpenInTraseq(backtest?.appLinks),
+    ...usageSection,
     '## What We Tested',
     '',
     `- **Prompt:** ${input.prompt}`,

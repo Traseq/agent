@@ -21,7 +21,14 @@ export type TraseqPublicAgentErrorCategory =
   | 'transient';
 
 export interface TraseqPublicAgentLink {
-  rel: 'api_keys' | 'billing_plan' | 'usage' | 'billing' | 'docs';
+  rel:
+    | 'api_keys'
+    | 'billing_plan'
+    | 'usage'
+    | 'billing'
+    | 'docs'
+    | 'manage_strategies'
+    | 'manage_backtests';
   label: string;
   href: string;
 }
@@ -49,6 +56,12 @@ export interface TraseqPublicApiErrorBody {
   error?: string;
   errorCode?: string;
   path?: string;
+  valid?: boolean;
+  summary?: {
+    errors: number;
+    warnings: number;
+  };
+  issues?: TraseqValidationIssue[];
   publicAgent?: TraseqPublicAgentMetadata;
   [key: string]: unknown;
 }
@@ -215,14 +228,7 @@ export interface SignalGraphAuthoringPayload {
   settings: StrategySettings;
 }
 
-export interface StrategyAstAuthoringPayload {
-  strategyAst: JsonObject;
-  settings: StrategySettings;
-}
-
-export type StrategyAuthoringPayload =
-  | SignalGraphAuthoringPayload
-  | StrategyAstAuthoringPayload;
+export type StrategyAuthoringPayload = SignalGraphAuthoringPayload;
 
 export interface StrategyDraft extends SignalGraphAuthoringPayload {
   name: string;
@@ -231,12 +237,15 @@ export interface StrategyDraft extends SignalGraphAuthoringPayload {
 }
 
 export interface TraseqValidationIssue {
-  code?: string;
-  path?: string;
+  code: string;
+  path: string;
+  field?: string;
   message: string;
   suggestion?: string;
-  severity?: 'error' | 'warning';
+  severity: 'error' | 'warning';
   details?: string;
+  blockA?: { id: string; name: string };
+  blockB?: { id: string; name: string };
 }
 
 export interface TraseqValidationResponse {
@@ -246,11 +255,176 @@ export interface TraseqValidationResponse {
     errors: number;
     warnings: number;
   };
-  issues: {
-    tokens?: TraseqValidationIssue[];
-    settings?: TraseqValidationIssue[];
-    conflicts?: TraseqValidationIssue[];
+  issues: TraseqValidationIssue[];
+}
+
+export type SignalConditionRole = 'entry_condition' | 'exit_condition';
+export type SignalTriggerPolicy = 'rising_edge' | 'every_closed_bar_true';
+export type SignalMonitorStatus = 'active' | 'paused' | 'archived';
+export type SignalEventType = 'strategy.condition.satisfied';
+export type WebhookEndpointStatus = 'active' | 'disabled' | 'archived';
+
+export interface CreateSignalMonitorRequest {
+  strategyVersionId: string;
+  symbol: string;
+  timeframe: Timeframe;
+  conditionRole: SignalConditionRole;
+  triggerPolicy?: SignalTriggerPolicy;
+  metadata?: JsonObject;
+}
+
+export interface UpdateSignalMonitorRequest {
+  status?: SignalMonitorStatus;
+  triggerPolicy?: SignalTriggerPolicy;
+  metadata?: JsonObject | null;
+}
+
+export interface ListSignalMonitorsQuery extends QueryParams {
+  status?: SignalMonitorStatus;
+  strategyVersionId?: string;
+  symbol?: string;
+  timeframe?: Timeframe;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface SignalMonitor {
+  id: string;
+  strategyVersionId: string;
+  strategyVersion?: {
+    id: string;
+    version: number;
+    contentHash: string;
+    strategy: {
+      id: string;
+      name: string;
+    };
   };
+  symbol: string;
+  timeframe: Timeframe;
+  conditionRole: SignalConditionRole;
+  triggerPolicy: SignalTriggerPolicy;
+  status: SignalMonitorStatus;
+  evaluationMode: 'closed_bar';
+  metadata?: JsonValue;
+  state: {
+    lastEvaluatedBarTs: number | null;
+    lastConditionValue: boolean | null;
+    lastEventId: string | null;
+    lastSkipReason: string | null;
+    updatedAt: string;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SignalMonitorListResponse {
+  data: SignalMonitor[];
+  nextCursor: string | null;
+}
+
+export interface SignalEventPayload {
+  id: string;
+  type: SignalEventType;
+  createdAt: string;
+  monitor: {
+    id: string;
+    triggerPolicy: SignalTriggerPolicy;
+  };
+  strategy: {
+    versionId: string;
+    hash: string;
+  };
+  condition: {
+    role: SignalConditionRole;
+  };
+  market: {
+    symbol: string;
+    timeframe: Timeframe;
+    barOpenTs: number;
+    barCloseTs: number;
+  };
+  evaluation: {
+    mode: 'closed_bar';
+  };
+}
+
+/**
+ * Top-level columns on SignalEvent are denormalized copies of fields inside
+ * `payload`. Both views are kept in sync by the server. When wiring an
+ * adapter, prefer the typed top-level fields for queries/joins and use
+ * `payload` only when forwarding the raw signed body downstream.
+ */
+export interface SignalEvent {
+  id: string;
+  type: SignalEventType;
+  monitorId: string;
+  strategyVersionId: string;
+  strategyHash: string;
+  evaluationStatus: 'evaluated' | 'skipped' | 'failed';
+  symbol: string;
+  timeframe: Timeframe;
+  conditionRole: SignalConditionRole;
+  triggerPolicy: SignalTriggerPolicy;
+  barOpenTs: number;
+  barCloseTs: number;
+  payload: SignalEventPayload;
+  createdAt: string;
+}
+
+export interface ListSignalEventsQuery extends QueryParams {
+  cursor?: string;
+  limit?: number;
+  monitorId?: string;
+}
+
+export interface SignalEventListResponse {
+  data: SignalEvent[];
+  nextCursor: string | null;
+}
+
+export interface CreateWebhookEndpointRequest {
+  url: string;
+  eventTypes?: SignalEventType[];
+  description?: string;
+}
+
+export interface UpdateWebhookEndpointRequest {
+  url?: string;
+  status?: WebhookEndpointStatus;
+  eventTypes?: SignalEventType[];
+  description?: string | null;
+}
+
+export interface WebhookEndpoint {
+  id: string;
+  url: string;
+  status: WebhookEndpointStatus;
+  eventTypes: SignalEventType[];
+  description?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateWebhookEndpointResponse {
+  endpoint: WebhookEndpoint;
+  /**
+   * The HMAC signing secret. Returned only on creation; never stored in
+   * plaintext on the server. Persist this in your secret manager — it is
+   * not retrievable after this response.
+   */
+  secret: string;
+}
+
+export interface WebhookEndpointListResponse {
+  data: WebhookEndpoint[];
+}
+
+export interface WebhookEndpointTestResponse {
+  ok: boolean;
+  status: number;
+  eventId: string;
+  deliveryId: string;
 }
 
 export interface StrategyVersionSummary extends JsonObject {
@@ -267,7 +441,11 @@ export type CreateStrategyRequest = StrategyAuthoringPayload & {
 export interface UpdateStrategyRequest {
   name?: string;
   description?: string | null;
-  status?: string;
+  primaryVersionId?: string;
+}
+
+export interface ConfirmStrategyLifecycleRequest extends JsonObject {
+  confirm: true;
 }
 
 export interface CreateStrategyResponse extends JsonObject {
@@ -336,7 +514,8 @@ export interface StrategyDetail extends JsonObject {
   id: string;
   name?: string;
   description?: string | null;
-  status?: string;
+  status?: 'active' | 'trashed';
+  trashedAt?: string | null;
   versions?: JsonObject[];
 }
 
@@ -348,7 +527,7 @@ export interface StrategyVersionDetail extends JsonObject {
 }
 
 export interface ListStrategiesQuery extends QueryParams {
-  status?: string;
+  status?: 'active' | 'trashed' | 'all';
   page?: number;
   limit?: number;
   search?: string;
@@ -375,6 +554,10 @@ export interface SystemStrategyDetail extends JsonObject {
   key?: string;
   name?: string;
   description?: string | null;
+  category?: string;
+  tags?: string[];
+  signalGraph?: JsonObject | null;
+  settings?: JsonObject;
 }
 
 export interface SystemStrategyListResponse extends JsonObject {
@@ -454,62 +637,58 @@ export interface ListComparisonSetsQuery extends QueryParams {
   sortOrder?: 'asc' | 'desc';
 }
 
-export interface BlockRequest extends JsonObject {
-  name: string;
-  description?: string;
-  type?: 'signal' | 'indicator';
-  category?:
-    | 'Signals'
-    | 'Trend'
-    | 'Momentum'
-    | 'Volatility'
-    | 'Volume'
-    | 'Market';
-  tokens?: JsonValue[];
-  tags?: string[];
-  indicatorFamily?: string;
-  direction?: 'bullish' | 'bearish' | 'neutral';
-  exclusiveGroup?: string;
-  ignoreWarnings?: boolean;
-}
-
-export interface BlockDetail extends JsonObject {
-  id: string;
-  name?: string;
-}
-
-export interface BlockListResponse extends JsonObject {
-  data?: BlockDetail[];
-  pagination?: JsonObject | null;
-  categoryCounts?: JsonObject;
-}
-
-export interface ListBlocksQuery extends QueryParams {
-  filter?: 'system' | 'custom' | 'all' | 'pinned';
-  search?: string;
-  tags?: string | readonly string[];
-  type?: 'signal' | 'indicator';
-  category?:
-    | 'Signals'
-    | 'Trend'
-    | 'Momentum'
-    | 'Volatility'
-    | 'Volume'
-    | 'Market';
-  page?: number;
-  limit?: number;
-}
-
 export interface WorkspaceUsageSummary extends JsonObject {
   billingPeriod?: JsonObject;
   budget?: JsonObject;
   limits?: JsonObject;
 }
 
+/**
+ * Input for `TraseqClient.estimateBacktestCost`. Mirrors the backend
+ * `EstimateCostDto` shape — must include the same `timeframe`/`startTs`/`endTs`
+ * the actual `runBacktest` will use, otherwise the estimate diverges from
+ * what the backend will actually charge.
+ */
+export interface BacktestCostEstimateInput extends JsonObject {
+  timeframe: Timeframe;
+  startTs: number;
+  endTs: number;
+  symbol?: string;
+}
+
+/**
+ * Result of `TraseqClient.estimateBacktestCost`. Side-effect free; the agent
+ * uses this to surface a budget warning before kicking off a round.
+ *
+ * `wouldCauseOverage` follows the same accounting the EntitlementGuard uses
+ * at run time, so a `true` here corresponds to the same condition that fires
+ * the `research_credits_insufficient` error on `runBacktest` for hard-block
+ * tiers.
+ */
+export interface BacktestCostEstimate extends JsonObject {
+  estimatedCostUsd: number;
+  breakdown: JsonObject;
+  estimatedCandleCount: number;
+  currentBalanceUsd: number;
+  afterBalanceUsd: number;
+  wouldCauseOverage: boolean;
+  overageAmountUsd: number;
+}
+
 export interface PublicManifest extends JsonObject {
   name?: string;
   version?: string;
   basePath?: string;
+  /**
+   * Absolute URL of the Traseq frontend bound to this API server. Agents must
+   * derive every user-facing app deeplink from this value rather than from a
+   * hardcoded constant — otherwise dev/staging/alpha/prod environments produce
+   * mismatched deeplinks.
+   *
+   * Older API servers may omit this field; consumers should fall back to a
+   * default (`https://app.traseq.com`) only when the manifest does not provide it.
+   */
+  appBaseUrl?: string;
 }
 
 export interface WorkspaceContext extends JsonObject {

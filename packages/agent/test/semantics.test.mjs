@@ -32,12 +32,12 @@ const FULL_CAPABILITIES = {
       'state_machine',
     ],
     nodes: [],
-    bindings: [],
+    assemblyHints: [],
   },
   indicators: [
     {
       id: 'ema',
-      params: [
+      args: [
         { name: 'length', type: 'integer', required: true, minimum: 1 },
         {
           name: 'source',
@@ -49,16 +49,16 @@ const FULL_CAPABILITIES = {
     },
     {
       id: 'rsi',
-      params: [{ name: 'length', type: 'integer', required: true, minimum: 1 }],
+      args: [{ name: 'length', type: 'integer', required: true, minimum: 1 }],
     },
     {
       id: 'atr',
-      params: [{ name: 'length', type: 'integer', required: true, minimum: 1 }],
+      args: [{ name: 'length', type: 'integer', required: true, minimum: 1 }],
     },
     {
       id: 'macd',
       structuralType: 'oscillator_operand',
-      params: [
+      args: [
         { name: 'fast_length', type: 'integer', required: true, minimum: 1 },
         { name: 'slow_length', type: 'integer', required: true, minimum: 1 },
         { name: 'signal_length', type: 'integer', required: true, minimum: 1 },
@@ -68,13 +68,13 @@ const FULL_CAPABILITIES = {
           required: false,
           enumValues: ['open', 'high', 'low', 'close', 'hl2', 'hlc3', 'ohlc4'],
         },
-        {
-          name: 'output',
-          type: 'enum',
-          required: true,
-          enumValues: ['macd', 'signal', 'hist'],
-        },
       ],
+      output: {
+        name: 'output',
+        type: 'enum',
+        required: true,
+        enumValues: ['macd', 'signal', 'hist'],
+      },
     },
   ],
   operators: {
@@ -122,7 +122,7 @@ function createEntryDraftFromImplementation(implementation) {
         kind: 'strategy',
         entry: {
           kind: 'entry',
-          trigger: implementation.fragment.bindings.entryTrigger,
+          trigger: implementation.fragment.assemblyHints.entryTrigger,
           action: {
             side: 'long',
             sizing: { mode: 'percent_equity', value: 10 },
@@ -226,13 +226,13 @@ describe('semantic ontology', () => {
       { ref: 'armed_pivot_breakout' },
       { ref: 'pivot_breakout' },
     ]);
-    assert.deepEqual(implementation.fragment.bindings.entryTrigger, {
+    assert.deepEqual(implementation.fragment.assemblyHints.entryTrigger, {
       ref: 'armed_breakout_trigger',
     });
     assert.ok(implementation.requiredCapabilities.nodeKinds.includes('all'));
   });
 
-  it('keeps MACD fragments valid against live indicator capability params', () => {
+  it('keeps MACD fragments valid against live indicator capability args', () => {
     const implementation = implementationById('momentum.macd_cross_signal');
 
     assert.deepEqual(nodeById(implementation, 'macd_line').args, {
@@ -240,11 +240,13 @@ describe('semantic ontology', () => {
       slow_length: 26,
       signal_length: 9,
     });
+    assert.equal(nodeById(implementation, 'macd_line').output, 'macd');
     assert.deepEqual(nodeById(implementation, 'macd_signal').args, {
       fast_length: 12,
       slow_length: 26,
       signal_length: 9,
     });
+    assert.equal(nodeById(implementation, 'macd_signal').output, 'signal');
 
     const result = validateStrategyDraft(
       createEntryDraftFromImplementation(implementation),

@@ -74,9 +74,12 @@
                         "analysis_runs_write",
                         "comparison_sets_read",
                         "comparison_sets_write",
-                        "blocks_read",
-                        "blocks_write",
-                        "market_read"
+                        "market_read",
+                        "signal_monitors_read",
+                        "signal_monitors_write",
+                        "signal_events_read",
+                        "webhooks_read",
+                        "webhooks_write"
                       ]
                     },
                     "example": [
@@ -90,8 +93,6 @@
                       "analysis_runs_write",
                       "comparison_sets_read",
                       "comparison_sets_write",
-                      "blocks_read",
-                      "blocks_write",
                       "market_read"
                     ]
                   },
@@ -335,7 +336,7 @@
     },
     "/public/v1/strategies/validate": {
       "post": {
-        "description": "Runs finalize-grade validation, including token semantics, conflicts, settings, and subscription-tier condition limits.",
+        "description": "Runs finalize-grade validation for SignalGraph v2, settings, and subscription-tier condition limits.",
         "operationId": "PublicOpenApiController_validateStrategy",
         "parameters": [],
         "requestBody": {
@@ -344,75 +345,8 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["settings"],
-                "anyOf": [
-                  {
-                    "required": ["strategyAst"]
-                  },
-                  {
-                    "required": ["signalGraph"]
-                  }
-                ],
+                "required": ["signalGraph", "settings"],
                 "properties": {
-                  "strategyAst": {
-                    "type": "object",
-                    "additionalProperties": true,
-                    "description": "Canonical strategy protocol payload. Use this when the client already authors StrategyAstV1 directly.",
-                    "example": {
-                      "protocol": "traseq.strategy",
-                      "version": 1,
-                      "strategy": {
-                        "kind": "strategy",
-                        "defaults": {
-                          "instrument": {
-                            "symbol": "BTCUSDT"
-                          },
-                          "timeframe": "1h",
-                          "warmupBars": 50
-                        },
-                        "entry": {
-                          "kind": "entry",
-                          "setup": {
-                            "kind": "compare",
-                            "op": "gt",
-                            "left": {
-                              "kind": "market",
-                              "field": "close"
-                            },
-                            "right": {
-                              "kind": "const",
-                              "value": 20000
-                            }
-                          },
-                          "trigger": {
-                            "kind": "compare",
-                            "op": "gt",
-                            "left": {
-                              "kind": "market",
-                              "field": "close"
-                            },
-                            "right": {
-                              "kind": "const",
-                              "value": 20100
-                            }
-                          },
-                          "filters": [
-                            {
-                              "kind": "pattern",
-                              "name": "hammer"
-                            }
-                          ],
-                          "action": {
-                            "side": "long",
-                            "sizing": {
-                              "mode": "fixed",
-                              "value": 1
-                            }
-                          }
-                        }
-                      }
-                    }
-                  },
                   "signalGraph": {
                     "type": "object",
                     "additionalProperties": false,
@@ -1880,7 +1814,7 @@
                                 {
                                   "type": "object",
                                   "additionalProperties": false,
-                                  "required": ["id", "kind", "name", "params"],
+                                  "required": ["id", "kind", "name", "args"],
                                   "properties": {
                                     "kind": {
                                       "type": "string",
@@ -1890,7 +1824,7 @@
                                       "type": "string",
                                       "enum": ["pivot_confirmed"]
                                     },
-                                    "params": {
+                                    "args": {
                                       "type": "object",
                                       "additionalProperties": false,
                                       "required": [
@@ -2214,7 +2148,7 @@
                         }
                       }
                     },
-                    "description": "Higher-level AI agent authoring graph. The backend compiles this to canonical strategyAst before validation and persistence."
+                    "description": "SignalGraph v2 authoring graph. This is the only public strategy authoring format."
                   },
                   "settings": {
                     "type": "object",
@@ -2249,46 +2183,6 @@
           }
         ],
         "summary": "Validate a strategy payload before create/finalize",
-        "tags": ["Agent API"]
-      }
-    },
-    "/public/v1/strategies/validate-conflicts": {
-      "post": {
-        "operationId": "PublicOpenApiController_validateConflicts",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["tokens"],
-                "properties": {
-                  "tokens": {
-                    "type": "array",
-                    "items": {
-                      "type": "object"
-                    }
-                  },
-                  "strategyAst": {
-                    "type": "object"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Conflict validation result"
-          }
-        },
-        "security": [
-          {
-            "traseq-api-key": []
-          }
-        ],
-        "summary": "Validate strategy conflict metadata",
         "tags": ["Agent API"]
       }
     },
@@ -2330,7 +2224,10 @@
             "name": "status",
             "required": false,
             "in": "query",
-            "schema": {}
+            "schema": {
+              "enum": ["active", "trashed", "all"],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2356,15 +2253,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["name", "settings"],
-                "anyOf": [
-                  {
-                    "required": ["strategyAst"]
-                  },
-                  {
-                    "required": ["signalGraph"]
-                  }
-                ],
+                "required": ["name", "signalGraph", "settings"],
                 "properties": {
                   "name": {
                     "type": "string",
@@ -2375,65 +2264,6 @@
                     "type": "string",
                     "maxLength": 1000,
                     "example": "Enter when price crosses above a fast EMA and RSI confirms momentum."
-                  },
-                  "strategyAst": {
-                    "type": "object",
-                    "additionalProperties": true,
-                    "description": "Canonical strategy protocol payload. Use this when the client already authors StrategyAstV1 directly.",
-                    "example": {
-                      "protocol": "traseq.strategy",
-                      "version": 1,
-                      "strategy": {
-                        "kind": "strategy",
-                        "defaults": {
-                          "instrument": {
-                            "symbol": "BTCUSDT"
-                          },
-                          "timeframe": "1h",
-                          "warmupBars": 50
-                        },
-                        "entry": {
-                          "kind": "entry",
-                          "setup": {
-                            "kind": "compare",
-                            "op": "gt",
-                            "left": {
-                              "kind": "market",
-                              "field": "close"
-                            },
-                            "right": {
-                              "kind": "const",
-                              "value": 20000
-                            }
-                          },
-                          "trigger": {
-                            "kind": "compare",
-                            "op": "gt",
-                            "left": {
-                              "kind": "market",
-                              "field": "close"
-                            },
-                            "right": {
-                              "kind": "const",
-                              "value": 20100
-                            }
-                          },
-                          "filters": [
-                            {
-                              "kind": "pattern",
-                              "name": "hammer"
-                            }
-                          ],
-                          "action": {
-                            "side": "long",
-                            "sizing": {
-                              "mode": "fixed",
-                              "value": 1
-                            }
-                          }
-                        }
-                      }
-                    }
                   },
                   "signalGraph": {
                     "type": "object",
@@ -3902,7 +3732,7 @@
                                 {
                                   "type": "object",
                                   "additionalProperties": false,
-                                  "required": ["id", "kind", "name", "params"],
+                                  "required": ["id", "kind", "name", "args"],
                                   "properties": {
                                     "kind": {
                                       "type": "string",
@@ -3912,7 +3742,7 @@
                                       "type": "string",
                                       "enum": ["pivot_confirmed"]
                                     },
-                                    "params": {
+                                    "args": {
                                       "type": "object",
                                       "additionalProperties": false,
                                       "required": [
@@ -4236,7 +4066,7 @@
                         }
                       }
                     },
-                    "description": "Higher-level AI agent authoring graph. The backend compiles this to canonical strategyAst before validation and persistence."
+                    "description": "SignalGraph v2 authoring graph. This is the only public strategy authoring format."
                   },
                   "settings": {
                     "type": "object",
@@ -4325,6 +4155,11 @@
                   "description": {
                     "type": "string",
                     "nullable": true
+                  },
+                  "primaryVersionId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Set the primary version displayed for the strategy."
                   }
                 }
               }
@@ -4342,6 +4177,123 @@
           }
         ],
         "summary": "Update strategy metadata",
+        "tags": ["Agent API"]
+      }
+    },
+    "/public/v1/strategies/{id}/trash": {
+      "post": {
+        "operationId": "PublicOpenApiController_trashStrategy",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["confirm"],
+                "properties": {
+                  "confirm": {
+                    "type": "boolean",
+                    "enum": [true]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Strategy moved to Trash"
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Move a strategy to Trash",
+        "tags": ["Agent API"]
+      }
+    },
+    "/public/v1/strategies/{id}/restore": {
+      "post": {
+        "operationId": "PublicOpenApiController_restoreStrategy",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Strategy restored"
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Restore a strategy from Trash",
+        "tags": ["Agent API"]
+      }
+    },
+    "/public/v1/strategies/{id}/purge": {
+      "post": {
+        "operationId": "PublicOpenApiController_purgeStrategy",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["confirm"],
+                "properties": {
+                  "confirm": {
+                    "type": "boolean",
+                    "enum": [true]
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Strategy permanently deleted"
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Permanently delete a trashed strategy",
         "tags": ["Agent API"]
       }
     },
@@ -4364,75 +4316,8 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["settings"],
-                "anyOf": [
-                  {
-                    "required": ["strategyAst"]
-                  },
-                  {
-                    "required": ["signalGraph"]
-                  }
-                ],
+                "required": ["signalGraph", "settings"],
                 "properties": {
-                  "strategyAst": {
-                    "type": "object",
-                    "additionalProperties": true,
-                    "description": "Canonical strategy protocol payload. Use this when the client already authors StrategyAstV1 directly.",
-                    "example": {
-                      "protocol": "traseq.strategy",
-                      "version": 1,
-                      "strategy": {
-                        "kind": "strategy",
-                        "defaults": {
-                          "instrument": {
-                            "symbol": "BTCUSDT"
-                          },
-                          "timeframe": "1h",
-                          "warmupBars": 50
-                        },
-                        "entry": {
-                          "kind": "entry",
-                          "setup": {
-                            "kind": "compare",
-                            "op": "gt",
-                            "left": {
-                              "kind": "market",
-                              "field": "close"
-                            },
-                            "right": {
-                              "kind": "const",
-                              "value": 20000
-                            }
-                          },
-                          "trigger": {
-                            "kind": "compare",
-                            "op": "gt",
-                            "left": {
-                              "kind": "market",
-                              "field": "close"
-                            },
-                            "right": {
-                              "kind": "const",
-                              "value": 20100
-                            }
-                          },
-                          "filters": [
-                            {
-                              "kind": "pattern",
-                              "name": "hammer"
-                            }
-                          ],
-                          "action": {
-                            "side": "long",
-                            "sizing": {
-                              "mode": "fixed",
-                              "value": 1
-                            }
-                          }
-                        }
-                      }
-                    }
-                  },
                   "signalGraph": {
                     "type": "object",
                     "additionalProperties": false,
@@ -5900,7 +5785,7 @@
                                 {
                                   "type": "object",
                                   "additionalProperties": false,
-                                  "required": ["id", "kind", "name", "params"],
+                                  "required": ["id", "kind", "name", "args"],
                                   "properties": {
                                     "kind": {
                                       "type": "string",
@@ -5910,7 +5795,7 @@
                                       "type": "string",
                                       "enum": ["pivot_confirmed"]
                                     },
-                                    "params": {
+                                    "args": {
                                       "type": "object",
                                       "additionalProperties": false,
                                       "required": [
@@ -6234,7 +6119,7 @@
                         }
                       }
                     },
-                    "description": "Higher-level AI agent authoring graph. The backend compiles this to canonical strategyAst before validation and persistence."
+                    "description": "SignalGraph v2 authoring graph. This is the only public strategy authoring format."
                   },
                   "settings": {
                     "type": "object",
@@ -6292,15 +6177,7 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["settings"],
-                "anyOf": [
-                  {
-                    "required": ["strategyAst"]
-                  },
-                  {
-                    "required": ["signalGraph"]
-                  }
-                ],
+                "required": ["signalGraph", "settings"],
                 "properties": {
                   "version": {
                     "type": "integer",
@@ -6314,65 +6191,6 @@
                   "ignoreWarnings": {
                     "type": "boolean",
                     "example": false
-                  },
-                  "strategyAst": {
-                    "type": "object",
-                    "additionalProperties": true,
-                    "description": "Canonical strategy protocol payload. Use this when the client already authors StrategyAstV1 directly.",
-                    "example": {
-                      "protocol": "traseq.strategy",
-                      "version": 1,
-                      "strategy": {
-                        "kind": "strategy",
-                        "defaults": {
-                          "instrument": {
-                            "symbol": "BTCUSDT"
-                          },
-                          "timeframe": "1h",
-                          "warmupBars": 50
-                        },
-                        "entry": {
-                          "kind": "entry",
-                          "setup": {
-                            "kind": "compare",
-                            "op": "gt",
-                            "left": {
-                              "kind": "market",
-                              "field": "close"
-                            },
-                            "right": {
-                              "kind": "const",
-                              "value": 20000
-                            }
-                          },
-                          "trigger": {
-                            "kind": "compare",
-                            "op": "gt",
-                            "left": {
-                              "kind": "market",
-                              "field": "close"
-                            },
-                            "right": {
-                              "kind": "const",
-                              "value": 20100
-                            }
-                          },
-                          "filters": [
-                            {
-                              "kind": "pattern",
-                              "name": "hammer"
-                            }
-                          ],
-                          "action": {
-                            "side": "long",
-                            "sizing": {
-                              "mode": "fixed",
-                              "value": 1
-                            }
-                          }
-                        }
-                      }
-                    }
                   },
                   "signalGraph": {
                     "type": "object",
@@ -7841,7 +7659,7 @@
                                 {
                                   "type": "object",
                                   "additionalProperties": false,
-                                  "required": ["id", "kind", "name", "params"],
+                                  "required": ["id", "kind", "name", "args"],
                                   "properties": {
                                     "kind": {
                                       "type": "string",
@@ -7851,7 +7669,7 @@
                                       "type": "string",
                                       "enum": ["pivot_confirmed"]
                                     },
-                                    "params": {
+                                    "args": {
                                       "type": "object",
                                       "additionalProperties": false,
                                       "required": [
@@ -8175,7 +7993,7 @@
                         }
                       }
                     },
-                    "description": "Higher-level AI agent authoring graph. The backend compiles this to canonical strategyAst before validation and persistence."
+                    "description": "SignalGraph v2 authoring graph. This is the only public strategy authoring format."
                   },
                   "settings": {
                     "type": "object",
@@ -8273,75 +8091,8 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["settings"],
-                "anyOf": [
-                  {
-                    "required": ["strategyAst"]
-                  },
-                  {
-                    "required": ["signalGraph"]
-                  }
-                ],
+                "required": ["signalGraph", "settings"],
                 "properties": {
-                  "strategyAst": {
-                    "type": "object",
-                    "additionalProperties": true,
-                    "description": "Canonical strategy protocol payload. Use this when the client already authors StrategyAstV1 directly.",
-                    "example": {
-                      "protocol": "traseq.strategy",
-                      "version": 1,
-                      "strategy": {
-                        "kind": "strategy",
-                        "defaults": {
-                          "instrument": {
-                            "symbol": "BTCUSDT"
-                          },
-                          "timeframe": "1h",
-                          "warmupBars": 50
-                        },
-                        "entry": {
-                          "kind": "entry",
-                          "setup": {
-                            "kind": "compare",
-                            "op": "gt",
-                            "left": {
-                              "kind": "market",
-                              "field": "close"
-                            },
-                            "right": {
-                              "kind": "const",
-                              "value": 20000
-                            }
-                          },
-                          "trigger": {
-                            "kind": "compare",
-                            "op": "gt",
-                            "left": {
-                              "kind": "market",
-                              "field": "close"
-                            },
-                            "right": {
-                              "kind": "const",
-                              "value": 20100
-                            }
-                          },
-                          "filters": [
-                            {
-                              "kind": "pattern",
-                              "name": "hammer"
-                            }
-                          ],
-                          "action": {
-                            "side": "long",
-                            "sizing": {
-                              "mode": "fixed",
-                              "value": 1
-                            }
-                          }
-                        }
-                      }
-                    }
-                  },
                   "signalGraph": {
                     "type": "object",
                     "additionalProperties": false,
@@ -9809,7 +9560,7 @@
                                 {
                                   "type": "object",
                                   "additionalProperties": false,
-                                  "required": ["id", "kind", "name", "params"],
+                                  "required": ["id", "kind", "name", "args"],
                                   "properties": {
                                     "kind": {
                                       "type": "string",
@@ -9819,7 +9570,7 @@
                                       "type": "string",
                                       "enum": ["pivot_confirmed"]
                                     },
-                                    "params": {
+                                    "args": {
                                       "type": "object",
                                       "additionalProperties": false,
                                       "required": [
@@ -10143,7 +9894,7 @@
                         }
                       }
                     },
-                    "description": "Higher-level AI agent authoring graph. The backend compiles this to canonical strategyAst before validation and persistence."
+                    "description": "SignalGraph v2 authoring graph. This is the only public strategy authoring format."
                   },
                   "settings": {
                     "type": "object",
@@ -11754,44 +11505,10 @@
         "tags": ["Agent API"]
       }
     },
-    "/public/v1/blocks": {
-      "get": {
-        "operationId": "PublicOpenApiController_listBlocks",
-        "parameters": [
-          {
-            "name": "search",
-            "required": false,
-            "in": "query",
-            "schema": {}
-          },
-          {
-            "name": "category",
-            "required": false,
-            "in": "query",
-            "schema": {}
-          },
-          {
-            "name": "type",
-            "required": false,
-            "in": "query",
-            "schema": {}
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Block list"
-          }
-        },
-        "security": [
-          {
-            "traseq-api-key": []
-          }
-        ],
-        "summary": "List reusable blocks",
-        "tags": ["Agent API"]
-      },
+    "/public/v1/signal-monitors": {
       "post": {
-        "operationId": "PublicOpenApiController_createBlock",
+        "description": "Creates a neutral condition-event monitor. Events do not include order side, size, leverage, or order instructions.",
+        "operationId": "PublicOpenApiController_createSignalMonitor",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -11799,14 +11516,47 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "required": [
+                  "strategyVersionId",
+                  "symbol",
+                  "timeframe",
+                  "conditionRole"
+                ],
+                "properties": {
+                  "strategyVersionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "symbol": {
+                    "type": "string",
+                    "example": "BTCUSDT"
+                  },
+                  "timeframe": {
+                    "type": "string",
+                    "enum": ["15m", "1h", "4h", "1d"]
+                  },
+                  "conditionRole": {
+                    "type": "string",
+                    "enum": ["entry_condition", "exit_condition"]
+                  },
+                  "triggerPolicy": {
+                    "type": "string",
+                    "enum": ["rising_edge", "every_closed_bar_true"],
+                    "default": "rising_edge"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "additionalProperties": false
               }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "Block created"
+            "description": "Signal monitor created"
           }
         },
         "security": [
@@ -11814,13 +11564,66 @@
             "traseq-api-key": []
           }
         ],
-        "summary": "Create a reusable block",
+        "summary": "Create a closed-bar strategy condition monitor",
+        "tags": ["Agent API"]
+      },
+      "get": {
+        "operationId": "PublicOpenApiController_listSignalMonitors",
+        "parameters": [
+          {
+            "name": "timeframe",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          },
+          {
+            "name": "symbol",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          },
+          {
+            "name": "strategyVersionId",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Signal monitor list"
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "List signal monitors",
         "tags": ["Agent API"]
       }
     },
-    "/public/v1/blocks/{id}": {
+    "/public/v1/signal-monitors/{id}": {
       "get": {
-        "operationId": "PublicOpenApiController_getBlock",
+        "operationId": "PublicOpenApiController_getSignalMonitor",
         "parameters": [
           {
             "name": "id",
@@ -11833,7 +11636,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Block detail"
+            "description": "Signal monitor detail"
           }
         },
         "security": [
@@ -11841,11 +11644,11 @@
             "traseq-api-key": []
           }
         ],
-        "summary": "Get reusable block detail",
+        "summary": "Get a signal monitor",
         "tags": ["Agent API"]
       },
       "patch": {
-        "operationId": "PublicOpenApiController_updateBlock",
+        "operationId": "PublicOpenApiController_updateSignalMonitor",
         "parameters": [
           {
             "name": "id",
@@ -11869,7 +11672,7 @@
         },
         "responses": {
           "200": {
-            "description": "Block updated"
+            "description": "Signal monitor updated"
           }
         },
         "security": [
@@ -11877,11 +11680,11 @@
             "traseq-api-key": []
           }
         ],
-        "summary": "Update a reusable block",
+        "summary": "Update a signal monitor",
         "tags": ["Agent API"]
       },
       "delete": {
-        "operationId": "PublicOpenApiController_deleteBlock",
+        "operationId": "PublicOpenApiController_deleteSignalMonitor",
         "parameters": [
           {
             "name": "id",
@@ -11894,7 +11697,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Block deleted"
+            "description": "Signal monitor archived"
           }
         },
         "security": [
@@ -11902,13 +11705,50 @@
             "traseq-api-key": []
           }
         ],
-        "summary": "Delete a reusable block",
+        "summary": "Archive a signal monitor",
         "tags": ["Agent API"]
       }
     },
-    "/public/v1/blocks/{id}/pin": {
-      "post": {
-        "operationId": "PublicOpenApiController_pinBlock",
+    "/public/v1/signal-events": {
+      "get": {
+        "operationId": "PublicOpenApiController_listSignalEvents",
+        "parameters": [
+          {
+            "name": "monitorId",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Signal event list"
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Poll neutral strategy condition events",
+        "tags": ["Agent API"]
+      }
+    },
+    "/public/v1/signal-events/{id}": {
+      "get": {
+        "operationId": "PublicOpenApiController_getSignalEvent",
         "parameters": [
           {
             "name": "id",
@@ -11921,7 +11761,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Block pinned"
+            "description": "Signal event detail"
           }
         },
         "security": [
@@ -11929,11 +11769,112 @@
             "traseq-api-key": []
           }
         ],
-        "summary": "Pin a reusable block",
+        "summary": "Get a signal event",
+        "tags": ["Agent API"]
+      }
+    },
+    "/public/v1/webhook-endpoints": {
+      "post": {
+        "description": "Returns the plaintext HMAC secret once. The stored secret is encrypted for outbound signing.",
+        "operationId": "PublicOpenApiController_createWebhookEndpoint",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["url"],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "eventTypes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": ["strategy.condition.satisfied"]
+                    }
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Webhook endpoint created"
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Create a webhook endpoint",
+        "tags": ["Agent API"]
+      },
+      "get": {
+        "operationId": "PublicOpenApiController_listWebhookEndpoints",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Webhook endpoint list"
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "List webhook endpoints",
+        "tags": ["Agent API"]
+      }
+    },
+    "/public/v1/webhook-endpoints/{id}": {
+      "patch": {
+        "operationId": "PublicOpenApiController_updateWebhookEndpoint",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook endpoint updated"
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Update a webhook endpoint",
         "tags": ["Agent API"]
       },
       "delete": {
-        "operationId": "PublicOpenApiController_unpinBlock",
+        "operationId": "PublicOpenApiController_deleteWebhookEndpoint",
         "parameters": [
           {
             "name": "id",
@@ -11946,7 +11887,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Block unpinned"
+            "description": "Webhook endpoint archived"
           }
         },
         "security": [
@@ -11954,7 +11895,34 @@
             "traseq-api-key": []
           }
         ],
-        "summary": "Unpin a reusable block",
+        "summary": "Archive a webhook endpoint",
+        "tags": ["Agent API"]
+      }
+    },
+    "/public/v1/webhook-endpoints/{id}/test": {
+      "post": {
+        "operationId": "PublicOpenApiController_testWebhookEndpoint",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook test result"
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Send a signed test webhook",
         "tags": ["Agent API"]
       }
     }

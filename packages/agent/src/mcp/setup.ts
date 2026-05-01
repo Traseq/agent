@@ -51,6 +51,7 @@ export interface McpInstallPlan {
   serverName: string;
   config: McpServerConfig;
   command?: string[];
+  removeCommand?: string[];
   addJsonCommand?: string[];
   writeSupported: boolean;
   writeTarget?: string;
@@ -94,8 +95,14 @@ const REQUIRED_GUIDED_SCOPES = [
   'backtests_write',
 ];
 
-const NEXT_PROMPT_DEFAULT =
-  'Help me validate a BTCUSDT 4h strategy idea. Start with Traseq research engagement first.';
+// Single source for the post-setup copy-paste prompt. The same string is
+// duplicated in user-facing docs that cannot import TS at build time —
+// keep these in sync when editing:
+//   - packages/agent/README.md
+//   - docs/public-docs/api-reference/ai-agent-integration.mdx
+//   - docs/public-docs/zh-hant/api-reference/ai-agent-integration.mdx
+export const NEXT_PROMPT_DEFAULT =
+  'Use the Traseq MCP server. First call the MCP tool `start_research_engagement` with prompt "Validate a BTCUSDT 4h strategy idea." Do not search the repo; if the tool is unavailable, tell me the Traseq MCP server is not connected.';
 const NEXT_STEP_RESTART_GENERIC =
   'Restart or refresh your MCP client if needed.';
 const NEXT_STEP_RESTART_CLAUDE_DESKTOP = 'Restart Claude Desktop completely.';
@@ -290,6 +297,7 @@ export function buildClientInstallPlan(
         entry.command,
         ...entry.args,
       ],
+      removeCommand: ['codex', 'mcp', 'remove', serverName],
       writeSupported: true,
       warnings,
       nextPrompt,
@@ -313,24 +321,13 @@ export function buildClientInstallPlan(
       command: [
         'claude',
         'mcp',
-        'add',
-        '--scope',
-        scope,
-        ...envFlags(entry.env, 'claude'),
-        serverName,
-        '--',
-        entry.command,
-        ...entry.args,
-      ],
-      addJsonCommand: [
-        'claude',
-        'mcp',
         'add-json',
         '--scope',
         scope,
         serverName,
         serverJson,
       ],
+      removeCommand: ['claude', 'mcp', 'remove', '--scope', scope, serverName],
       writeSupported: true,
       warnings,
       nextPrompt,
@@ -426,9 +423,16 @@ function redactEnvValue(key: string, value: string): string {
 }
 
 function redactCommandArg(value: string): string {
-  return value.startsWith('TRASEQ_API_KEY=')
-    ? `TRASEQ_API_KEY=${REDACTED_SECRET}`
-    : value;
+  if (value.startsWith('TRASEQ_API_KEY=')) {
+    return `TRASEQ_API_KEY=${REDACTED_SECRET}`;
+  }
+  if (value.includes('TRASEQ_API_KEY')) {
+    return value.replace(
+      /"TRASEQ_API_KEY":"[^"]*"/,
+      `"TRASEQ_API_KEY":"${REDACTED_SECRET}"`,
+    );
+  }
+  return value;
 }
 
 export function redactMcpInstallPlan(plan: McpInstallPlan): McpInstallPlan {
@@ -455,15 +459,15 @@ export function redactMcpInstallPlan(plan: McpInstallPlan): McpInstallPlan {
     ...(plan.command
       ? { command: plan.command.map((arg) => redactCommandArg(arg)) }
       : {}),
+    ...(plan.removeCommand
+      ? {
+          removeCommand: plan.removeCommand.map((arg) => redactCommandArg(arg)),
+        }
+      : {}),
     ...(plan.addJsonCommand
       ? {
           addJsonCommand: plan.addJsonCommand.map((arg) =>
-            arg.includes('TRASEQ_API_KEY')
-              ? arg.replace(
-                  /"TRASEQ_API_KEY":"[^"]*"/,
-                  '"TRASEQ_API_KEY":"<redacted>"',
-                )
-              : redactCommandArg(arg),
+            redactCommandArg(arg),
           ),
         }
       : {}),

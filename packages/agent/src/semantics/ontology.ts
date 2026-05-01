@@ -342,7 +342,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             right: { ref: 'ema_100' },
           },
         ],
-        bindings: { contextFilter: { ref: 'trend_filter' } },
+        assemblyHints: { contextFilters: [{ ref: 'trend_filter' }] },
         settingsHints: { warmupPeriod: 200 },
       },
       tradeoffs: {
@@ -389,7 +389,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             right: { ref: 'ema_slow' },
           },
         ],
-        bindings: { contextFilter: { ref: 'ma_alignment' } },
+        assemblyHints: { contextFilters: [{ ref: 'ma_alignment' }] },
         settingsHints: { warmupPeriod: 100 },
       },
       tradeoffs: {
@@ -432,7 +432,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             right: { const: 30 },
           },
         ],
-        bindings: { entryTrigger: { ref: 'rsi_reclaim' } },
+        assemblyHints: { entryTrigger: { ref: 'rsi_reclaim' } },
         settingsHints: { warmupPeriod: 50 },
       },
       tradeoffs: {
@@ -485,7 +485,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             right: { ref: 'macd_signal' },
           },
         ],
-        bindings: { entryTrigger: { ref: 'macd_bull_cross' } },
+        assemblyHints: { entryTrigger: { ref: 'macd_bull_cross' } },
         settingsHints: { warmupPeriod: 80 },
       },
       tradeoffs: {
@@ -525,7 +525,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             tolerance: { mode: 'percent', value: 0.5 },
           },
         ],
-        bindings: { entryTrigger: { ref: 'close_near_mean' } },
+        assemblyHints: { entryTrigger: { ref: 'close_near_mean' } },
         settingsHints: { warmupPeriod: 50 },
       },
       tradeoffs: {
@@ -572,7 +572,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             right: { ref: 'range_high_20' },
           },
         ],
-        bindings: { entryTrigger: { ref: 'breakout_trigger' } },
+        assemblyHints: { entryTrigger: { ref: 'breakout_trigger' } },
         settingsHints: { warmupPeriod: 50 },
       },
       tradeoffs: {
@@ -617,7 +617,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             right: { ref: 'last_pivot_high' },
           },
         ],
-        bindings: { entryTrigger: { ref: 'pivot_breakout' } },
+        assemblyHints: { entryTrigger: { ref: 'pivot_breakout' } },
         settingsHints: { warmupPeriod: 60 },
       },
       tradeoffs: {
@@ -662,7 +662,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             right: { ref: 'atr_avg_50' },
           },
         ],
-        bindings: { contextFilter: { ref: 'volatility_compressed' } },
+        assemblyHints: { contextFilters: [{ ref: 'volatility_compressed' }] },
         settingsHints: { warmupPeriod: 100 },
       },
       tradeoffs: {
@@ -705,7 +705,9 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             right: { ref: 'volume_avg_20' },
           },
         ],
-        bindings: { confirmationFilter: { ref: 'volume_confirmation' } },
+        assemblyHints: {
+          confirmationFilters: [{ ref: 'volume_confirmation' }],
+        },
         settingsHints: { warmupPeriod: 50 },
       },
       tradeoffs: {
@@ -749,7 +751,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             right: { ref: 'volume_max_50' },
           },
         ],
-        bindings: { confirmationFilter: { ref: 'volume_spike' } },
+        assemblyHints: { confirmationFilters: [{ ref: 'volume_spike' }] },
         settingsHints: { warmupPeriod: 100 },
       },
       tradeoffs: {
@@ -796,7 +798,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             right: { ref: 'atr_avg_50' },
           },
         ],
-        bindings: { contextFilter: { ref: 'high_vol_regime' } },
+        assemblyHints: { contextFilters: [{ ref: 'high_vol_regime' }] },
         settingsHints: { warmupPeriod: 100 },
       },
       tradeoffs: {
@@ -847,7 +849,9 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             right: { ref: 'atr_avg_20' },
           },
         ],
-        bindings: { confirmationFilter: { ref: 'volatility_expansion' } },
+        assemblyHints: {
+          confirmationFilters: [{ ref: 'volatility_expansion' }],
+        },
         settingsHints: { warmupPeriod: 60 },
       },
       tradeoffs: {
@@ -875,10 +879,10 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             id: 'new_swing_low',
             kind: 'event',
             name: 'pivot_confirmed',
-            params: { pivotKind: 'low', left: 5, right: 5 },
+            args: { pivotKind: 'low', left: 5, right: 5 },
           },
         ],
-        bindings: { confirmationFilter: { ref: 'new_swing_low' } },
+        assemblyHints: { confirmationFilters: [{ ref: 'new_swing_low' }] },
         settingsHints: { warmupPeriod: 50 },
       },
       tradeoffs: {
@@ -929,7 +933,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             right: { ref: 'prev_pivot_high' },
           },
         ],
-        bindings: { confirmationFilter: { ref: 'higher_high' } },
+        assemblyHints: { confirmationFilters: [{ ref: 'higher_high' }] },
         settingsHints: { warmupPeriod: 80 },
       },
       tradeoffs: {
@@ -963,7 +967,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             },
           },
         ],
-        bindings: { contextFilter: { ref: 'weekday_session' } },
+        assemblyHints: { contextFilters: [{ ref: 'weekday_session' }] },
       },
       tradeoffs: {
         strengths: ['Simple execution window constraint.'],
@@ -1047,7 +1051,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             ],
           },
         ],
-        bindings: { entryTrigger: { ref: 'setup_then_breakout' } },
+        assemblyHints: { entryTrigger: { ref: 'setup_then_breakout' } },
         settingsHints: { warmupPeriod: 120 },
       },
       tradeoffs: {
@@ -1086,7 +1090,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             id: 'pivot_high_confirmed',
             kind: 'event',
             name: 'pivot_confirmed',
-            params: { pivotKind: 'high', left: 5, right: 5 },
+            args: { pivotKind: 'high', left: 5, right: 5 },
           },
           { id: 'close_price', kind: 'market', field: 'close' },
           {
@@ -1117,7 +1121,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             items: [{ ref: 'armed_pivot_breakout' }, { ref: 'pivot_breakout' }],
           },
         ],
-        bindings: { entryTrigger: { ref: 'armed_breakout_trigger' } },
+        assemblyHints: { entryTrigger: { ref: 'armed_breakout_trigger' } },
         settingsHints: { warmupPeriod: 80 },
       },
       tradeoffs: {
@@ -1157,7 +1161,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             right: { const: 10 },
           },
         ],
-        bindings: {
+        assemblyHints: {
           exit: {
             when: { ref: 'time_stop_exit' },
             action: { mode: 'percent_position', value: 100 },
@@ -1202,7 +1206,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             right: { const: -100 },
           },
         ],
-        bindings: {
+        assemblyHints: {
           exit: {
             when: { ref: 'loss_limit_exit' },
             action: { mode: 'percent_position', value: 100 },
@@ -1228,7 +1232,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
       requiredCapabilities: { nodeKinds: [] },
       fragment: {
         nodes: [],
-        bindings: { risk: { stopLoss: { mode: 'percent', value: 2 } } },
+        assemblyHints: { risk: { stopLoss: { mode: 'percent', value: 2 } } },
       },
       tradeoffs: {
         strengths: ['Simple, scale-invariant risk control.'],
@@ -1247,7 +1251,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
       requiredCapabilities: { nodeKinds: [] },
       fragment: {
         nodes: [],
-        bindings: {
+        assemblyHints: {
           risk: { takeProfits: [{ triggerPercent: 6, closePercent: 100 }] },
         },
       },
@@ -1270,7 +1274,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
       requiredCapabilities: { nodeKinds: [] },
       fragment: {
         nodes: [],
-        bindings: {
+        assemblyHints: {
           risk: {
             trailingStop: { distancePercent: 3, activateAfterPercent: 2 },
           },
@@ -1293,7 +1297,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
       requiredCapabilities: { nodeKinds: [] },
       fragment: {
         nodes: [],
-        bindings: {
+        assemblyHints: {
           entryActionHint: {
             side: 'long',
             sizing: { mode: 'percent_equity', value: 10 },
@@ -1343,7 +1347,7 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
             tolerance: { mode: 'percent', value: 1 },
           },
         ],
-        bindings: { confirmationFilter: { ref: 'not_chasing' } },
+        assemblyHints: { confirmationFilters: [{ ref: 'not_chasing' }] },
         settingsHints: { warmupPeriod: 50 },
       },
       tradeoffs: {
