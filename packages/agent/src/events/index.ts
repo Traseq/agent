@@ -87,8 +87,8 @@ function defaultStatePath(stateDir?: string): string {
     stateDir ??
     process.env.TRASEQ_AGENT_STATE_DIR ??
     resolve(homedir(), '.traseq-agent');
-  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   // base is operator-supplied config (CLI flag or env var) for this CLI's own state dir; not network input.
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   return resolve(base, 'events.sqlite');
 }
 
@@ -339,8 +339,8 @@ async function loadAdapter(options: AdapterLoadOptions): Promise<EventAdapter> {
     return dryRunBlockedAdapter(ref);
   }
 
-  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   // ref is the operator-provided adapter module path (CLI flag or TRASEQ_AGENT_EVENT_ADAPTER env var); loading arbitrary local modules is the feature.
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
   const filePath = isAbsolute(ref) ? ref : resolve(process.cwd(), ref);
   const mod = (await import(pathToFileURL(filePath).href)) as {
     default?: EventAdapter;

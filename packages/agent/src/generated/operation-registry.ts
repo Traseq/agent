@@ -41,6 +41,32 @@ const numberProp = { type: 'number' } as const;
 const integerProp = { type: 'integer' } as const;
 const booleanProp = { type: 'boolean' } as const;
 const objectProp = { type: 'object', additionalProperties: true } as const;
+
+// Flexible time-input helper for backtest range endpoints. The MCP schema
+// announces both string and number forms so LLM clients see (and learn from)
+// the examples directly in the tool definition rather than discovering valid
+// shapes through trial-and-error rejection.
+function timeInputProp(
+  description: string,
+  examples: ReadonlyArray<string | number>,
+) {
+  return {
+    oneOf: [
+      {
+        type: 'string',
+        description:
+          'ISO-8601 date ("2024-01-01" or "2024-01-01T00:00:00Z"), relative duration ("1y", "6m", "30d", "2w"), or one of the symbolic tokens "now", "inception", "ytd".',
+      },
+      {
+        type: 'number',
+        description:
+          'Numeric epoch — 10-digit seconds (e.g. 1704067200) or 13-digit milliseconds (e.g. 1704067200000). The server auto-detects which.',
+      },
+    ],
+    description,
+    examples: [...examples],
+  } as const;
+}
 const strategyAuthoringPayloadSchema =
   STRATEGY_AUTHORING_PAYLOAD_JSON_SCHEMA.schema;
 const strategyListStatusProp = {
@@ -372,12 +398,63 @@ const OPERATIONS = [
   },
   {
     name: 'run_backtest',
-    description: 'Queue a backtest for a ready strategy version.',
+    description:
+      'Queue a backtest for a ready strategy version. ' +
+      'Time inputs are flexible: range.start and range.end accept ISO dates ("2024-01-01"), ' +
+      'relative durations ("1y", "6m", "30d", "2w", "ytd"), the symbolic tokens "now"/"inception", ' +
+      'or numeric epoch (10-digit seconds or 13-digit milliseconds). ' +
+      'When range is omitted entirely, the backtest covers the full available history for the ' +
+      "instrument (from its inception to now). The response's runContext.resolvedRange echoes the " +
+      'actual {start, end} (epoch ms) the engine used so the caller never has to guess.',
     endpoint: { method: 'POST', path: '/public/v1/backtests' },
     input_schema: objectSchema(
       {
         strategyVersionId: stringProp,
-        config: objectProp,
+        config: objectSchema(
+          {
+            timeframe: {
+              type: 'string',
+              enum: ['15m', '1h', '4h', '1d'],
+              description:
+                'Bar granularity. Required. Common choices: "1d" for swing/position research, "1h"/"4h" for shorter-horizon work, "15m" for intraday.',
+            },
+            signalInstrument: objectSchema(
+              {
+                symbol: {
+                  ...stringProp,
+                  description:
+                    'Instrument symbol (e.g. "BTCUSDT"). Read capabilities.instruments for the authoritative list with each symbol\'s dataStart.',
+                },
+              },
+              ['symbol'],
+            ),
+            range: {
+              ...objectSchema({
+                start: timeInputProp(
+                  'Range start. Omit to default to "inception" (instrument earliest available data). Examples: "2024-01-01", "1y", "inception", 1704067200, 1704067200000.',
+                  ['2024-01-01', '1y', 'inception', 1704067200000],
+                ),
+                end: timeInputProp(
+                  'Range end. Omit to default to "now". Examples: "now", "2025-12-31", 1735603200000.',
+                  ['now', '2025-12-31', 1735603200000],
+                ),
+              }),
+              description:
+                'Backtest time window. Omit entirely to cover the full available history for the instrument. ' +
+                'Both endpoints are individually optional; missing start defaults to "inception", missing end defaults to "now".',
+            },
+            initialBalance: {
+              ...numberProp,
+              description:
+                'Starting account balance in quote currency. Optional.',
+            },
+            execution: objectProp,
+            portfolioRisk: objectProp,
+            ambiguityResolution: stringProp,
+            ambiguityFallback: stringProp,
+          },
+          ['timeframe', 'signalInstrument'],
+        ),
       },
       ['strategyVersionId', 'config'],
     ),

@@ -90,17 +90,52 @@ Use \`pessimistic\` when stress-testing a strategy you plan to deploy.
 
 ## Date Range
 
-| Field       | Type    | Notes                                                                    |
-|-------------|---------|--------------------------------------------------------------------------|
-| range.start | integer | Inclusive start of the backtest window, in **epoch milliseconds (UTC)**. |
-| range.end   | integer | Inclusive end of the backtest window, in **epoch milliseconds (UTC)**.   |
+**Default behavior — omit \`range\` entirely.** When \`range\` is not provided, the
+backtest covers the full available history for the instrument: from its
+\`spotDataStart\` (e.g. 2017-08-17 for BTCUSDT) to now. This is the recommended
+starting point for almost every research task. All Traseq subscription tiers
+run on \`all_available_history\` — there is no per-tier backtest-period gate.
 
-If omitted, the backtest runs over all available data for the instrument/timeframe.
-All Traseq subscription tiers run on \`all_available_history\` — there is no per-tier
-backtest-period gate. Only research credits, strategy count, and workspace count
-are tier-limited.
+**Custom windows.** \`range.start\` and \`range.end\` accept any of these forms:
 
-**Example** (2022-01-01 00:00:00 UTC to 2025-12-31 23:59:59 UTC):
+| Form                | Example                          | Meaning                                                  |
+|---------------------|----------------------------------|----------------------------------------------------------|
+| ISO date            | \`"2024-01-01"\`                   | UTC midnight on that date                                |
+| ISO datetime        | \`"2024-01-01T12:30:00Z"\`         | Exact UTC instant                                        |
+| Relative duration   | \`"1y"\`, \`"6m"\`, \`"30d"\`, \`"2w"\` | Subtract from \`end\` (or now if end is also relative)     |
+| Year-to-date        | \`"ytd"\`                          | Start of current calendar year (UTC)                     |
+| Symbolic            | \`"now"\`, \`"inception"\`           | Current time / instrument earliest data                  |
+| Epoch milliseconds  | \`1704067200000\` (13 digits)      | Unix time × 1000                                         |
+| Epoch seconds       | \`1704067200\` (10 digits)         | Unix time (auto-multiplied by 1000)                      |
+
+Either endpoint can be omitted independently — missing \`start\` defaults to
+\`"inception"\`, missing \`end\` defaults to \`"now"\`.
+
+**Echoed back.** The response's \`runContext.resolvedRange\` always contains the
+canonical \`{start, end}\` (epoch milliseconds) the engine actually used. Read it
+to confirm the resolved window, especially when you used relative or symbolic
+inputs.
+
+**Examples**:
+
+\`\`\`json
+// Full history — recommended default
+{ "timeframe": "1d", "signalInstrument": { "symbol": "BTCUSDT" } }
+
+// Last 1 year through now
+{ "timeframe": "4h", "signalInstrument": { "symbol": "BTCUSDT" },
+  "range": { "start": "1y" } }
+
+// Explicit ISO window
+{ "timeframe": "4h", "signalInstrument": { "symbol": "BTCUSDT" },
+  "range": { "start": "2022-01-01", "end": "2025-12-31" } }
+\`\`\`
+
+### Advanced: numeric epoch (legacy)
+
+The engine still accepts pre-resolved numeric epoch values. 10-digit values are
+treated as seconds (multiplied by 1000); 13-digit values are treated as
+milliseconds. Prefer ISO strings or relative durations for readability.
 
 \`\`\`json
 "range": {
