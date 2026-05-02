@@ -14,7 +14,6 @@ npm install @traseq/sdk
 import { TraseqClient } from '@traseq/sdk';
 
 const client = new TraseqClient({
-  baseUrl: process.env.TRASEQ_BASE_URL ?? 'https://api.traseq.com',
   apiKey: process.env.TRASEQ_API_KEY!,
   timeoutMs: 30_000,
   retry: { maxAttempts: 3, baseDelayMs: 1_000 },
@@ -88,10 +87,9 @@ const result = await client.waitForBacktestCompletion(backtestId, {
 
 ## Environment Variables
 
-| Variable          | Required | Description                                         |
-| ----------------- | -------- | --------------------------------------------------- |
-| `TRASEQ_API_KEY`  | Yes      | Workspace-scoped API key (`trsq_...`)               |
-| `TRASEQ_BASE_URL` | No       | API base URL (defaults to `https://api.traseq.com`) |
+| Variable         | Required | Description                           |
+| ---------------- | -------- | ------------------------------------- |
+| `TRASEQ_API_KEY` | Yes      | Workspace-scoped API key (`trsq_...`) |
 
 ## Error Handling
 

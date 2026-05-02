@@ -33,7 +33,6 @@ export interface McpServerConfigInput {
   binaryName?: string;
   scope?: McpScope;
   apiKey?: string;
-  baseUrl?: string;
   inlineSecrets?: boolean;
   allowProjectSecrets?: boolean;
 }
@@ -86,7 +85,6 @@ export interface McpProbeResult {
 const DEFAULT_SERVER_NAME = 'traseq';
 const DEFAULT_PACKAGE_NAME = '@traseq/agent';
 const DEFAULT_BINARY_NAME = 'traseq-agent';
-const DEFAULT_BASE_URL = 'https://api.traseq.com';
 const REDACTED_SECRET = '<redacted>';
 const REQUIRED_GUIDED_SCOPES = [
   'workspace_read',
@@ -141,10 +139,6 @@ function normalizedBinaryName(value: string | undefined): string {
   return value?.trim() || DEFAULT_BINARY_NAME;
 }
 
-function normalizedBaseUrl(value: string | undefined): string {
-  return value?.trim() || DEFAULT_BASE_URL;
-}
-
 function shouldInlineSecret(input: McpServerConfigInput): boolean {
   const scope = normalizedScope(input.scope);
   if (!input.inlineSecrets || !input.apiKey) {
@@ -163,7 +157,6 @@ function buildEnv(input: McpServerConfigInput): Record<string, string> {
     TRASEQ_API_KEY: shouldInlineSecret(input)
       ? (input.apiKey as string)
       : '${TRASEQ_API_KEY}',
-    TRASEQ_BASE_URL: normalizedBaseUrl(input.baseUrl),
   };
 }
 

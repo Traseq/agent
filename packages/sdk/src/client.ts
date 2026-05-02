@@ -56,6 +56,7 @@ import type {
   BacktestCostEstimateInput,
 } from './types.js';
 import {
+  DEFAULT_TRASEQ_API_BASE_URL,
   fetchWithPolicy,
   normalizeBaseUrl,
   type FetchLike,
@@ -118,7 +119,7 @@ function buildQuery(params?: QueryParams): string {
 }
 
 export interface TraseqClientOptions {
-  baseUrl: string;
+  baseUrl?: string;
   apiKey: string;
   fetch?: FetchLike;
   /** Abort each request attempt after this many milliseconds. Defaults to 30,000. */
@@ -138,7 +139,9 @@ export class TraseqClient {
       );
     }
 
-    this.baseUrl = normalizeBaseUrl(options.baseUrl);
+    this.baseUrl = normalizeBaseUrl(
+      options.baseUrl ?? DEFAULT_TRASEQ_API_BASE_URL,
+    );
     this.fetchImpl = options.fetch ?? fetch;
   }
 

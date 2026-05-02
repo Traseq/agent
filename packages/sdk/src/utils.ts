@@ -19,6 +19,7 @@ export interface FetchPolicyOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+export const DEFAULT_TRASEQ_API_BASE_URL = 'https://api.traseq.com';
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_BASE_DELAY_MS = 1_000;
 const DEFAULT_RETRY_METHODS = ['GET', 'HEAD'] as const;

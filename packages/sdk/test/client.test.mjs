@@ -50,6 +50,23 @@ test('TraseqClient sends x-api-key header on every request', async () => {
   assert.equal(capturedHeaders['Content-Type'], 'application/json');
 });
 
+test('TraseqClient defaults to the production API URL', async () => {
+  let capturedUrl;
+
+  const client = new TraseqClient({
+    apiKey: 'key',
+    fetch: createMockFetch({
+      'GET /public/v1': ({ url }) => {
+        capturedUrl = url;
+        return jsonResponse({ name: 'traseq', version: 'v1' });
+      },
+    }),
+  });
+
+  await client.getManifest();
+  assert.equal(capturedUrl, 'https://api.traseq.com/public/v1');
+});
+
 test('TraseqClient.getManifest parses JSON response', async () => {
   const client = new TraseqClient({
     baseUrl: 'https://api.traseq.test',

@@ -13,7 +13,6 @@ export interface InstallInput {
   serverName: string;
   secretRef: SecretRef;
   inline?: string;
-  baseUrl: string;
   packageVersion?: string;
   acknowledgeShared?: boolean;
   /** MCP server profile to write into the client config. Defaults to 'guided'. */

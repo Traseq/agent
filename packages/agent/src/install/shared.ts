@@ -12,9 +12,7 @@ export const TRASEQ_API_KEY_REF_ENV = 'TRASEQ_API_KEY_REF';
 export const TRASEQ_API_KEY_ENV = 'TRASEQ_API_KEY';
 
 export function buildEntry(input: InstallInput): McpServerEntry {
-  const env: Record<string, string> = {
-    TRASEQ_BASE_URL: input.baseUrl || DEFAULT_BASE_URL,
-  };
+  const env: Record<string, string> = {};
   if (input.inline !== undefined && input.inline.length > 0) {
     env[TRASEQ_API_KEY_ENV] = input.inline;
   } else {

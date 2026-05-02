@@ -54,6 +54,7 @@ describe('claude-code writer', () => {
         'keychain:traseq/api-key',
       );
       assert.equal(plan.entry.env.TRASEQ_API_KEY, undefined);
+      assert.equal(plan.entry.env.TRASEQ_BASE_URL, undefined);
     } finally {
       if (existsSync(home)) rmSync(home, { recursive: true, force: true });
       if (existsSync(claudeJson)) rmSync(claudeJson, { force: true });
@@ -78,12 +79,11 @@ describe('redactEntry', () => {
       args: ['-y', '--package', '@traseq/agent@^0.2.0', 'traseq-agent', 'mcp'],
       env: {
         TRASEQ_API_KEY: 'trsq_live_secret_value',
-        TRASEQ_BASE_URL: 'https://api.traseq.com',
       },
     };
     const redacted = redactEntry(entry);
     assert.equal(redacted.env.TRASEQ_API_KEY, '<redacted>');
-    assert.equal(redacted.env.TRASEQ_BASE_URL, 'https://api.traseq.com');
+    assert.equal(redacted.env.TRASEQ_BASE_URL, undefined);
     assert.deepEqual(redacted.args, entry.args);
   });
 

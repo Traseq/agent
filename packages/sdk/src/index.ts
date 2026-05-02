@@ -1,5 +1,6 @@
 export { TraseqClient, type TraseqClientOptions } from './client.js';
 export {
+  DEFAULT_TRASEQ_API_BASE_URL,
   fetchWithPolicy,
   normalizeBaseUrl,
   type FetchLike,

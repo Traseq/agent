@@ -29,14 +29,12 @@ If you are upgrading from 0.1.x, two API contracts have changed:
 - A Traseq API key created from the target workspace.
 - API key scopes that match the operations your agent will perform.
 
-Set these environment variables before using CLI or MCP entrypoints:
+Set this environment variable before using CLI or MCP entrypoints:
 
 ```sh
 export TRASEQ_API_KEY="trsq_..."
-export TRASEQ_BASE_URL="https://api.traseq.com"
 ```
 
-`TRASEQ_BASE_URL` is optional and defaults to `https://api.traseq.com`.
 If you do not have a key yet, start with the free tier and create a workspace
 API key:
 `https://app.traseq.com/login?redirectTo=%2Fsettings%2Fapi-keys&entry_surface=agent_cli&entry_source=missing_traseq_api_key&cta_id=start_with_free_tier`.
@@ -175,7 +173,6 @@ import {
 } from '@traseq/agent';
 
 const client = new TraseqClient({
-  baseUrl: process.env.TRASEQ_BASE_URL ?? 'https://api.traseq.com',
   apiKey: process.env.TRASEQ_API_KEY!,
   timeoutMs: 30_000,
   // Retries default to GET/HEAD only to avoid duplicate writes.
@@ -301,8 +298,7 @@ at install time:
       "command": "npx",
       "args": ["-y", "--package", "@traseq/agent", "traseq-agent", "mcp"],
       "env": {
-        "TRASEQ_API_KEY_REF": "keychain:traseq/api-key",
-        "TRASEQ_BASE_URL": "https://api.traseq.com"
+        "TRASEQ_API_KEY_REF": "keychain:traseq/api-key"
       }
     }
   }

@@ -65,12 +65,6 @@ const REFERENCE_DESCRIPTIONS: Record<string, string> = {
 const ENV_VARS = [
   { name: 'TRASEQ_API_KEY', required: true, desc: 'Traseq API key' },
   {
-    name: 'TRASEQ_BASE_URL',
-    required: false,
-    desc: 'Traseq API base URL',
-    fallback: 'https://api.traseq.com',
-  },
-  {
     name: 'TRASEQ_TIMEOUT_MS',
     required: false,
     desc: 'Backtest timeout (ms)',
@@ -126,7 +120,7 @@ function printUsage(): void {
       '  events test-adapter ./adapter.js                 Run a neutral test event through a local adapter.',
       '  setup [--target=<client>:<location>] [--profile=guided|full] [--api-key <key>]',
       '                                                  Interactive wizard: probe key → install → doctor. Recommended first-time path.',
-      '  login [--api-key <key>] [--store keychain|env|inline] [--base-url <url>]',
+      '  login [--api-key <key>] [--store keychain|env|inline]',
       '                                                  Probe an API key and persist it to the OS keychain (default).',
       '  logout                                          Remove the keychain entry.',
       '  install --target=<client>:<location> [--inline] [--package-version <semver>] [--dry-run]',

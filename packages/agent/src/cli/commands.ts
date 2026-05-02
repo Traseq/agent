@@ -226,7 +226,6 @@ interface InstallFlags {
   serverName: string;
   secretRef: SecretRef;
   inline?: string;
-  baseUrl: string;
   packageVersion?: string;
   acknowledgeShared: boolean;
   dryRun: boolean;
@@ -250,7 +249,6 @@ function parseInstallFlags(argv: readonly string[]): InstallFlags {
     serverName: readFlag(flags, 'server-name') ?? DEFAULT_SERVER_NAME,
     secretRef: resolveSecretRefFromFlags(flags),
     ...(inline !== undefined ? { inline } : {}),
-    baseUrl: readFlag(flags, 'base-url') ?? DEFAULT_BASE_URL,
     ...(readFlag(flags, 'package-version') !== undefined
       ? { packageVersion: readFlag(flags, 'package-version')! }
       : {}),
@@ -276,7 +274,6 @@ export async function runInstallCommand(
   const input = resolveDefaultInputs(flags.target, {
     serverName: flags.serverName,
     secretRef: flags.secretRef,
-    baseUrl: flags.baseUrl,
     ...(flags.inline !== undefined ? { inline: flags.inline } : {}),
     ...(flags.packageVersion !== undefined
       ? { packageVersion: flags.packageVersion }

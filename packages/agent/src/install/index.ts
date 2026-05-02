@@ -2,7 +2,7 @@ import { ClaudeCodeInstallWriter } from './claude-code.js';
 import { ClaudeDesktopInstallWriter } from './claude-desktop.js';
 import { CodexInstallWriter } from './codex.js';
 import { FileInstallWriter } from './file.js';
-import { DEFAULT_BASE_URL, DEFAULT_SERVER_NAME } from './shared.js';
+import { DEFAULT_SERVER_NAME } from './shared.js';
 import type {
   ClientId,
   InstallInput,
@@ -77,7 +77,6 @@ export function resolveDefaultInputs(
     target,
     serverName: partial.serverName ?? DEFAULT_SERVER_NAME,
     secretRef: partial.secretRef!,
-    baseUrl: partial.baseUrl ?? DEFAULT_BASE_URL,
     ...(partial.inline !== undefined ? { inline: partial.inline } : {}),
     ...(partial.packageVersion !== undefined
       ? { packageVersion: partial.packageVersion }

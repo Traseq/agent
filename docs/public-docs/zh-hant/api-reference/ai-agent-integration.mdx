@@ -130,21 +130,20 @@ Validation issue 至少包含：
 ## cURL 範例
 
 ```bash
-export TRASEQ_BASE_URL="https://your-traseq.example.com"
 export TRASEQ_API_KEY="trsq_live_<keyId>_<secret>"
 
 curl -s \
   -H "x-api-key: $TRASEQ_API_KEY" \
-  "$TRASEQ_BASE_URL/public/v1/usage"
+  "https://api.traseq.com/public/v1/usage"
 
 curl -s \
   -H "x-api-key: $TRASEQ_API_KEY" \
-  "$TRASEQ_BASE_URL/public/v1/capabilities"
+  "https://api.traseq.com/public/v1/capabilities"
 
 curl -s \
   -H "Content-Type: application/json" \
   -H "x-api-key: $TRASEQ_API_KEY" \
-  -X POST "$TRASEQ_BASE_URL/public/v1/strategies/validate" \
+  -X POST "https://api.traseq.com/public/v1/strategies/validate" \
   -d '{
     "signalGraph": {
       "protocol": "traseq.signal-graph",
@@ -265,10 +264,7 @@ draft → `run_guided_research_round` → 必要時再
 核心流程應該長這樣：
 
 ```ts
-const client = new TraseqPublicAgentClient(
-  process.env.TRASEQ_BASE_URL!,
-  process.env.TRASEQ_API_KEY!,
-);
+const client = new TraseqPublicAgentClient(process.env.TRASEQ_API_KEY!);
 
 const workspace = await client.getWorkspaceContext();
 const usage = await client.getUsage();

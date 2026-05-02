@@ -344,15 +344,12 @@ export type RepairFunction<TPayload> = (
   context: RepairContext,
 ) => Promise<TPayload>;
 
-export class TraseqPublicAgentClient {
-  constructor(
-    private readonly baseUrl: string,
-    private readonly apiKey: string,
-  ) {
-    if (!baseUrl?.trim()) {
-      throw new Error('Missing TRASEQ_BASE_URL.');
-    }
+const TRASEQ_API_BASE_URL = 'https://api.traseq.com';
 
+export class TraseqPublicAgentClient {
+  private readonly baseUrl = TRASEQ_API_BASE_URL;
+
+  constructor(private readonly apiKey: string) {
     if (!apiKey?.trim()) {
       throw new Error(TRASEQ_API_KEY_SETUP_HELP);
     }

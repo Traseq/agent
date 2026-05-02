@@ -135,21 +135,20 @@ Recommended repair loop:
 ## cURL example
 
 ```bash
-export TRASEQ_BASE_URL="https://your-traseq.example.com"
 export TRASEQ_API_KEY="trsq_live_<keyId>_<secret>"
 
 curl -s \
   -H "x-api-key: $TRASEQ_API_KEY" \
-  "$TRASEQ_BASE_URL/public/v1/usage"
+  "https://api.traseq.com/public/v1/usage"
 
 curl -s \
   -H "x-api-key: $TRASEQ_API_KEY" \
-  "$TRASEQ_BASE_URL/public/v1/capabilities"
+  "https://api.traseq.com/public/v1/capabilities"
 
 curl -s \
   -H "Content-Type: application/json" \
   -H "x-api-key: $TRASEQ_API_KEY" \
-  -X POST "$TRASEQ_BASE_URL/public/v1/strategies/validate" \
+  -X POST "https://api.traseq.com/public/v1/strategies/validate" \
   -d '{
     "signalGraph": {
       "protocol": "traseq.signal-graph",
@@ -273,10 +272,7 @@ Here's the core pattern for building an agent client. See
 `traseq-agent-example.ts` for a full working version.
 
 ```ts
-const client = new TraseqPublicAgentClient(
-  process.env.TRASEQ_BASE_URL!,
-  process.env.TRASEQ_API_KEY!,
-);
+const client = new TraseqPublicAgentClient(process.env.TRASEQ_API_KEY!);
 
 const workspace = await client.getWorkspaceContext();
 const usage = await client.getUsage();
