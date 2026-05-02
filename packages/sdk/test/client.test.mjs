@@ -368,6 +368,147 @@ test('TraseqClient returns empty object for empty response body', async () => {
   assert.deepEqual(result, {});
 });
 
+test('TraseqClient block methods hit the public block endpoints', async () => {
+  const requests = [];
+  const client = new TraseqClient({
+    baseUrl: 'https://api.traseq.test',
+    apiKey: 'key',
+    fetch: createMockFetch({
+      'GET /public/v1/blocks': ({ url }) => {
+        requests.push(new URL(url).search);
+        return jsonResponse({ data: [{ id: 'block-1', tokens: [] }] });
+      },
+      'GET /public/v1/blocks/block-1': () =>
+        jsonResponse({ id: 'block-1', tokens: [] }),
+      'POST /public/v1/blocks/compile': ({ body }) => {
+        assert.equal(body.role, 'entry_trigger');
+        assert.equal(body.tokens[0].type, 'market_data_operand');
+        return jsonResponse({
+          valid: true,
+          role: body.role,
+          tokens: body.tokens,
+          issues: [],
+          fragment: { nodes: [], assemblyHints: {} },
+        });
+      },
+      'POST /public/v1/blocks/validate': ({ body }) => {
+        assert.equal(body.role, 'confirmation_filter');
+        return jsonResponse({
+          valid: true,
+          role: body.role,
+          tokens: body.tokens,
+          issues: [],
+        });
+      },
+      'POST /public/v1/blocks': ({ body }) => {
+        assert.equal(body.name, 'Volume block');
+        return jsonResponse({ id: 'block-2', ...body }, 201);
+      },
+      'PATCH /public/v1/blocks/block-2': ({ body }) => {
+        assert.equal(body.name, 'Updated block');
+        return jsonResponse({ id: 'block-2', ...body });
+      },
+      'DELETE /public/v1/blocks/block-2': () => jsonResponse({ deleted: true }),
+    }),
+  });
+  const tokens = [{ type: 'market_data_operand', params: { field: 'close' } }];
+
+  const list = await client.listBlocks({ filter: 'system', tags: ['trend'] });
+  assert.equal(list.data[0].id, 'block-1');
+  assert.match(requests[0], /filter=system/);
+  assert.match(requests[0], /tags=trend/);
+  assert.equal((await client.getBlock('block-1')).id, 'block-1');
+  assert.equal(
+    (await client.compileBlock({ tokens, role: 'entry_trigger' })).valid,
+    true,
+  );
+  assert.equal(
+    (await client.validateBlock({ tokens, role: 'confirmation_filter' })).valid,
+    true,
+  );
+  assert.equal(
+    (await client.createBlock({ name: 'Volume block', tokens })).id,
+    'block-2',
+  );
+  assert.equal(
+    (await client.updateBlock('block-2', { name: 'Updated block' })).name,
+    'Updated block',
+  );
+  assert.deepEqual(await client.deleteBlock('block-2'), { deleted: true });
+});
+
+test('TraseqClient token grammar methods hit the public grammar endpoints', async () => {
+  const client = new TraseqClient({
+    baseUrl: 'https://api.traseq.test',
+    apiKey: 'key',
+    fetch: createMockFetch({
+      'GET /public/v1/token-grammar': () =>
+        jsonResponse({
+          protocol: 'traseq.token-grammar',
+          version: 1,
+          hash: 'hash',
+          canonical: {},
+          endpoints: {},
+          roles: ['entry_trigger'],
+          tokenCategories: ['value'],
+          tokenTypes: [],
+          ast: {},
+          operators: {},
+          enums: {},
+          indicators: [],
+          constraints: {},
+          notes: [],
+        }),
+      'POST /public/v1/token-grammar/materialize': ({ body }) => {
+        assert.equal(body.role, 'entry_trigger');
+        assert.equal(body.expr.kind, 'pattern');
+        return jsonResponse({
+          valid: true,
+          role: body.role,
+          source: 'expr',
+          tokens: [
+            { type: 'pattern_condition', params: { pattern: 'hammer' } },
+          ],
+          issues: [],
+        });
+      },
+      'POST /public/v1/token-grammar/validate': ({ body }) => {
+        assert.equal(body.tokens[0].type, 'pattern_condition');
+        return jsonResponse({
+          valid: true,
+          role: 'confirmation_filter',
+          source: 'tokens',
+          tokens: body.tokens,
+          issues: [],
+        });
+      },
+    }),
+  });
+
+  assert.equal(
+    (await client.getTokenGrammar()).protocol,
+    'traseq.token-grammar',
+  );
+  assert.equal(
+    (
+      await client.materializeTokenGrammar({
+        role: 'entry_trigger',
+        expr: { kind: 'pattern', name: 'hammer' },
+      })
+    ).source,
+    'expr',
+  );
+  assert.equal(
+    (
+      await client.validateTokenGrammar({
+        role: 'confirmation_filter',
+        tokens: [{ type: 'pattern_condition', params: { pattern: 'hammer' } }],
+      })
+    ).valid,
+    true,
+  );
+});
+
 test('TraseqClient.runBacktest sends strategyVersionId', async () => {
   const client = new TraseqClient({
     baseUrl: 'https://api.traseq.test',

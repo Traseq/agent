@@ -15,6 +15,9 @@ export {
   missingRequiredCapabilities,
   resolveStrategySemantics,
   runAgentTool,
+  TOKEN_RECIPES,
+  findTokenRecipe,
+  findTokenRecipeForImplementation,
 } from './semantics/index.js';
 export {
   OPERATION_REGISTRY,
@@ -48,14 +51,20 @@ export {
   DEFAULT_MCP_PROFILE,
   GUIDED_AGENT_TOOL_NAMES,
   GUIDED_PLATFORM_OPS,
+  operationStage,
   parseMcpProfile,
   platformOperationsForProfile,
 } from './mcp/profile.js';
-export type { McpProfile } from './mcp/profile.js';
+export type { McpProfile, OperationStage } from './mcp/profile.js';
 export {
   explainValidationIssues,
   suggestMinimalRepairs,
 } from './semantics/repair.js';
+export { normalizeStrategyDraft } from './semantics/normalize-draft.js';
+export type {
+  DraftNormalizePatch,
+  NormalizeStrategyDraftResult,
+} from './semantics/normalize-draft.js';
 
 // Operational layer
 export { buildScoreBreakdown } from './scoring.js';
@@ -188,6 +197,14 @@ export type {
   WorkspaceContext,
   WorkspaceUsageSummary,
   CapabilityDocument,
+  TokenDto,
+  TokenBlockCompileRequest,
+  TokenBlockCompileResponse,
+  SemanticBlock,
+  SemanticBlockRole,
+  BlockListResponse,
+  CreateBlockRequest,
+  UpdateBlockRequest,
   StrategyDraft,
   BacktestConfig,
   TraseqAgentErrorExplanation,
@@ -227,4 +244,7 @@ export type {
   SemanticRole,
   SemanticTradeoffs,
   SignalGraphFragment,
+  TokenRecipeDefinition,
+  TokenRecipeOutput,
+  TokenRecipeParameter,
 } from './semantics/index.js';

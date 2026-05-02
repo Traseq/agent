@@ -231,6 +231,8 @@ traseq-agent guide-run \
 traseq-agent run --tool get_workspace_context
 traseq-agent run --tool get_capabilities
 traseq-agent run --tool get_semantics
+traseq-agent run --tool get_token_semantics
+traseq-agent run --tool compose_token_block --input '{"recipeId":"momentum.rsi_cross_up_30","params":{"threshold":30}}'
 traseq-agent run --tool resolve_strategy_semantics --input '{"prompt":"RSI oversold rebound"}'
 traseq-agent score --backtest-id <backtest-id>
 traseq-agent research --prompt "Research a BTCUSDT 4h trend-following strategy"
@@ -307,23 +309,51 @@ at install time:
 
 The server resolves `TRASEQ_API_KEY_REF` at boot, so no plaintext key sits in
 the client config. `tools/list` puts `start_research_engagement`,
-`run_guided_research_round`, and `summarize_research_engagement` first, and
-`prompts/list` exposes `traseq_guided_research` so clients can start with a
-service-style flow instead of guessing tool order.
+`run_guided_research_round`, and `summarize_research_engagement` first. Guided
+mode also exposes token grammar and semantic composition tools so agents can
+author AST-first blocks, validate expert token streams, use recipes as semantic
+macros, and assemble a SignalGraph draft without relying on unsupported token
+sequences.
 
 ### Profiles
 
-| Profile            | What it exposes                                                                                                                                        | When to use                                                             |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| `guided` (default) | Guided research, semantics, draft authoring helpers, and read-only platform tools (workspace context, capabilities, list/get strategies and backtests) | Most agents; minimises wrong-tool calls before validation.              |
-| `full`             | Everything in `guided` plus all write/destructive/long-running platform operations                                                                     | Advanced automation, scripting, deletion sweeps, manual override flows. |
+| Profile            | What it exposes                                                                                                                                                                                      | When to use                                                             |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `guided` (default) | Guided research, token semantic composition, draft authoring helpers, and safe platform tools (workspace context, capabilities, list/get/compile/validate blocks, list/get strategies and backtests) | Most agents; minimises wrong-tool calls before validation.              |
+| `full`             | Everything in `guided` plus all write/destructive/long-running platform operations                                                                                                                   | Advanced automation, scripting, deletion sweeps, manual override flows. |
 
 Switch via env (`TRASEQ_MCP_PROFILE=full`) or CLI flag (`traseq-agent mcp --profile=full`); the install writers default to `guided` and accept `--profile=full` to override at install time. Destructive platform tools still require `confirm: true` before the local runner will call the API. When Traseq returns structured Public Agent errors, the server formats the machine-readable reason, next steps, retryability, and Traseq app links for the calling agent.
+
+## Token Grammar And Semantic Composition
+
+The preferred guided composition path is AST-first:
+
+1. `get_token_grammar`: inspect the public AST/token grammar, operators,
+   recursive slots, roles, and tier limits.
+2. `materialize_token_ast`: submit `StrategyAstV1` or `BoolExpr` and receive
+   legal `TokenDto`, normalized AST, validation issues, and optional block
+   fragment.
+3. `validate_token_grammar_candidate`: validate AST-first candidates or
+   expert/workspace token streams before assembly.
+4. `assemble_strategy_from_blocks`: combine grammar-materialized blocks,
+   recipe blocks, or compiled workspace blocks into a SignalGraph v2 draft,
+   then run local preflight.
+   Workspace/raw token blocks must provide an explicit role
+   (`entry_trigger`, `context_filter`, `confirmation_filter`, or `exit`) before
+   remote compile/assembly.
+
+Recipes remain useful curated shortcuts:
+`get_token_semantics` → `compose_token_block` → `validate_token_block` is a
+macro layer over the grammar, not the source of truth. Raw token-first authoring
+is for existing blocks, migrations, and expert flows, and must pass grammar
+validation. Tokens and blocks are a provenance/composition layer; public
+strategy writes still use SignalGraph v2.
 
 ## Semantic Resolver
 
 The semantic resolver helps an external AI agent move from user intent to
-capability-grounded `signalGraph` fragments.
+capability-grounded `signalGraph` fragments. Use it for candidate discovery or
+advanced flows, then prefer token recipes when constructing editable blocks.
 
 Use it when the user expresses strategy meaning, such as:
 
@@ -335,12 +365,19 @@ Use it when the user expresses strategy meaning, such as:
 
 Available local tools:
 
-| Tool                         | Purpose                                                                  |
-| ---------------------------- | ------------------------------------------------------------------------ |
-| `get_semantics`              | Read the local semantic ontology and optional implementation fragments.  |
-| `resolve_strategy_semantics` | Resolve facets or prompt text into candidate `signalGraph` fragments.    |
-| `assemble_signal_graph`      | Assemble selected resolver fragments into a complete draft payload.      |
-| `preflight_strategy_draft`   | Validate schema, refs, types, and legacy vocabulary before remote calls. |
+| Tool                               | Purpose                                                                  |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| `get_semantics`                    | Read the local semantic ontology and optional implementation fragments.  |
+| `get_token_grammar`                | Read the public AST/token grammar contract and tier-aware limits.        |
+| `materialize_token_ast`            | Compile `StrategyAstV1` or `BoolExpr` into legal `TokenDto`.             |
+| `validate_token_grammar_candidate` | Validate AST-first or token-first grammar candidates.                    |
+| `get_token_semantics`              | Read deterministic token recipe macros, roles, and recipe params.        |
+| `compose_token_block`              | Compose legal TokenDto + paired SignalGraph fragment from a recipe.      |
+| `validate_token_block`             | Validate recipe or raw block tokens locally/remotely when available.     |
+| `assemble_strategy_from_blocks`    | Assemble recipe/workspace blocks into a preflighted strategy draft.      |
+| `resolve_strategy_semantics`       | Resolve facets or prompt text into candidate `signalGraph` fragments.    |
+| `assemble_signal_graph`            | Assemble selected resolver fragments into a complete draft payload.      |
+| `preflight_strategy_draft`         | Validate schema, refs, types, and legacy vocabulary before remote calls. |
 
 The resolver output is intentionally not a complete strategy. It returns:
 

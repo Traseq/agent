@@ -25,6 +25,7 @@ export const GUIDED_PLATFORM_OPS: ReadonlySet<OperationName> =
     'get_workspace_context',
     'get_usage',
     'get_capabilities',
+    'get_token_grammar_document',
     'list_strategies',
     'get_strategy',
     'list_backtests',
@@ -36,12 +37,18 @@ export const GUIDED_PLATFORM_OPS: ReadonlySet<OperationName> =
     'get_analysis_run',
     'list_system_strategies',
     'get_system_strategy',
+    'list_blocks',
+    'get_block',
+    'compile_block',
+    'validate_block',
     'validate_strategy',
     'run_backtest',
   ]);
 
 /**
- * Agent-side tools surfaced in `guided` mode. Anything not on this list is
+ * Agent-side tools surfaced in `guided` mode. Token semantic composition tools
+ * stay visible because they are the guided path for editable blocks. Anything
+ * not on this list is
  * treated as an advanced helper: the LLM can still reach it under `--profile=full`,
  * but in guided mode we keep tools/list trim so Claude Desktop and other clients
  * don't fall over MCP defer thresholds (which fire at high tool counts and add
@@ -56,6 +63,13 @@ export const GUIDED_AGENT_TOOL_NAMES: ReadonlySet<string> = new Set<string>([
   'summarize_research_engagement',
   'explain_validation_issues',
   'compose_strategy_from_template',
+  'get_token_grammar',
+  'materialize_token_ast',
+  'validate_token_grammar_candidate',
+  'get_token_semantics',
+  'compose_token_block',
+  'validate_token_block',
+  'assemble_strategy_from_blocks',
   'update_research_engagement',
 ]);
 
@@ -80,7 +94,17 @@ export function platformOperationsForProfile(
  */
 export type OperationStage = 'read' | 'write' | 'destructive';
 
+const SIDE_EFFECT_FREE_POST_OPS = new Set<string>([
+  'validate_strategy',
+  'compile_block',
+  'validate_block',
+  'materialize_token_grammar',
+  'validate_token_grammar',
+  'estimate_backtest_cost',
+]);
+
 export function operationStage(op: OperationDefinition): OperationStage {
   if (op.destructive) return 'destructive';
+  if (SIDE_EFFECT_FREE_POST_OPS.has(op.name)) return 'read';
   return op.endpoint.method === 'GET' ? 'read' : 'write';
 }

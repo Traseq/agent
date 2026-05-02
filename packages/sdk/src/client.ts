@@ -4,12 +4,14 @@ import type {
   AnalysisRunListResponse,
   BacktestDetail,
   BacktestListResponse,
+  BlockListResponse,
   CapabilityDocument,
   ChartDataResponse,
   ComparisonSetDetail,
   ComparisonSetListResponse,
   ComparisonSetRequest,
   ConfirmStrategyLifecycleRequest,
+  CreateBlockRequest,
   CreateSignalMonitorRequest,
   CreateStrategyRequest,
   CreateStrategyResponse,
@@ -21,6 +23,7 @@ import type {
   JsonObject,
   ListAnalysisRunsQuery,
   ListBacktestsQuery,
+  ListBlocksQuery,
   ListComparisonSetsQuery,
   ListSignalEventsQuery,
   ListSignalMonitorsQuery,
@@ -40,9 +43,17 @@ import type {
   StrategyDetail,
   StrategyAuthoringPayload,
   StrategyVersionDetail,
+  SemanticBlock,
   SystemStrategyDetail,
   SystemStrategyListResponse,
+  TokenBlockCompileRequest,
+  TokenBlockCompileResponse,
+  TokenGrammarDocument,
+  TokenGrammarMaterializeRequest,
+  TokenGrammarResult,
+  TokenGrammarValidateRequest,
   TraseqValidationResponse,
+  UpdateBlockRequest,
   UpdateSignalMonitorRequest,
   UpdateStrategyRequest,
   UpdateStrategyVersionRequest,
@@ -175,6 +186,33 @@ export class TraseqClient {
     return this.request<CapabilityDocument>('GET', '/public/v1/capabilities');
   }
 
+  getTokenGrammar(): Promise<TokenGrammarDocument> {
+    return this.request<TokenGrammarDocument>(
+      'GET',
+      '/public/v1/token-grammar',
+    );
+  }
+
+  materializeTokenGrammar(
+    payload: TokenGrammarMaterializeRequest,
+  ): Promise<TokenGrammarResult> {
+    return this.request<TokenGrammarResult>(
+      'POST',
+      '/public/v1/token-grammar/materialize',
+      payload,
+    );
+  }
+
+  validateTokenGrammar(
+    payload: TokenGrammarValidateRequest,
+  ): Promise<TokenGrammarResult> {
+    return this.request<TokenGrammarResult>(
+      'POST',
+      '/public/v1/token-grammar/validate',
+      payload,
+    );
+  }
+
   listSystemStrategies(
     query?: ListSystemStrategiesQuery,
   ): Promise<SystemStrategyListResponse> {
@@ -199,6 +237,62 @@ export class TraseqClient {
       'POST',
       `/public/v1/system-strategies/${encodeURIComponent(key)}/copy`,
       payload,
+    );
+  }
+
+  listBlocks(query?: ListBlocksQuery): Promise<BlockListResponse> {
+    return this.request<BlockListResponse>(
+      'GET',
+      `/public/v1/blocks${buildQuery(query)}`,
+    );
+  }
+
+  getBlock(blockId: string): Promise<SemanticBlock> {
+    return this.request<SemanticBlock>(
+      'GET',
+      `/public/v1/blocks/${encodeURIComponent(blockId)}`,
+    );
+  }
+
+  compileBlock(
+    payload: TokenBlockCompileRequest,
+  ): Promise<TokenBlockCompileResponse> {
+    return this.request<TokenBlockCompileResponse>(
+      'POST',
+      '/public/v1/blocks/compile',
+      payload,
+    );
+  }
+
+  validateBlock(
+    payload: TokenBlockCompileRequest,
+  ): Promise<TokenBlockCompileResponse> {
+    return this.request<TokenBlockCompileResponse>(
+      'POST',
+      '/public/v1/blocks/validate',
+      payload,
+    );
+  }
+
+  createBlock(payload: CreateBlockRequest): Promise<SemanticBlock> {
+    return this.request<SemanticBlock>('POST', '/public/v1/blocks', payload);
+  }
+
+  updateBlock(
+    blockId: string,
+    payload: UpdateBlockRequest,
+  ): Promise<SemanticBlock> {
+    return this.request<SemanticBlock>(
+      'PATCH',
+      `/public/v1/blocks/${encodeURIComponent(blockId)}`,
+      payload,
+    );
+  }
+
+  deleteBlock(blockId: string): Promise<JsonObject> {
+    return this.request<JsonObject>(
+      'DELETE',
+      `/public/v1/blocks/${encodeURIComponent(blockId)}`,
     );
   }
 

@@ -85,6 +85,100 @@ describe('explainValidationIssues', () => {
       'Validation rejected this part of the draft. The engine will not accept the strategy until it is addressed.',
     );
   });
+
+  it('infers indicator_arg_period_alias from generic strategy_draft_schema issues', () => {
+    const result = explainValidationIssues({
+      validation: validation({
+        signalGraph: [
+          {
+            code: 'strategy_draft_schema',
+            path: 'signalGraph.nodes[1].args.period',
+            message:
+              'signalGraph.nodes[1].args.period is not supported for indicator lookbacks. Use signalGraph.nodes[1].args.length.',
+            severity: 'error',
+          },
+        ],
+      }),
+    });
+    assert.equal(result.issues[0].code, 'indicator_arg_period_alias');
+    assert.match(result.issues[0].suggestedFix, /Rename .* `period` to `length`/);
+    assert.ok(
+      result.guidance.some((line) => /args\.length/.test(line)),
+      'guidance should mention args.length',
+    );
+  });
+
+  it('infers indicator_arg_output_misplaced for args.output paths', () => {
+    const result = explainValidationIssues({
+      validation: validation({
+        signalGraph: [
+          {
+            code: 'strategy_draft_schema',
+            path: 'signalGraph.nodes[2].args.output',
+            message: 'args.output is not supported. Use top-level output.',
+            severity: 'error',
+          },
+        ],
+      }),
+    });
+    assert.equal(result.issues[0].code, 'indicator_arg_output_misplaced');
+    assert.match(result.issues[0].suggestedFix, /top-level `output`/);
+  });
+
+  it('infers indicator_output_unsupported for top-level output rejected by indicator', () => {
+    const result = explainValidationIssues({
+      validation: validation({
+        signalGraph: [
+          {
+            code: 'strategy_draft_schema',
+            path: 'signalGraph.nodes[3].output',
+            message:
+              'signalGraph.nodes[3].output is not supported for indicator "ema".',
+            severity: 'error',
+          },
+        ],
+      }),
+    });
+    assert.equal(result.issues[0].code, 'indicator_output_unsupported');
+  });
+
+  it('infers indicator_arg_unknown for unsupported arg keys', () => {
+    const result = explainValidationIssues({
+      validation: validation({
+        signalGraph: [
+          {
+            code: 'strategy_draft_schema',
+            path: 'signalGraph.nodes[4].args.smoothing',
+            message:
+              'signalGraph.nodes[4].args.smoothing is not supported for indicator "ema".',
+            severity: 'error',
+          },
+        ],
+      }),
+    });
+    assert.equal(result.issues[0].code, 'indicator_arg_unknown');
+    assert.ok(
+      result.guidance.some((line) => /argNames/.test(line)),
+      'guidance should mention argNames',
+    );
+  });
+
+  it('infers indicator_arg_required_missing for missing required args', () => {
+    const result = explainValidationIssues({
+      validation: validation({
+        signalGraph: [
+          {
+            code: 'strategy_draft_schema',
+            path: 'signalGraph.nodes[5].args.length',
+            message:
+              'signalGraph.nodes[5].args.length is required for indicator "rsi".',
+            severity: 'error',
+          },
+        ],
+      }),
+    });
+    assert.equal(result.issues[0].code, 'indicator_arg_required_missing');
+  });
 });
 
 describe('suggestMinimalRepairs', () => {

@@ -91,7 +91,108 @@ const CODE_PROFILES: Record<
       'Backtest balance must be a positive number greater than the minimum tick the venue requires.',
     suggestedFix: 'Set backtest.initialBalance to a value such as 10000.',
   },
+  // Synthetic codes derived in `inferSyntheticCode` from SDK preflight issues
+  // (which all carry `strategy_draft_schema`). They give the LLM specific
+  // remediation language for the most common indicator-arg drift cases —
+  // mostly the same ones `normalizeStrategyDraft` already auto-repairs, but
+  // some drafts skip normalize (raw validate_strategy calls, custom flows),
+  // so the explanations need to stand on their own.
+  indicator_arg_period_alias: {
+    humanReason:
+      'Indicator nodes use `args.length` for the lookback window; `args.period` is reserved for `kind: "rolling"` nodes only.',
+    suggestedFix:
+      'Rename the indicator arg from `period` to `length`. If both are set, drop `period` — the indicator schema only reads `length`.',
+  },
+  indicator_arg_output_misplaced: {
+    humanReason:
+      'Multi-output indicators expose the selector at the node root (`output: "macd"`), not inside `args`.',
+    suggestedFix:
+      'Move `args.output` to top-level `output`. For single-output indicators, drop the field entirely.',
+  },
+  indicator_output_unsupported: {
+    humanReason:
+      'The indicator does not declare an output selector, so any `output` value will be rejected.',
+    suggestedFix:
+      'Remove `output` from the indicator node. Read `capabilities.indicators[].outputs` to confirm which indicators support a selector.',
+  },
+  indicator_arg_unknown: {
+    humanReason:
+      'The arg key is not in the indicator catalog. The schema is strict — unknown keys make the node invalid even if the value would be sensible.',
+    suggestedFix:
+      'Inspect `capabilities.indicators[].argNames` for this indicator and rename or drop the unsupported arg.',
+  },
+  indicator_arg_required_missing: {
+    humanReason:
+      'A required arg for this indicator is missing. The strict schema rejects the node without it.',
+    suggestedFix:
+      'Add the missing arg using a typical default value from the indicator guide.',
+  },
+  indicator_unsupported_in_catalog: {
+    humanReason:
+      'The indicator id is not in the workspace capability catalog. The engine has no implementation to evaluate it.',
+    suggestedFix:
+      'Switch to a capability-listed indicator (see `capabilities.indicators`) or call resolve_strategy_semantics for a substitute.',
+  },
 };
+
+interface SyntheticCodeMatch {
+  code: keyof typeof CODE_PROFILES;
+  ontologyHints?: string[];
+}
+
+/**
+ * Map SDK preflight messages (which all share `code: 'strategy_draft_schema'`)
+ * onto the more specific synthetic codes declared in `CODE_PROFILES`. Path is
+ * the primary signal; message text disambiguates the few cases path alone
+ * cannot. Returning `undefined` falls through to FALLBACK_PROFILE — that's
+ * fine for issues outside the indicator-args family.
+ */
+function inferSyntheticCode(
+  issue: ValidationIssueLike,
+): SyntheticCodeMatch | undefined {
+  const path = issue.path ?? '';
+  const message = issue.message ?? '';
+
+  // Path patterns are anchored with a regex per family so positional indices
+  // (`signalGraph.nodes[3].args.period`) match without leaking through string
+  // indexOf checks that would also match unrelated phrases in messages.
+  const indicatorArgsPath = /^signalGraph\.nodes\[\d+\]\.args(?:\.|$)/;
+  const indicatorOutputPath = /^signalGraph\.nodes\[\d+\]\.output$/;
+  const indicatorIdPath = /^signalGraph\.nodes\[\d+\]\.indicator$/;
+
+  if (indicatorArgsPath.test(path) && path.endsWith('.args.period')) {
+    return { code: 'indicator_arg_period_alias' };
+  }
+  if (indicatorArgsPath.test(path) && path.endsWith('.args.output')) {
+    return { code: 'indicator_arg_output_misplaced' };
+  }
+  if (
+    indicatorOutputPath.test(path) &&
+    /not supported for indicator/.test(message)
+  ) {
+    return { code: 'indicator_output_unsupported' };
+  }
+  if (
+    indicatorArgsPath.test(path) &&
+    /is required for indicator/.test(message)
+  ) {
+    return { code: 'indicator_arg_required_missing' };
+  }
+  if (
+    indicatorArgsPath.test(path) &&
+    /is not supported for indicator/.test(message)
+  ) {
+    return { code: 'indicator_arg_unknown' };
+  }
+  if (
+    indicatorIdPath.test(path) &&
+    /must be one of the capability catalog indicators/.test(message)
+  ) {
+    return { code: 'indicator_unsupported_in_catalog' };
+  }
+
+  return undefined;
+}
 
 const FALLBACK_PROFILE = {
   humanReason:
@@ -104,15 +205,39 @@ function classifyIssue(
   group: ValidationGroup,
   issue: ValidationIssueLike,
 ): ExplainedIssue {
-  const profile = (issue.code && CODE_PROFILES[issue.code]) || FALLBACK_PROFILE;
-  const hints: string[] =
+  // Try the issue's own code first; if it falls through to FALLBACK_PROFILE,
+  // try to infer a synthetic code from path/message before settling for the
+  // generic explanation. This means SDK preflight issues (all stamped
+  // `strategy_draft_schema`) still pick up the targeted indicator-arg
+  // remediation language we declare in CODE_PROFILES.
+  const directProfile = issue.code ? CODE_PROFILES[issue.code] : undefined;
+  const synthetic = directProfile ? undefined : inferSyntheticCode(issue);
+  const profile =
+    directProfile ??
+    (synthetic ? CODE_PROFILES[synthetic.code] : undefined) ??
+    FALLBACK_PROFILE;
+
+  const profileHints =
     'ontologyHints' in profile && Array.isArray(profile.ontologyHints)
       ? [...profile.ontologyHints]
       : [];
+  const hints = synthetic?.ontologyHints
+    ? [...profileHints, ...synthetic.ontologyHints]
+    : profileHints;
+
+  // Reported code preference order:
+  //   1. Issue code if it has a dedicated CODE_PROFILES entry (already
+  //      specific — keep the producer's intent).
+  //   2. Synthetic code when the issue is a generic schema error we recognise.
+  //   3. Original issue code (may be `strategy_draft_schema` or undefined).
+  const reportedCode = directProfile
+    ? issue.code
+    : (synthetic?.code ?? issue.code);
+
   return {
     group,
     severity: issue.severity ?? 'error',
-    ...(issue.code !== undefined ? { code: issue.code } : {}),
+    ...(reportedCode !== undefined ? { code: reportedCode } : {}),
     ...(issue.path !== undefined ? { path: issue.path } : {}),
     message: issue.message,
     humanReason: profile.humanReason,
@@ -155,6 +280,30 @@ export function explainValidationIssues(input: {
   if (issues.some((i) => i.code === 'unsupported_indicator')) {
     guidance.push(
       'Replace unsupported indicators using resolve_strategy_semantics so the substitute is capability-grounded.',
+    );
+  }
+  if (
+    issues.some(
+      (i) =>
+        i.code === 'indicator_arg_period_alias' ||
+        i.code === 'indicator_arg_output_misplaced',
+    )
+  ) {
+    guidance.push(
+      'Indicator nodes use `args.length` and a top-level `output`. preflight_strategy_draft auto-normalizes both, but raw drafts going straight to validate_strategy must hand-fix them.',
+    );
+  }
+  if (
+    issues.some(
+      (i) =>
+        i.code === 'indicator_arg_unknown' ||
+        i.code === 'indicator_arg_required_missing' ||
+        i.code === 'indicator_output_unsupported' ||
+        i.code === 'indicator_unsupported_in_catalog',
+    )
+  ) {
+    guidance.push(
+      'Read `capabilities.indicators[].argNames` and `outputs` for the affected indicator before re-authoring; the schema is strict about both.',
     );
   }
   return { errorCount, warningCount, issues, guidance };

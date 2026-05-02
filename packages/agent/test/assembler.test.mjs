@@ -454,9 +454,44 @@ const TOOL_INPUTS = {
   get_workspace_context: {},
   get_usage: {},
   get_capabilities: {},
+  get_token_grammar_document: {},
+  materialize_token_grammar: {
+    role: 'entry_trigger',
+    expr: { kind: 'pattern', name: 'hammer' },
+  },
+  validate_token_grammar: {
+    role: 'confirmation_filter',
+    tokens: [{ type: 'pattern_condition', params: { pattern: 'hammer' } }],
+  },
   list_system_strategies: {},
   get_system_strategy: { key: 'trend-following' },
   copy_system_strategy: { key: 'trend-following', name: 'Template copy' },
+  list_blocks: {},
+  get_block: { blockId: ID },
+  compile_block: {
+    tokens: [
+      { type: 'market_data', params: { marketField: 'close' } },
+      { type: 'comparison_condition', params: { compareOperator: 'gt' } },
+      { type: 'constant_operand', params: { value: 1 } },
+    ],
+  },
+  validate_block: {
+    tokens: [
+      { type: 'market_data', params: { marketField: 'close' } },
+      { type: 'comparison_condition', params: { compareOperator: 'gt' } },
+      { type: 'constant_operand', params: { value: 1 } },
+    ],
+  },
+  create_block: {
+    name: 'Close > 1',
+    tokens: [
+      { type: 'market_data', params: { marketField: 'close' } },
+      { type: 'comparison_condition', params: { compareOperator: 'gt' } },
+      { type: 'constant_operand', params: { value: 1 } },
+    ],
+  },
+  update_block: { blockId: ID, name: 'Updated block' },
+  delete_block: { blockId: ID, confirm: true },
   validate_strategy: STRATEGY_PAYLOAD,
   list_strategies: {},
   create_strategy: { name: 'Agent strategy', ...STRATEGY_PAYLOAD },
@@ -525,9 +560,19 @@ const CLIENT_METHOD_BY_TOOL = {
   get_workspace_context: 'getWorkspaceContext',
   get_usage: 'getUsage',
   get_capabilities: 'getCapabilities',
+  get_token_grammar_document: 'getTokenGrammar',
+  materialize_token_grammar: 'materializeTokenGrammar',
+  validate_token_grammar: 'validateTokenGrammar',
   list_system_strategies: 'listSystemStrategies',
   get_system_strategy: 'getSystemStrategy',
   copy_system_strategy: 'copySystemStrategy',
+  list_blocks: 'listBlocks',
+  get_block: 'getBlock',
+  compile_block: 'compileBlock',
+  validate_block: 'validateBlock',
+  create_block: 'createBlock',
+  update_block: 'updateBlock',
+  delete_block: 'deleteBlock',
   validate_strategy: 'validateStrategy',
   list_strategies: 'listStrategies',
   create_strategy: 'createStrategy',
@@ -651,6 +696,35 @@ describe('platform tool dispatch', () => {
       ['restoreStrategy', ID],
       ['purgeStrategy', ID, { confirm: true }],
     ]);
+  });
+
+  it('refuses to dispatch destructive operations without confirm: true', async () => {
+    const client = {
+      deleteBlock: () => {
+        throw new Error('runner should have rejected before reaching SDK');
+      },
+    };
+    await assert.rejects(
+      runPlatformTool(client, 'delete_block', { blockId: ID }),
+      /destructive and requires confirm: true/,
+    );
+    await assert.rejects(
+      runPlatformTool(client, 'delete_block', { blockId: ID, confirm: false }),
+      /destructive and requires confirm: true/,
+    );
+    // confirm: true clears the gate; SDK delegate must be invoked.
+    let callCount = 0;
+    await runPlatformTool(
+      {
+        deleteBlock: () => {
+          callCount += 1;
+          return {};
+        },
+      },
+      'delete_block',
+      { blockId: ID, confirm: true },
+    );
+    assert.equal(callCount, 1);
   });
 
   it('keeps update_strategy limited to metadata updates', async () => {

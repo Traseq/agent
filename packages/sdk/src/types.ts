@@ -66,6 +66,144 @@ export interface TraseqPublicApiErrorBody {
   [key: string]: unknown;
 }
 
+export interface TokenDto {
+  type: string;
+  params?: JsonObject;
+}
+
+export type SemanticBlockRole =
+  | 'entry_trigger'
+  | 'context_filter'
+  | 'confirmation_filter'
+  | 'exit';
+
+export type SemanticBlockType = 'signal' | 'indicator';
+
+export type SemanticBlockCategory =
+  | 'Signals'
+  | 'Trend'
+  | 'Momentum'
+  | 'Volatility'
+  | 'Volume'
+  | 'Market';
+
+export interface SemanticBlock {
+  id: string;
+  name: string;
+  description?: string | null;
+  type?: SemanticBlockType | null;
+  category?: SemanticBlockCategory | null;
+  tokens: TokenDto[];
+  tags?: string[];
+  isSystemPreset?: boolean;
+  presetKey?: string | null;
+  indicatorFamily?: string | null;
+  direction?: 'bullish' | 'bearish' | 'neutral' | null;
+  exclusiveGroup?: string | null;
+  isPinned?: boolean;
+  pinnedAt?: string | Date | null;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+}
+
+export interface ListBlocksQuery extends QueryParams {
+  filter?: 'system' | 'custom' | 'all' | 'pinned';
+  search?: string;
+  tags?: string | readonly string[];
+  type?: SemanticBlockType;
+  category?: SemanticBlockCategory;
+  page?: number;
+  limit?: number;
+}
+
+export interface BlockListResponse {
+  data: SemanticBlock[];
+  pagination?: JsonObject | null;
+  categoryCounts?: Record<string, number>;
+}
+
+export interface TokenBlockCompileRequest {
+  tokens: TokenDto[];
+  role?: SemanticBlockRole;
+  name?: string;
+  description?: string;
+}
+
+export interface TokenBlockCompileResponse {
+  valid: boolean;
+  role: SemanticBlockRole;
+  tokens: TokenDto[];
+  fragment?: {
+    nodes: JsonObject[];
+    assemblyHints: JsonObject;
+    settingsHints?: JsonObject;
+  };
+  issues: TraseqValidationIssue[];
+}
+
+export interface CreateBlockRequest {
+  name: string;
+  description?: string;
+  type?: SemanticBlockType;
+  category?: SemanticBlockCategory;
+  tokens: TokenDto[];
+  tags?: string[];
+  indicatorFamily?: string;
+  direction?: 'bullish' | 'bearish' | 'neutral';
+  exclusiveGroup?: string;
+  ignoreWarnings?: boolean;
+}
+
+export type UpdateBlockRequest = Partial<CreateBlockRequest>;
+
+export interface TokenGrammarDocument {
+  protocol: 'traseq.token-grammar';
+  version: number;
+  hash: string;
+  subscriptionTier?: string;
+  canonical: JsonObject;
+  endpoints: JsonObject;
+  roles: SemanticBlockRole[];
+  tokenCategories: string[];
+  tokenTypes: Array<{
+    type: string;
+    category: 'value' | 'bool_condition' | 'logic' | 'action' | 'structural';
+    authorableInBlocks: boolean;
+    nonAuthorableReason?: string;
+  }>;
+  blockForbiddenTokenTypes?: string[];
+  ast: JsonObject;
+  operators: JsonObject;
+  enums: JsonObject;
+  indicators: JsonObject[];
+  constraints: JsonObject;
+  limits?: JsonObject;
+  notes: string[];
+}
+
+export interface TokenGrammarMaterializeRequest {
+  role?: SemanticBlockRole;
+  ast?: JsonObject;
+  expr?: JsonObject;
+  includeFragment?: boolean;
+}
+
+export interface TokenGrammarValidateRequest extends TokenGrammarMaterializeRequest {
+  tokens?: TokenDto[];
+}
+
+export interface TokenGrammarResult {
+  valid: boolean;
+  role: SemanticBlockRole;
+  source?: 'ast' | 'expr' | 'tokens';
+  tokens: TokenDto[];
+  normalizedAst?: JsonObject;
+  fragment?: TokenBlockCompileResponse['fragment'];
+  issues: TraseqValidationIssue[];
+  grammarVersion?: number;
+  grammarHash?: string;
+}
+
 export interface TraseqAgentErrorExplanation {
   status?: number;
   code: string;

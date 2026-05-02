@@ -52,10 +52,11 @@ const GUIDED_TOOL_NAMES = new Set<string>(GUIDED_TOOL_ORDER);
 export const MCP_SERVICE_INSTRUCTIONS = [
   'Use Traseq as a guided strategy research service, not as a raw toolbox.',
   '`Traseq research engagement` is this MCP tool workflow. When asked to validate or research a strategy, call the MCP tool start_research_engagement first; do not search the local repo or ask the user for an entry point.',
-  'Default flow: call start_research_engagement first, resolve semantics, assemble_signal_graph, preflight_strategy_draft, then run_guided_research_round to validate remotely, persist after validation, backtest, evaluate evidence, and return a memo.',
+  'Default flow: call start_research_engagement first, read token grammar, materialize AST-first token candidates or use deterministic recipes as macros, assemble_strategy_from_blocks, then run_guided_research_round to validate remotely, persist after validation, backtest, evaluate evidence, and return a memo.',
+  'For strategy composition, prefer get_token_grammar -> materialize_token_ast -> validate_token_grammar_candidate -> assemble_strategy_from_blocks. Use get_token_semantics -> compose_token_block for common semantic macros. Token-first raw streams are for existing blocks, migration, or expert flows and must validate before assembly. Tokens/blocks are provenance/composition; SignalGraph v2 remains the strategy write contract.',
   'If start_research_engagement is not available, tell the user the Traseq MCP server is not connected or not enabled.',
   'Show users the research task, assumptions, verdict, evidence, risk flags, Traseq app links, and next step. Do not lead with raw tool names or JSON.',
-  'Use lower-level platform tools only for advanced automation or when the guided tools cannot cover the requested workflow.',
+  'Use lower-level platform tools only for advanced automation or when the guided tools cannot cover the requested workflow. Existing workspace/system blocks can be inspected with list_blocks/get_block and compiled/validated with compile_block/validate_block before assembly. Always pass an explicit role for workspace/raw token blocks.',
   'Tier limits in Traseq are: research credits (USD/month), active strategy count, saved backtest count, and workspaces. Backtest period is NOT tier-limited; all tiers can run all available history. Only treat a failure as a plan/billing problem if the response carries `publicAgent.category` of `plan` or `usage`. Errors with `category: validation` are schema/parameter problems — re-read the relevant reference doc and fix the call, do not suggest the user upgrade.',
   'When validation fails, read `validationIssues` (or response body `issues`) for `code` / `path` / `severity` and fix the draft directly. Do not assume the platform is broken when validation reports issues; only escalate when issues are absent AND the response has no useful body.',
   'If you need a write or destructive platform tool that is not exposed, ask the operator to enable `--profile=full`. Do not assume it is missing by accident — the server filters writes out of the default `guided` profile.',
@@ -95,9 +96,9 @@ function orderedAgentTools(profile: McpProfile = readProfileFromEnv()) {
   ).filter((tool) => tool !== undefined);
   // In guided mode, hide internal helpers (resolve/assemble/preflight/etc.)
   // from tools/list — they are reachable inside run_guided_research_round and
-  // adding 8 more entries pushes the total over Claude Desktop's deferred-tool
-  // threshold, which costs a ToolSearch round-trip per call. Full mode still
-  // exposes everything so advanced operators can intervene step-by-step.
+  // exposing every local helper pushes some clients into deferred-tool flows.
+  // Full mode still exposes everything so advanced operators can intervene
+  // step-by-step.
   if (profile === 'guided') {
     const guidedHeadNames = new Set(guidedHeadOrder.map((tool) => tool.name));
     const tail = AGENT_TOOL_REGISTRY.filter(

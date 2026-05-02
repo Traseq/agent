@@ -209,14 +209,20 @@ interface IndicatorCapabilityLike {
   id: string;
   structuralType?: string;
   args: CapabilityParamLike[];
+  /** Ordered names of accepted args; lifted shortcut for typo suggestion. */
+  argNames?: string[];
   output?: CapabilityParamLike;
+  /** Allowed output selector values for multi-output indicators. */
+  outputs?: string[];
 }
 
 interface IndicatorCapabilityDescriptor {
   id: string;
   structuralType?: string;
   args: CapabilityParamLike[];
+  argNames?: string[];
   output?: CapabilityParamLike;
+  outputs?: string[];
 }
 
 type CapabilitySignalInputKind = 'bool_ref' | 'series_ref' | 'value_input';
@@ -715,7 +721,13 @@ function isIndicatorCapabilityLike(
       typeof value.structuralType === 'string') &&
     Array.isArray(value.args) &&
     value.args.every((param) => isCapabilityParamLike(param)) &&
-    (value.output === undefined || isCapabilityParamLike(value.output))
+    (value.argNames === undefined ||
+      (Array.isArray(value.argNames) &&
+        value.argNames.every((name) => typeof name === 'string'))) &&
+    (value.output === undefined || isCapabilityParamLike(value.output)) &&
+    (value.outputs === undefined ||
+      (Array.isArray(value.outputs) &&
+        value.outputs.every((name) => typeof name === 'string')))
   );
 }
 
@@ -822,13 +834,28 @@ function describeIndicatorStructuralType(
 function splitIndicatorCapability(
   indicator: IndicatorCapabilityLike,
 ): IndicatorCapabilityDescriptor {
+  // Synthesize argNames/outputs locally when the producer didn't include the
+  // shortcuts so older capability documents stay fully usable.
+  const argNames =
+    indicator.argNames && indicator.argNames.length > 0
+      ? [...indicator.argNames]
+      : indicator.args.map((param) => param.name);
+  const outputs =
+    indicator.outputs && indicator.outputs.length > 0
+      ? [...indicator.outputs]
+      : indicator.output?.type === 'enum' &&
+          Array.isArray(indicator.output.enumValues)
+        ? [...indicator.output.enumValues]
+        : undefined;
   return {
     id: indicator.id,
     args: indicator.args,
+    argNames,
     ...(indicator.structuralType === undefined
       ? {}
       : { structuralType: indicator.structuralType }),
     ...(indicator.output === undefined ? {} : { output: indicator.output }),
+    ...(outputs === undefined ? {} : { outputs }),
   };
 }
 

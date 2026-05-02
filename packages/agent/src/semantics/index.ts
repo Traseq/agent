@@ -9,6 +9,11 @@ export {
   SEMANTIC_IMPLEMENTATIONS,
 } from './ontology.js';
 export {
+  TOKEN_RECIPES,
+  findTokenRecipe,
+  findTokenRecipeForImplementation,
+} from './token-recipes.js';
+export {
   AGENT_TOOL_REGISTRY,
   getAgentToolDefinition,
   runAgentTool,
@@ -33,6 +38,9 @@ export type {
   SemanticImplementationCandidate,
   SemanticImplementationDefinition,
   SemanticOntologyDocument,
+  TokenRecipeDefinition,
+  TokenRecipeOutput,
+  TokenRecipeParameter,
   SemanticResolutionResult,
   SemanticResolveConstraints,
   SemanticRequiredCapabilities,

@@ -67,6 +67,12 @@ export async function runPlatformTool(
       return client.getUsage();
     case 'get_capabilities':
       return client.getCapabilities();
+    case 'get_token_grammar_document':
+      return client.getTokenGrammar();
+    case 'materialize_token_grammar':
+      return client.materializeTokenGrammar(input as any);
+    case 'validate_token_grammar':
+      return client.validateTokenGrammar(input as any);
     case 'list_system_strategies':
       return client.listSystemStrategies(input as any);
     case 'get_system_strategy':
@@ -76,6 +82,23 @@ export async function runPlatformTool(
         requiredString(input, 'key'),
         omit(input, ['key']),
       );
+    case 'list_blocks':
+      return client.listBlocks(input as any);
+    case 'get_block':
+      return client.getBlock(requiredString(input, 'blockId'));
+    case 'compile_block':
+      return client.compileBlock(input as any);
+    case 'validate_block':
+      return client.validateBlock(input as any);
+    case 'create_block':
+      return client.createBlock(input as any);
+    case 'update_block':
+      return client.updateBlock(
+        requiredString(input, 'blockId'),
+        omit(input, ['blockId']) as any,
+      );
+    case 'delete_block':
+      return client.deleteBlock(requiredString(input, 'blockId'));
     case 'validate_strategy':
       return client.validateStrategy(input as any);
     case 'list_strategies':

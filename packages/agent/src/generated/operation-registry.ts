@@ -73,6 +73,34 @@ const strategyListStatusProp = {
   type: 'string',
   enum: ['active', 'trashed', 'all'],
 } as const;
+const blockFilterProp = {
+  type: 'string',
+  enum: ['system', 'custom', 'all', 'pinned'],
+} as const;
+const blockTypeProp = {
+  type: 'string',
+  enum: ['signal', 'indicator'],
+} as const;
+const blockCategoryProp = {
+  type: 'string',
+  enum: ['Signals', 'Trend', 'Momentum', 'Volatility', 'Volume', 'Market'],
+} as const;
+const blockRoleProp = {
+  type: 'string',
+  enum: ['entry_trigger', 'context_filter', 'confirmation_filter', 'exit'],
+} as const;
+const tokenArrayProp = {
+  type: 'array',
+  items: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['type'],
+    properties: {
+      type: stringProp,
+      params: objectProp,
+    },
+  },
+} as const;
 const signalConditionRoleProp = {
   type: 'string',
   enum: ['entry_condition', 'exit_condition'],
@@ -128,6 +156,41 @@ const OPERATIONS = [
     input_schema: EMPTY_SCHEMA,
   },
   {
+    name: 'get_token_grammar_document',
+    description:
+      'Read the public AST-first/token-first token grammar contract.',
+    endpoint: { method: 'GET', path: '/public/v1/token-grammar' },
+    input_schema: EMPTY_SCHEMA,
+  },
+  {
+    name: 'materialize_token_grammar',
+    description:
+      'Materialize a StrategyAstV1 or BoolExpr into legal TokenDto and an optional SignalGraph fragment. Side-effect free.',
+    endpoint: {
+      method: 'POST',
+      path: '/public/v1/token-grammar/materialize',
+    },
+    input_schema: objectSchema({
+      role: blockRoleProp,
+      ast: objectProp,
+      expr: objectProp,
+      includeFragment: booleanProp,
+    }),
+  },
+  {
+    name: 'validate_token_grammar',
+    description:
+      'Validate AST-first or token-first grammar candidates before block assembly. Side-effect free.',
+    endpoint: { method: 'POST', path: '/public/v1/token-grammar/validate' },
+    input_schema: objectSchema({
+      role: blockRoleProp,
+      ast: objectProp,
+      expr: objectProp,
+      tokens: tokenArrayProp,
+      includeFragment: booleanProp,
+    }),
+  },
+  {
     name: 'list_system_strategies',
     description: 'List system strategy templates.',
     endpoint: { method: 'GET', path: '/public/v1/system-strategies' },
@@ -158,6 +221,113 @@ const OPERATIONS = [
       },
       ['key'],
     ),
+  },
+  {
+    name: 'list_blocks',
+    description: 'List workspace and system semantic token blocks.',
+    endpoint: { method: 'GET', path: '/public/v1/blocks' },
+    input_schema: objectSchema({
+      filter: blockFilterProp,
+      search: stringProp,
+      tags: { oneOf: [stringProp, { type: 'array', items: stringProp }] },
+      type: blockTypeProp,
+      category: blockCategoryProp,
+      page: integerProp,
+      limit: integerProp,
+    }),
+  },
+  {
+    name: 'get_block',
+    description: 'Get a semantic token block by id.',
+    endpoint: { method: 'GET', path: '/public/v1/blocks/{blockId}' },
+    input_schema: objectSchema({ blockId: stringProp }, ['blockId']),
+  },
+  {
+    name: 'compile_block',
+    description:
+      'Compile semantic block tokens into a capability-grounded SignalGraph fragment. Side-effect free.',
+    endpoint: { method: 'POST', path: '/public/v1/blocks/compile' },
+    input_schema: objectSchema(
+      {
+        tokens: tokenArrayProp,
+        role: blockRoleProp,
+        name: stringProp,
+        description: stringProp,
+      },
+      ['tokens'],
+    ),
+  },
+  {
+    name: 'validate_block',
+    description:
+      'Validate semantic block tokens and return a compiled fragment when valid. Side-effect free.',
+    endpoint: { method: 'POST', path: '/public/v1/blocks/validate' },
+    input_schema: objectSchema(
+      {
+        tokens: tokenArrayProp,
+        role: blockRoleProp,
+        name: stringProp,
+        description: stringProp,
+      },
+      ['tokens'],
+    ),
+  },
+  {
+    name: 'create_block',
+    description: 'Create a custom semantic token block.',
+    endpoint: { method: 'POST', path: '/public/v1/blocks' },
+    input_schema: objectSchema(
+      {
+        name: stringProp,
+        description: stringProp,
+        type: blockTypeProp,
+        category: blockCategoryProp,
+        tokens: tokenArrayProp,
+        tags: { type: 'array', items: stringProp },
+        indicatorFamily: stringProp,
+        direction: {
+          type: 'string',
+          enum: ['bullish', 'bearish', 'neutral'],
+        },
+        exclusiveGroup: stringProp,
+        ignoreWarnings: booleanProp,
+      },
+      ['name', 'tokens'],
+    ),
+  },
+  {
+    name: 'update_block',
+    description: 'Update a custom semantic token block.',
+    endpoint: { method: 'PATCH', path: '/public/v1/blocks/{blockId}' },
+    input_schema: objectSchema(
+      {
+        blockId: stringProp,
+        name: stringProp,
+        description: stringProp,
+        type: blockTypeProp,
+        category: blockCategoryProp,
+        tokens: tokenArrayProp,
+        tags: { type: 'array', items: stringProp },
+        indicatorFamily: stringProp,
+        direction: {
+          type: 'string',
+          enum: ['bullish', 'bearish', 'neutral'],
+        },
+        exclusiveGroup: stringProp,
+        ignoreWarnings: booleanProp,
+      },
+      ['blockId'],
+    ),
+  },
+  {
+    name: 'delete_block',
+    description: 'Delete a custom semantic token block. Requires confirm=true.',
+    endpoint: { method: 'DELETE', path: '/public/v1/blocks/{blockId}' },
+    input_schema: objectSchema({ blockId: stringProp, confirm: booleanProp }, [
+      'blockId',
+      'confirm',
+    ]),
+    destructive: true,
   },
   {
     name: 'validate_strategy',

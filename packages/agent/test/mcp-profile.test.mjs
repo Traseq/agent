@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   GUIDED_AGENT_TOOL_NAMES,
   GUIDED_PLATFORM_OPS,
+  OPERATION_REGISTRY,
+  operationStage,
   parseMcpProfile,
   platformOperationsForProfile,
   toToolList,
@@ -48,17 +50,29 @@ describe('mcp profile filter', () => {
     );
   });
 
-  it('guided profile only exposes the 4 essential agent tools (P1-D)', () => {
+  it('guided profile exposes only guided agent tools, including token composition', () => {
     // Why this number is fixed: every agent tool a guided client sees adds to
     // Claude Desktop's tools/list payload, which past ~30 entries forces clients
     // into a deferred-tool flow (one extra ToolSearch round-trip per first call).
-    // The four below are the verbs the user actually narrates; the rest are
-    // internals reachable inside run_guided_research_round.
+    // The guided set below is the user-facing workflow surface; lower-level
+    // resolver/preflight helpers stay hidden.
     const tools = toToolList('guided');
     const agentToolNames = tools
       .map((tool) => tool.name)
       .filter((name) => GUIDED_AGENT_TOOL_NAMES.has(name));
     assert.equal(agentToolNames.length, GUIDED_AGENT_TOOL_NAMES.size);
+    const exposed = new Set(tools.map((tool) => tool.name));
+    for (const name of [
+      'get_token_grammar',
+      'materialize_token_ast',
+      'validate_token_grammar_candidate',
+      'get_token_semantics',
+      'compose_token_block',
+      'validate_token_block',
+      'assemble_strategy_from_blocks',
+    ]) {
+      assert.ok(exposed.has(name), `${name} should be guided-visible`);
+    }
     const hidden = [
       'get_semantics',
       'resolve_strategy_semantics',
@@ -69,7 +83,6 @@ describe('mcp profile filter', () => {
       'format_research_report',
       'suggest_minimal_repairs',
     ];
-    const exposed = new Set(tools.map((tool) => tool.name));
     for (const name of hidden) {
       assert.ok(
         !exposed.has(name),
@@ -107,5 +120,46 @@ describe('mcp profile filter', () => {
     assert.ok(del, 'full profile must expose delete_strategy_version');
     assert.match(del.description, /Stage:\s*destructive/);
     assert.match(del.description, /confirm=true/);
+  });
+
+  it('classifies side-effect-free POST ops as read so guided mode can expose them', () => {
+    // The mcp profile module hard-codes a small allowlist of POST operations
+    // that are deliberately side-effect-free (validation, compile, cost
+    // estimation). For each one that's actually registered, operationStage
+    // must report `read`; if a future PR adds an entry to the allowlist it
+    // will need to ship the operation too.
+    const expectRead = [
+      'validate_strategy',
+      'compile_block',
+      'validate_block',
+      'materialize_token_grammar',
+      'validate_token_grammar',
+    ];
+    let assertions = 0;
+    for (const name of expectRead) {
+      const op = OPERATION_REGISTRY.find((entry) => entry.name === name);
+      if (!op) continue;
+      assert.equal(operationStage(op), 'read');
+      assertions += 1;
+    }
+    assert.ok(
+      assertions >= expectRead.length,
+      `every side-effect-free POST op listed must be present in OPERATION_REGISTRY (saw ${assertions}/${expectRead.length})`,
+    );
+
+    // Sanity: regular POST writes still classify as `write`.
+    const writeOp = OPERATION_REGISTRY.find(
+      (entry) => entry.name === 'create_strategy',
+    );
+    assert.ok(writeOp);
+    assert.equal(operationStage(writeOp), 'write');
+
+    // delete_block is destructive — confirm enforcement comes from the runner.
+    const destructive = OPERATION_REGISTRY.find(
+      (entry) => entry.name === 'delete_block',
+    );
+    assert.ok(destructive);
+    assert.equal(operationStage(destructive), 'destructive');
+    assert.equal(destructive.destructive, true);
   });
 });

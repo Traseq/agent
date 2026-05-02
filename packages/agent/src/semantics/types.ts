@@ -7,6 +7,8 @@ export type SemanticRole =
   | 'risk'
   | 'context_filter';
 
+export type TokenRecipeOutput = 'bool' | 'risk' | 'entry_action';
+
 export type SemanticCandidateStatus =
   | 'recommended'
   | 'expressible'
@@ -54,6 +56,33 @@ export interface SignalGraphFragment {
   settingsHints?: Record<string, unknown>;
 }
 
+export interface TokenRecipeParameter {
+  name: string;
+  type: 'number' | 'string' | 'enum';
+  default?: string | number;
+  enumValues?: string[];
+  description: string;
+  /**
+   * Alternate names accepted for the parameter. Lets callers pass legacy
+   * vocabulary (e.g. `period` for a renamed `length` param) without breaking
+   * round-trips. The canonical `name` always wins when both are present.
+   */
+  aliases?: string[];
+}
+
+export interface TokenRecipeDefinition {
+  recipeId: string;
+  implementationId: string;
+  role: SemanticRole;
+  produces: TokenRecipeOutput;
+  validAs: string[];
+  /** Human-readable short label, used as the default block name. */
+  displayName: string;
+  semanticSummary: string;
+  params: TokenRecipeParameter[];
+  tokens: Record<string, unknown>[];
+}
+
 export interface SemanticTradeoffs {
   strengths: string[];
   risks: string[];
@@ -67,6 +96,7 @@ export interface SemanticImplementationCandidate {
   semanticIds: string[];
   score: number;
   fragment: SignalGraphFragment;
+  tokenRecipe?: TokenRecipeDefinition;
   tradeoffs: SemanticTradeoffs;
   requiredCapabilities: SemanticRequiredCapabilities;
   validationHints: string[];
@@ -109,6 +139,7 @@ export interface SemanticImplementationDefinition {
   curatedPriority: number;
   risky?: boolean;
   fragment: SignalGraphFragment;
+  tokenRecipe?: TokenRecipeDefinition;
   tradeoffs: SemanticTradeoffs;
   requiredCapabilities: SemanticRequiredCapabilities;
   validationHints: string[];

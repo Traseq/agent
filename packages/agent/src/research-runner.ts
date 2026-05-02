@@ -16,6 +16,7 @@ import {
   normalizeDraft,
   normalizeValidation,
 } from './normalize.js';
+import { normalizeStrategyDraft } from './semantics/normalize-draft.js';
 import { buildScoreBreakdown } from './scoring.js';
 import { normalizeRequest } from './research.js';
 import type {
@@ -150,20 +151,34 @@ function buildAuthoringPayload(draft: StrategyDraftLike) {
   };
 }
 
+interface ValidatedDraftForResearch {
+  draft: StrategyDraftLike;
+  validation: ValidationSummaryLike;
+}
+
 async function validateDraftForResearch(
   client: ResearchRunnerClient,
   draft: StrategyDraftLike,
   capabilities: unknown,
-): Promise<ValidationSummaryLike> {
+): Promise<ValidatedDraftForResearch> {
+  // P-Vocab: pre-normalize indicator-arg vocabulary drift (period→length,
+  // misplaced args.output, etc.) so the producer doesn't have to spend a
+  // repair cycle on mechanical schema fixes. The normalized draft is what
+  // we hand back to the runner, so persist/backtest also see the clean
+  // version.
+  const normalized = normalizeStrategyDraft(draft, capabilities);
+  const effective = normalized.changed ? normalized.draft : draft;
+
   const preflight = normalizeValidation(
-    preflightStrategyDraft(draft, capabilities),
+    preflightStrategyDraft(effective, capabilities),
   );
   if (!preflight.valid) {
-    return preflight;
+    return { draft: effective, validation: preflight };
   }
-  return normalizeValidation(
-    await client.validateStrategy(buildAuthoringPayload(draft)),
+  const remote = normalizeValidation(
+    await client.validateStrategy(buildAuthoringPayload(effective)),
   );
+  return { draft: effective, validation: remote };
 }
 
 function versionNumberFrom(value: unknown): number | undefined {
@@ -807,11 +822,18 @@ export async function runResearchRunner(
           validation: 1,
         }),
       );
-      validation = await validateDraftForResearch(
-        client,
-        draft,
-        live.capabilities,
-      );
+      {
+        const initial = await validateDraftForResearch(
+          client,
+          draft,
+          live.capabilities,
+        );
+        // P-Vocab: pick up any draft mutations the validator made (vocabulary
+        // normalization). Persist + backtest later use this `draft` reference,
+        // so we want the cleaned version, not the producer's raw output.
+        draft = initial.draft;
+        validation = initial.validation;
+      }
       validationAttempts = 1;
       let repairAttempts = 0;
 
@@ -862,11 +884,15 @@ export async function runResearchRunner(
             },
           ),
         );
-        validation = await validateDraftForResearch(
-          client,
-          draft,
-          live.capabilities,
-        );
+        {
+          const repaired = await validateDraftForResearch(
+            client,
+            draft,
+            live.capabilities,
+          );
+          draft = repaired.draft;
+          validation = repaired.validation;
+        }
         repairAttemptRecords.push({
           attempt: repairAttempts,
           validationBefore,

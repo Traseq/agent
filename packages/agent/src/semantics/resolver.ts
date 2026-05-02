@@ -269,6 +269,9 @@ export function resolveStrategySemantics(
         semanticIds: [...candidate.semanticIds],
         score,
         fragment: cloneFragment(candidate.fragment),
+        ...(candidate.tokenRecipe
+          ? { tokenRecipe: cloneFragment(candidate.tokenRecipe) }
+          : {}),
         tradeoffs: cloneFragment(candidate.tradeoffs),
         requiredCapabilities: cloneFragment(candidate.requiredCapabilities),
         validationHints,

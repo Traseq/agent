@@ -66,6 +66,8 @@
                       "enum": [
                         "workspace_read",
                         "system_strategies_read",
+                        "blocks_read",
+                        "blocks_write",
                         "strategies_read",
                         "strategies_write",
                         "backtests_read",
@@ -84,6 +86,8 @@
                     },
                     "example": [
                       "workspace_read",
+                      "blocks_read",
+                      "blocks_write",
                       "system_strategies_read",
                       "strategies_read",
                       "strategies_write",
@@ -219,6 +223,449 @@
         "tags": ["Agent API"]
       }
     },
+    "/public/v1/token-grammar": {
+      "get": {
+        "description": "Returns the AST-first and token-first grammar used to materialize and validate legal TokenDto blocks.",
+        "operationId": "PublicOpenApiController_getTokenGrammar",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Token grammar document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "protocol",
+                    "version",
+                    "hash",
+                    "canonical",
+                    "tokenTypes",
+                    "ast"
+                  ],
+                  "properties": {
+                    "protocol": {
+                      "type": "string",
+                      "example": "traseq.token-grammar"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "hash": {
+                      "type": "string",
+                      "example": "a1b2c3d4e5f6a7b8"
+                    },
+                    "subscriptionTier": {
+                      "type": "string",
+                      "enum": ["free", "plus", "pro", "team"]
+                    },
+                    "canonical": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "endpoints": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "roles": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "entry_trigger",
+                          "context_filter",
+                          "confirmation_filter",
+                          "exit"
+                        ]
+                      }
+                    },
+                    "tokenCategories": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "tokenTypes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["type", "category", "authorableInBlocks"],
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "market_data_operand"
+                          },
+                          "category": {
+                            "type": "string",
+                            "enum": [
+                              "value",
+                              "bool_condition",
+                              "logic",
+                              "action",
+                              "structural"
+                            ]
+                          },
+                          "authorableInBlocks": {
+                            "type": "boolean"
+                          },
+                          "nonAuthorableReason": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "ast": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "description": "AST-first grammar: boolExprKinds, valueExprKinds, and strategy shape."
+                    },
+                    "operators": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "enums": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "indicators": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "constraints": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "limits": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "notes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Get the public token grammar contract",
+        "tags": ["Agent API"]
+      }
+    },
+    "/public/v1/token-grammar/materialize": {
+      "post": {
+        "description": "Compiles a StrategyAstV1 or BoolExpr into TokenDto, validates it, and optionally returns a SignalGraph fragment.",
+        "operationId": "PublicOpenApiController_materializeTokenGrammar",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "entry_trigger",
+                      "context_filter",
+                      "confirmation_filter",
+                      "exit"
+                    ]
+                  },
+                  "ast": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "expr": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "includeFragment": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Materialized token grammar result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["valid", "role", "tokens", "issues"],
+                  "properties": {
+                    "valid": {
+                      "type": "boolean"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "entry_trigger",
+                        "context_filter",
+                        "confirmation_filter",
+                        "exit"
+                      ]
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": ["ast", "expr", "tokens"]
+                    },
+                    "tokens": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["type"],
+                        "additionalProperties": true,
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "market_data_operand"
+                          },
+                          "params": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "example": {
+                              "marketField": "close"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "normalizedAst": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "fragment": {
+                      "type": "object",
+                      "required": ["nodes", "assemblyHints"],
+                      "properties": {
+                        "nodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "assemblyHints": {
+                          "type": "object",
+                          "additionalProperties": true,
+                          "example": {
+                            "entryTrigger": {
+                              "ref": "block_trigger"
+                            }
+                          }
+                        },
+                        "settingsHints": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "grammarVersion": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "grammarHash": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Materialize AST-first token grammar input",
+        "tags": ["Agent API"]
+      }
+    },
+    "/public/v1/token-grammar/validate": {
+      "post": {
+        "description": "Validates AST or raw TokenDto candidates through the token factory, parser, and compiler path.",
+        "operationId": "PublicOpenApiController_validateTokenGrammar",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "entry_trigger",
+                      "context_filter",
+                      "confirmation_filter",
+                      "exit"
+                    ]
+                  },
+                  "ast": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "expr": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "tokens": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": ["type"],
+                      "additionalProperties": true,
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "example": "market_data_operand"
+                        },
+                        "params": {
+                          "type": "object",
+                          "additionalProperties": true,
+                          "example": {
+                            "marketField": "close"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "includeFragment": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token grammar validation result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["valid", "role", "tokens", "issues"],
+                  "properties": {
+                    "valid": {
+                      "type": "boolean"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "entry_trigger",
+                        "context_filter",
+                        "confirmation_filter",
+                        "exit"
+                      ]
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": ["ast", "expr", "tokens"]
+                    },
+                    "tokens": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["type"],
+                        "additionalProperties": true,
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "market_data_operand"
+                          },
+                          "params": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "example": {
+                              "marketField": "close"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "normalizedAst": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "fragment": {
+                      "type": "object",
+                      "required": ["nodes", "assemblyHints"],
+                      "properties": {
+                        "nodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "assemblyHints": {
+                          "type": "object",
+                          "additionalProperties": true,
+                          "example": {
+                            "entryTrigger": {
+                              "ref": "block_trigger"
+                            }
+                          }
+                        },
+                        "settingsHints": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "grammarVersion": {
+                      "type": "integer",
+                      "example": 1
+                    },
+                    "grammarHash": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Validate AST-first or token-first grammar input",
+        "tags": ["Agent API"]
+      }
+    },
     "/public/v1/system-strategies": {
       "get": {
         "operationId": "PublicOpenApiController_listSystemStrategies",
@@ -331,6 +778,1047 @@
           }
         ],
         "summary": "Copy a system strategy template into the workspace",
+        "tags": ["Agent API"]
+      }
+    },
+    "/public/v1/blocks": {
+      "get": {
+        "description": "Returns reusable token blocks that agents can inspect before composing a SignalGraph strategy.",
+        "operationId": "PublicOpenApiController_listBlocks",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "category",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "Signals",
+                "Trend",
+                "Momentum",
+                "Volatility",
+                "Volume",
+                "Market"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": ["signal", "indicator"],
+              "type": "string"
+            }
+          },
+          {
+            "name": "tags",
+            "required": false,
+            "in": "query",
+            "description": "Comma-separated tags",
+            "schema": {}
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {}
+          },
+          {
+            "name": "filter",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": ["system", "custom", "all", "pinned"],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace and system block list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["data"],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["id", "name", "tokens"],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "name": {
+                            "type": "string",
+                            "example": "Close above EMA 100"
+                          },
+                          "description": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": ["signal", "indicator"]
+                          },
+                          "category": {
+                            "type": "string",
+                            "enum": [
+                              "Signals",
+                              "Trend",
+                              "Momentum",
+                              "Volatility",
+                              "Volume",
+                              "Market"
+                            ]
+                          },
+                          "tokens": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": ["type"],
+                              "additionalProperties": true,
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "example": "market_data_operand"
+                                },
+                                "params": {
+                                  "type": "object",
+                                  "additionalProperties": true,
+                                  "example": {
+                                    "marketField": "close"
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "isSystemPreset": {
+                            "type": "boolean"
+                          },
+                          "presetKey": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "indicatorFamily": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "direction": {
+                            "type": "string",
+                            "enum": ["bullish", "bearish", "neutral"],
+                            "nullable": true
+                          },
+                          "exclusiveGroup": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "isPinned": {
+                            "type": "boolean"
+                          },
+                          "pinnedAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "nullable": true
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "updatedAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        }
+                      }
+                    },
+                    "pagination": {
+                      "type": "object",
+                      "nullable": true
+                    },
+                    "categoryCounts": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "List workspace and system semantic blocks",
+        "tags": ["Agent API"]
+      },
+      "post": {
+        "description": "Validates and stores a workspace-owned reusable token block. System presets are read-only.",
+        "operationId": "PublicOpenApiController_createBlock",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "tokens"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["signal", "indicator"]
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "Signals",
+                      "Trend",
+                      "Momentum",
+                      "Volatility",
+                      "Volume",
+                      "Market"
+                    ]
+                  },
+                  "tokens": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": ["type"],
+                      "additionalProperties": true,
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "example": "market_data_operand"
+                        },
+                        "params": {
+                          "type": "object",
+                          "additionalProperties": true,
+                          "example": {
+                            "marketField": "close"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indicatorFamily": {
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  "direction": {
+                    "type": "string",
+                    "enum": ["bullish", "bearish", "neutral"]
+                  },
+                  "exclusiveGroup": {
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  "ignoreWarnings": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Custom semantic block created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "name", "tokens"],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "Close above EMA 100"
+                    },
+                    "description": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["signal", "indicator"]
+                    },
+                    "category": {
+                      "type": "string",
+                      "enum": [
+                        "Signals",
+                        "Trend",
+                        "Momentum",
+                        "Volatility",
+                        "Volume",
+                        "Market"
+                      ]
+                    },
+                    "tokens": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["type"],
+                        "additionalProperties": true,
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "market_data_operand"
+                          },
+                          "params": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "example": {
+                              "marketField": "close"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "isSystemPreset": {
+                      "type": "boolean"
+                    },
+                    "presetKey": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "indicatorFamily": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "direction": {
+                      "type": "string",
+                      "enum": ["bullish", "bearish", "neutral"],
+                      "nullable": true
+                    },
+                    "exclusiveGroup": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "isPinned": {
+                      "type": "boolean"
+                    },
+                    "pinnedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Create a custom semantic block",
+        "tags": ["Agent API"]
+      }
+    },
+    "/public/v1/blocks/compile": {
+      "post": {
+        "description": "Side-effect-free compiler for workspace custom block tokens. Agents should prefer deterministic recipes for new blocks, then use this endpoint for existing block tokens.",
+        "operationId": "PublicOpenApiController_compileBlock",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tokens"],
+                "properties": {
+                  "tokens": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": ["type"],
+                      "additionalProperties": true,
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "example": "market_data_operand"
+                        },
+                        "params": {
+                          "type": "object",
+                          "additionalProperties": true,
+                          "example": {
+                            "marketField": "close"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "entry_trigger",
+                      "context_filter",
+                      "confirmation_filter",
+                      "exit"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Compiled token block fragment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["valid", "role", "tokens", "issues"],
+                  "properties": {
+                    "valid": {
+                      "type": "boolean"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "entry_trigger",
+                        "context_filter",
+                        "confirmation_filter",
+                        "exit"
+                      ]
+                    },
+                    "tokens": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["type"],
+                        "additionalProperties": true,
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "market_data_operand"
+                          },
+                          "params": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "example": {
+                              "marketField": "close"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "fragment": {
+                      "type": "object",
+                      "required": ["nodes", "assemblyHints"],
+                      "properties": {
+                        "nodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "assemblyHints": {
+                          "type": "object",
+                          "additionalProperties": true,
+                          "example": {
+                            "entryTrigger": {
+                              "ref": "block_trigger"
+                            }
+                          }
+                        },
+                        "settingsHints": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Compile a token block into a SignalGraph fragment",
+        "tags": ["Agent API"]
+      }
+    },
+    "/public/v1/blocks/validate": {
+      "post": {
+        "description": "Side-effect-free token block validation using the same parser/compiler path as custom block writes.",
+        "operationId": "PublicOpenApiController_validateBlock",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tokens"],
+                "properties": {
+                  "tokens": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": ["type"],
+                      "additionalProperties": true,
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "example": "market_data_operand"
+                        },
+                        "params": {
+                          "type": "object",
+                          "additionalProperties": true,
+                          "example": {
+                            "marketField": "close"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "entry_trigger",
+                      "context_filter",
+                      "confirmation_filter",
+                      "exit"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Token block validation summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["valid", "role", "tokens", "issues"],
+                  "properties": {
+                    "valid": {
+                      "type": "boolean"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "entry_trigger",
+                        "context_filter",
+                        "confirmation_filter",
+                        "exit"
+                      ]
+                    },
+                    "tokens": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["type"],
+                        "additionalProperties": true,
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "market_data_operand"
+                          },
+                          "params": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "example": {
+                              "marketField": "close"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "fragment": {
+                      "type": "object",
+                      "required": ["nodes", "assemblyHints"],
+                      "properties": {
+                        "nodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "assemblyHints": {
+                          "type": "object",
+                          "additionalProperties": true,
+                          "example": {
+                            "entryTrigger": {
+                              "ref": "block_trigger"
+                            }
+                          }
+                        },
+                        "settingsHints": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Validate a token block",
+        "tags": ["Agent API"]
+      }
+    },
+    "/public/v1/blocks/{id}": {
+      "get": {
+        "operationId": "PublicOpenApiController_getBlock",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Semantic block detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "name", "tokens"],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "Close above EMA 100"
+                    },
+                    "description": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["signal", "indicator"]
+                    },
+                    "category": {
+                      "type": "string",
+                      "enum": [
+                        "Signals",
+                        "Trend",
+                        "Momentum",
+                        "Volatility",
+                        "Volume",
+                        "Market"
+                      ]
+                    },
+                    "tokens": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["type"],
+                        "additionalProperties": true,
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "market_data_operand"
+                          },
+                          "params": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "example": {
+                              "marketField": "close"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "isSystemPreset": {
+                      "type": "boolean"
+                    },
+                    "presetKey": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "indicatorFamily": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "direction": {
+                      "type": "string",
+                      "enum": ["bullish", "bearish", "neutral"],
+                      "nullable": true
+                    },
+                    "exclusiveGroup": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "isPinned": {
+                      "type": "boolean"
+                    },
+                    "pinnedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Get a workspace or system semantic block",
+        "tags": ["Agent API"]
+      },
+      "patch": {
+        "description": "System preset blocks cannot be updated.",
+        "operationId": "PublicOpenApiController_updateBlock",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 80
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["signal", "indicator"]
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "Signals",
+                      "Trend",
+                      "Momentum",
+                      "Volatility",
+                      "Volume",
+                      "Market"
+                    ]
+                  },
+                  "tokens": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "required": ["type"],
+                      "additionalProperties": true,
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "example": "market_data_operand"
+                        },
+                        "params": {
+                          "type": "object",
+                          "additionalProperties": true,
+                          "example": {
+                            "marketField": "close"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "indicatorFamily": {
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  "direction": {
+                    "type": "string",
+                    "enum": ["bullish", "bearish", "neutral"]
+                  },
+                  "exclusiveGroup": {
+                    "type": "string",
+                    "maxLength": 50
+                  },
+                  "ignoreWarnings": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Custom semantic block updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["id", "name", "tokens"],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string",
+                      "example": "Close above EMA 100"
+                    },
+                    "description": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["signal", "indicator"]
+                    },
+                    "category": {
+                      "type": "string",
+                      "enum": [
+                        "Signals",
+                        "Trend",
+                        "Momentum",
+                        "Volatility",
+                        "Volume",
+                        "Market"
+                      ]
+                    },
+                    "tokens": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": ["type"],
+                        "additionalProperties": true,
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "market_data_operand"
+                          },
+                          "params": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "example": {
+                              "marketField": "close"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "isSystemPreset": {
+                      "type": "boolean"
+                    },
+                    "presetKey": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "indicatorFamily": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "direction": {
+                      "type": "string",
+                      "enum": ["bullish", "bearish", "neutral"],
+                      "nullable": true
+                    },
+                    "exclusiveGroup": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "isPinned": {
+                      "type": "boolean"
+                    },
+                    "pinnedAt": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "updatedAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Update a custom semantic block",
+        "tags": ["Agent API"]
+      },
+      "delete": {
+        "description": "System preset blocks cannot be deleted.",
+        "operationId": "PublicOpenApiController_deleteBlock",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Custom semantic block deleted"
+          }
+        },
+        "security": [
+          {
+            "traseq-api-key": []
+          }
+        ],
+        "summary": "Delete a custom semantic block",
         "tags": ["Agent API"]
       }
     },
@@ -11775,7 +13263,7 @@
     },
     "/public/v1/webhook-endpoints": {
       "post": {
-        "description": "Returns the plaintext HMAC secret once. The stored secret is encrypted for outbound signing.",
+        "description": "Returns { endpoint, secret }. The plaintext HMAC secret is only included in this response — store it immediately, the server keeps only an encrypted copy for outbound signing.",
         "operationId": "PublicOpenApiController_createWebhookEndpoint",
         "parameters": [],
         "requestBody": {

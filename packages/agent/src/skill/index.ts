@@ -58,18 +58,35 @@ that implements the selected semantics.
 1. Extract the user's intent into semantic facets before writing JSON. Identify
    roles such as entry trigger, confirmation filter, context filter, exit, risk,
    and sizing/execution.
-2. Call \`resolve_strategy_semantics\` with the extracted facets, constraints,
-   and live capabilities. If facets are uncertain, include the prompt and ask
-   the resolver for candidates rather than routing directly to a known pattern.
-3. Review 2-3 returned candidates. Explain the interpretation and tradeoffs as
+2. Prefer the AST-first token grammar path for guided work:
+   \`get_token_grammar\` → \`materialize_token_ast\` →
+   \`validate_token_grammar_candidate\` → \`assemble_strategy_from_blocks\`.
+   Author typed \`StrategyAstV1\` or \`BoolExpr\` and let Traseq materialize
+   legal \`TokenDto\`. Use token-first raw streams only for existing blocks,
+   migrations, or expert flows, and always validate them before assembly.
+3. If you need candidate discovery first, call \`resolve_strategy_semantics\`
+   with the extracted facets, constraints, and live capabilities. If facets are
+   uncertain, include the prompt and ask the resolver for candidates rather than
+   routing directly to a known pattern.
+4. Review 2-3 returned candidates. Explain the interpretation and tradeoffs as
    service guidance before assembling a full strategy.
-4. Pick the smallest candidate set that satisfies the thesis. Patterns are only
+5. Pick the smallest candidate set that satisfies the thesis. Patterns are only
    priors; do not force the user into a predefined pattern when capabilities can
    express their intent compositionally.
-5. Call \`assemble_signal_graph\` with the selected fragments. Resolver
-   fragments expose \`assemblyHints\`; they are not final top-level signalGraph
-   fields.
-6. Follow these composition rules:
+6. Recipes are semantic macros over the grammar, not the grammar source of
+   truth. Use \`get_token_semantics\` → \`compose_token_block\` →
+   \`validate_token_block\` when a curated recipe cleanly matches the thesis.
+   For existing workspace blocks, read/list blocks and use the public
+   compile/validate block endpoints through \`validate_token_block\` or
+   \`assemble_strategy_from_blocks\`. Always supply an explicit role for
+   workspace/raw token blocks so the agent does not accidentally treat a filter
+   or exit as an entry trigger.
+   Tokens/blocks are provenance and composition layers; the persisted strategy
+   contract remains SignalGraph v2.
+7. If using lower-level fragments directly, call \`assemble_signal_graph\` with
+   the selected fragments. Resolver fragments expose \`assemblyHints\`; they are
+   not final top-level signalGraph fields.
+8. Follow these composition rules:
    - Use signalGraph format (protocol: "traseq.signal-graph", version: 2).
    - Keep the first draft minimal: 1 trigger + at most 1 confirmation filter.
    - Prefer the simpler baseline that actually generates trades over an elegant
@@ -82,14 +99,14 @@ that implements the selected semantics.
      any, not, time_window, sequence, rolling_window, state_machine, event.
    - The \`strategy\` binding must include entry (trigger + action) and at least
      one exit or risk rule.
-7. Always include:
+9. Always include:
    - An entry trigger (the primary signal)
    - An entry action (side: "long", sizing mode and value)
    - At least one exit mechanism: signal-based exit, stopLoss, or takeProfits[]
    - Settings: positionStyle (single, pyramid, or accumulate) and warmupPeriod
    - For pyramid strategies, include maxConcurrentPositions; omit it for single
      position strategies unless the live schema explicitly requires it.
-8. Present the draft to the user in readable form before proceeding. Explain
+10. Present the draft to the user in readable form before proceeding. Explain
    which semantic facet each node implements, how the nodes connect, and what
    approval is needed before any create/finalize/backtest step.
 

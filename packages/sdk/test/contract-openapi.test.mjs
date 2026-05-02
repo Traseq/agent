@@ -62,6 +62,54 @@ const CLIENT_METHOD_MAP = [
     requestBody: true,
   },
   {
+    method: 'getTokenGrammar',
+    verb: 'GET',
+    path: '/public/v1/token-grammar',
+  },
+  {
+    method: 'materializeTokenGrammar',
+    verb: 'POST',
+    path: '/public/v1/token-grammar/materialize',
+    requestBody: true,
+  },
+  {
+    method: 'validateTokenGrammar',
+    verb: 'POST',
+    path: '/public/v1/token-grammar/validate',
+    requestBody: true,
+  },
+  { method: 'listBlocks', verb: 'GET', path: '/public/v1/blocks' },
+  {
+    method: 'compileBlock',
+    verb: 'POST',
+    path: '/public/v1/blocks/compile',
+    requestBody: true,
+  },
+  {
+    method: 'validateBlock',
+    verb: 'POST',
+    path: '/public/v1/blocks/validate',
+    requestBody: true,
+  },
+  { method: 'getBlock', verb: 'GET', path: '/public/v1/blocks/:param' },
+  {
+    method: 'createBlock',
+    verb: 'POST',
+    path: '/public/v1/blocks',
+    requestBody: true,
+  },
+  {
+    method: 'updateBlock',
+    verb: 'PATCH',
+    path: '/public/v1/blocks/:param',
+    requestBody: true,
+  },
+  {
+    method: 'deleteBlock',
+    verb: 'DELETE',
+    path: '/public/v1/blocks/:param',
+  },
+  {
     method: 'validateStrategy',
     verb: 'POST',
     path: '/public/v1/strategies/validate',
@@ -362,6 +410,66 @@ test('body-carrying endpoints have request body schemas in OpenAPI spec', () => 
     missing,
     [],
     `Write endpoints missing request body schema in OpenAPI:\n${missing.join('\n')}`,
+  );
+});
+
+// ── TokenDto schema stays in lockstep across OpenAPI / agent registry ──────
+//
+// We hand-maintain three copies of the TokenDto request shape (Zod in
+// services/app-api/src/backtest/dto/validate-rule.dto.ts, manual JSON Schema
+// in services/app-api/src/openapi/public-openapi-export.module.ts, and a
+// hand-written JSON Schema in packages/agent/src/generated/operation-registry.ts).
+// They drift silently if any one of them changes — this test catches the
+// minimum invariant: every block compile/validate request body must accept
+// `{ type: string, params?: object }` items, with `type` required.
+test('block compile request body matches TokenDto invariant', async () => {
+  const compileSpec = spec.paths['/public/v1/blocks/compile']?.post;
+  assert.ok(compileSpec, 'OpenAPI missing POST /public/v1/blocks/compile');
+  const requestSchema =
+    compileSpec.requestBody?.content?.['application/json']?.schema;
+  assert.ok(requestSchema, 'compile request body schema missing');
+  assert.ok(
+    Array.isArray(requestSchema.required) &&
+      requestSchema.required.includes('tokens'),
+    'compile request must require `tokens`',
+  );
+  const tokenItem = requestSchema.properties?.tokens?.items;
+  assert.ok(tokenItem, 'compile tokens.items missing');
+  assert.deepEqual(
+    Array.isArray(tokenItem.required) ? [...tokenItem.required].sort() : [],
+    ['type'],
+    'TokenDto must require `type`',
+  );
+  assert.equal(
+    tokenItem.properties?.type?.type,
+    'string',
+    'TokenDto.type must be a string',
+  );
+  assert.equal(
+    tokenItem.properties?.params?.type,
+    'object',
+    'TokenDto.params must be an object',
+  );
+
+  // Cross-check against the agent operation registry built from the same
+  // contract. Built dist/ already exists once `pnpm run build` ran upstream;
+  // reading from src is a deliberate choice to stay framework-free.
+  const registryUrl = new URL(
+    '../../agent/src/generated/operation-registry.ts',
+    import.meta.url,
+  );
+  const registrySrc = readFileSync(registryUrl, 'utf8');
+  // Minimal sanity check: the registry must spell out the same TokenDto
+  // invariants. Anything stricter would require a TS loader in the test rig.
+  assert.match(
+    registrySrc,
+    /required:\s*\['type'\]/,
+    'agent operation registry tokenArrayProp must require `type`',
+  );
+  assert.match(
+    registrySrc,
+    /list_blocks[\s\S]+compile_block[\s\S]+validate_block[\s\S]+create_block[\s\S]+update_block[\s\S]+delete_block/,
+    'agent operation registry must register all six block operations in order',
   );
 });
 

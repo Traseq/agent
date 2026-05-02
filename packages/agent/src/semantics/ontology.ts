@@ -4,6 +4,10 @@ import type {
   SemanticOntologyDocument,
   SemanticRole,
 } from './types.js';
+import {
+  cloneTokenRecipe,
+  findTokenRecipeForImplementation,
+} from './token-recipes.js';
 
 const families = [
   'trend',
@@ -45,7 +49,10 @@ function facet(
 function implementation(
   definition: SemanticImplementationDefinition,
 ): SemanticImplementationDefinition {
-  return definition;
+  const tokenRecipe = findTokenRecipeForImplementation(definition.id);
+  return tokenRecipe
+    ? { ...definition, tokenRecipe: cloneTokenRecipe(tokenRecipe) }
+    : definition;
 }
 
 export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
