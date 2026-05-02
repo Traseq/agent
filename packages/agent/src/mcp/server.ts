@@ -37,6 +37,16 @@ import {
   platformOperationsForProfile,
   type McpProfile,
 } from './profile.js';
+import {
+  augmentToolError,
+  preflightToolArgs,
+  type PreflightFailure,
+} from './tool-guard.js';
+import {
+  classifyError,
+  emitToolCallEvent,
+  type ToolCallOutcome,
+} from './telemetry.js';
 
 export const GUIDED_RESEARCH_PROMPT_NAME = 'traseq_guided_research';
 export const GUIDED_RESEARCH_PROMPT_DESCRIPTION =
@@ -68,8 +78,28 @@ export const MCP_SERVICE_INSTRUCTIONS = [
   'Backtest range fields use `range.start` and `range.end` in **epoch milliseconds** (UTC). Not `startDate/endDate`, not candle indices.',
 ].join('\n');
 
-function safeErrorMessage(error: unknown): string {
+/**
+ * Render a tool failure into the MCP `text` content payload.
+ *
+ * `toolName`, when provided, opts the failure into client-side augmentation
+ * (see tool-guard.ts) so the LLM sees an explicit guided-flow recovery hint
+ * for known state-machine failure shapes. Calls without a name (e.g. the
+ * resource handler) fall through to the unaugmented format used previously.
+ */
+function safeErrorMessage(error: unknown, toolName?: string): string {
   if (error instanceof TraseqApiError) {
+    const augmentation = toolName
+      ? augmentToolError(toolName, error)
+      : { extraNextSteps: [], hintCode: null };
+    const formatted = formatTraseqAgentError(error);
+    const augmentedFormatted =
+      augmentation.extraNextSteps.length > 0
+        ? `${formatted}\n\nGuided-flow recovery (client-side hint, code=${
+            augmentation.hintCode ?? 'unknown'
+          }):\n${augmentation.extraNextSteps
+            .map((step) => `- ${step}`)
+            .join('\n')}`
+        : formatted;
     return JSON.stringify(
       {
         isError: true,
@@ -78,7 +108,15 @@ function safeErrorMessage(error: unknown): string {
         path: error.path,
         message: error.message,
         body: error.parsedBody,
-        formatted: formatTraseqAgentError(error),
+        formatted: augmentedFormatted,
+        ...(augmentation.extraNextSteps.length > 0
+          ? {
+              guidedFlowHint: {
+                hintCode: augmentation.hintCode,
+                nextSteps: augmentation.extraNextSteps,
+              },
+            }
+          : {}),
       },
       null,
       2,
@@ -88,6 +126,37 @@ function safeErrorMessage(error: unknown): string {
     return error.message;
   }
   return 'An unexpected error occurred.';
+}
+
+/**
+ * Render a synchronous preflight failure into the same content shape as
+ * a tool error, so MCP clients can display it identically to API errors.
+ * Stays out of the API call path entirely — no quota cost, no log noise.
+ */
+function preflightFailureContent(
+  toolName: string,
+  failure: PreflightFailure,
+): { isError: true; content: { type: 'text'; text: string }[] } {
+  return {
+    isError: true,
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify(
+          {
+            isError: true,
+            preflight: true,
+            tool: toolName,
+            code: failure.code,
+            message: failure.message,
+            nextSteps: failure.nextSteps,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  };
 }
 
 function orderedAgentTools(profile: McpProfile = readProfileFromEnv()) {
@@ -123,6 +192,24 @@ function describeAgentTool(tool: {
     : `${tool.description} Local agent helper.`;
 }
 
+/**
+ * Per-tool prerequisite hints rendered FIRST in the description so LLMs
+ * pattern-matching on tool name + first sentence don't skim past them.
+ *
+ * Add an entry here when an operation has a state-machine prerequisite that
+ * isn't enforced at the schema level. The rest of the description still
+ * carries the generic stage hint, so existing test assertions on
+ * `Stage: write` / `Do not call before run_guided_research_round` keep passing.
+ */
+const PLATFORM_TOOL_PRECONDITIONS: Readonly<Record<string, string>> = {
+  run_backtest:
+    "REQUIRES strategy version status === 'finalized'. If your strategy is still draft, call run_guided_research_round (it validates, persists, finalizes, and backtests in one step) instead of run_backtest. run_backtest is for re-testing an already-finalized version with a different range or config.",
+  finalize_strategy_version:
+    "REQUIRES strategy version status === 'draft' AND remote validation passed. Prefer run_guided_research_round which finalizes as part of the validate->persist->backtest pipeline.",
+  create_strategy_version:
+    'REQUIRES forkedFromVersionId pointing at the previous version when a strategy already exists. Prefer run_guided_research_round, which derives the fork target automatically.',
+};
+
 function describePlatformTool(operation: OperationDefinition): string {
   const stage = operationStage(operation);
   const stageHint =
@@ -131,7 +218,9 @@ function describePlatformTool(operation: OperationDefinition): string {
       : stage === 'write'
         ? 'Stage: write. Do not call before run_guided_research_round validates a draft.'
         : 'Stage: read.';
+  const precondition = PLATFORM_TOOL_PRECONDITIONS[operation.name];
   return [
+    precondition ? `[${precondition}]` : '',
     'Advanced automation tool.',
     operation.description,
     stageHint,
@@ -367,13 +456,44 @@ export function buildMcpServer(
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const name = request.params.name;
-    const args = request.params.arguments ?? {};
+    const rawArgs = request.params.arguments ?? {};
+    // Normalize to a plain object exactly once so preflight/dispatch see the
+    // same shape regardless of how the SDK transport boxed the call.
+    const args: Record<string, unknown> =
+      typeof rawArgs === 'object' && rawArgs !== null && !Array.isArray(rawArgs)
+        ? (rawArgs as Record<string, unknown>)
+        : {};
+    const startedAt = Date.now();
+    const log = (outcome: ToolCallOutcome): void => {
+      emitToolCallEvent({
+        event: 'tool_call',
+        ts: new Date(startedAt).toISOString(),
+        tool: name,
+        profile,
+        durationMs: Date.now() - startedAt,
+        outcome,
+      });
+    };
+
+    // Synchronous arg-shape preflight. Cheap, runs before agent/platform
+    // dispatch so a malformed run_backtest call never reaches the API.
+    const preflight = preflightToolArgs(name, args);
+    if (preflight) {
+      log({ kind: 'preflight_blocked', code: preflight.code });
+      return preflightFailureContent(name, preflight);
+    }
+
     const agentTool = getAgentToolDefinition(name);
     if (agentTool) {
       if (
         profile === 'guided' &&
         !GUIDED_AGENT_TOOL_NAMES.has(agentTool.name)
       ) {
+        // Profile rejection throws — emit telemetry first so dashboards see it.
+        log({
+          kind: 'preflight_blocked',
+          code: 'PROFILE_TOOL_HIDDEN',
+        });
         throw new McpError(
           ErrorCode.InvalidParams,
           `Tool "${name}" is an advanced agent helper and is not available in profile "guided". Use run_guided_research_round (which composes resolve/assemble/preflight internally) or restart with --profile=full to access this helper directly.`,
@@ -381,22 +501,31 @@ export function buildMcpServer(
       }
       try {
         const result = await runAgentTool(agentTool.name, args, { client });
+        log({ kind: 'success' });
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
         };
       } catch (error) {
+        const augmentation = augmentToolError(name, error);
+        log(
+          augmentation.extraNextSteps.length > 0
+            ? { kind: 'augmented_error', hintCode: augmentation.hintCode }
+            : classifyError(error),
+        );
         return {
           isError: true,
-          content: [{ type: 'text', text: safeErrorMessage(error) }],
+          content: [{ type: 'text', text: safeErrorMessage(error, name) }],
         };
       }
     }
 
     const operation = OPERATION_REGISTRY.find((item) => item.name === name);
     if (!operation) {
+      log({ kind: 'runtime_error', message: `Unknown tool: ${name}` });
       throw new McpError(ErrorCode.InvalidParams, `Unknown tool: ${name}`);
     }
     if (!exposedPlatformOps.has(operation.name)) {
+      log({ kind: 'preflight_blocked', code: 'PROFILE_TOOL_HIDDEN' });
       throw new McpError(
         ErrorCode.InvalidParams,
         `Tool "${name}" is not available in profile "${profile}". Restart the MCP server with --profile=full or set TRASEQ_MCP_PROFILE=full to enable advanced platform tools.`,
@@ -409,13 +538,20 @@ export function buildMcpServer(
         operation.name as OperationName,
         args,
       );
+      log({ kind: 'success' });
       return {
         content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       };
     } catch (error) {
+      const augmentation = augmentToolError(name, error);
+      log(
+        augmentation.extraNextSteps.length > 0
+          ? { kind: 'augmented_error', hintCode: augmentation.hintCode }
+          : classifyError(error),
+      );
       return {
         isError: true,
-        content: [{ type: 'text', text: safeErrorMessage(error) }],
+        content: [{ type: 'text', text: safeErrorMessage(error, name) }],
       };
     }
   });
