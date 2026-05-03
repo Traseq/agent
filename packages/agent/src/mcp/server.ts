@@ -146,6 +146,7 @@ export const MCP_SERVICE_INSTRUCTIONS = [
   'Tier limits in Traseq are: research credits (USD/month), active strategy count, saved backtest count, and workspaces. Backtest period is NOT tier-limited; all tiers can run all available history. Only treat a failure as a plan/billing problem if the response carries `publicAgent.category` of `plan` or `usage`. Errors with `category: validation` are schema/parameter problems — re-read the relevant reference doc and fix the call, do not suggest the user upgrade.',
   'When validation fails, read `failure.issues` (or response body `issues`) for `code` / `path` / `severity` and fix the draft directly. Do not assume the platform is broken when validation reports issues; only escalate when issues are absent AND the response has no useful body.',
   '`validate_strategy` is the strategy write-preflight for `signalGraph + settings`; it does NOT cover `run_backtest` execution/range/cost behavior. Keep create/finalize payloads strategy-only, and send backtest config only to run_backtest or run_guided_research_round.',
+  'For iterative research, prefer passing `strategyId` to run_guided_research_round and reusing the returned `nextIterationSeed` on the following round. If `forkedFromVersionId` is omitted, the runner resolves the latest ready/finalized version before writing the next draft.',
   'If you need a write or destructive platform tool that is not exposed, ask the operator to enable `--profile=full`. Do not assume it is missing by accident — non-full profiles filter writes out of tools/list.',
   '@traseq/agent does not call an AI provider, place live orders, or provide investment advice. Historical backtests are research evidence only.',
   'Destructive platform tools require confirm=true.',
@@ -195,9 +196,8 @@ function safeParseJson(text: string): unknown {
  * use `additionalProperties: false` at the root, and the persistence pipeline
  * cares about whether unknown SHAPE fields landed at the wrong level. Going
  * deeper (e.g. unknown keys inside `config.signalGraph.nodes[i].args`) is
- * already handled by the dedicated normalizer in
- * `normalizeStrategyDraft` / `validate_strategy`, and would generate noise
- * for legitimately-passthrough sub-objects.
+ * already handled by `preflight_strategy_draft` / `validate_strategy`, and
+ * would generate noise for legitimately-passthrough sub-objects.
  */
 function detectUnknownTopLevelArgs(
   args: Record<string, unknown>,

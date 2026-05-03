@@ -53,7 +53,7 @@ export const tools = {
       '1. `start_research_engagement` — Frame the research task, assumptions, decision points, and evidence boundaries.',
       '2. `resolve_strategy_semantics` — Resolve user intent into capability-grounded signalGraph fragments.',
       '3. `assemble_signal_graph` — Compose selected fragments into a complete draft.',
-      '4. `preflight_strategy_draft` — Catch local schema, ref, type, and legacy vocabulary errors.',
+      '4. `preflight_strategy_draft` — Catch local schema, ref, type, and unsupported vocabulary errors.',
       '5. `run_guided_research_round` — Validate, persist after validation, backtest, evaluate, and report.',
       '6. `summarize_research_engagement` — Render saved evidence as a service memo.',
       '',

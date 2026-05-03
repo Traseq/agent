@@ -25,16 +25,13 @@ export {
 export {
   buildIndicatorCatalog,
   buildInstrumentCatalog,
-  normalizeStrategyDraft,
   resolveInstrument,
-  type DraftNormalizePatch,
   type IndicatorCapabilityShape,
   type IndicatorCatalog,
   type InstrumentCatalog,
   type InstrumentCatalogItem,
   type InstrumentResolution,
   type InstrumentResolutionStatus,
-  type NormalizeStrategyDraftResult,
 } from './capabilities.js';
 export {
   TraseqApiError,

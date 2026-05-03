@@ -190,7 +190,7 @@ test('assembleSignalGraphDraft assembles resolver fragments into a valid draft',
   );
 });
 
-test('assembleSignalGraphDraft rejects duplicate ids and legacy bindings', () => {
+test('assembleSignalGraphDraft rejects duplicate ids and fragment bindings', () => {
   const result = assembleSignalGraphDraft({
     fragments: [
       {
@@ -570,16 +570,16 @@ test('validateStrategyDraft enforces capability-derived node input cardinality a
   }
 });
 
-test('validateStrategyDraft rejects legacy public authoring vocabulary', () => {
+test('validateStrategyDraft rejects unsupported public authoring vocabulary', () => {
   const draft = createValidDraft();
   draft.signalGraph.nodes.push(
     {
-      id: 'legacy_price',
+      id: 'unsupported_price',
       kind: 'price',
       field: 'close',
     },
     {
-      id: 'legacy_indicator',
+      id: 'unsupported_indicator',
       kind: 'indicator',
       name: 'sma',
       indicator: 'sma',
@@ -593,7 +593,7 @@ test('validateStrategyDraft rejects legacy public authoring vocabulary', () => {
       },
     },
     {
-      id: 'legacy_event',
+      id: 'unsupported_event',
       kind: 'event',
       name: 'pivot_confirmed',
       params: {

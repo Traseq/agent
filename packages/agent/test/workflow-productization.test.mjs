@@ -188,6 +188,20 @@ function makeClient(options = {}) {
       calls.push('createStrategy');
       return { id: 'strategy-1', versions: [{ version: 1 }] };
     },
+    async getStrategy(strategyId) {
+      calls.push('getStrategy');
+      return {
+        id: strategyId,
+        versions: [
+          {
+            id: 'version-ready-default',
+            version: 1,
+            status: 'ready',
+            createdAt: '2024-01-01T00:00:00.000Z',
+          },
+        ],
+      };
+    },
     async createStrategyVersion() {
       calls.push('createStrategyVersion');
       return { id: 'draft-v2', version: 2 };
@@ -410,9 +424,10 @@ describe('guided research service', () => {
     assert.match(brief.recommendedMode, /template|block/);
     assert.ok(
       brief.recommendedToolPath.some((tool) =>
-        ['compose_strategy_from_template', 'assemble_strategy_from_blocks'].includes(
-          tool,
-        ),
+        [
+          'compose_strategy_from_template',
+          'assemble_strategy_from_blocks',
+        ].includes(tool),
       ),
     );
     assert.ok(brief.referenceTools.includes('get_authoring_examples'));
@@ -596,6 +611,14 @@ describe('guided research service', () => {
 
     assert.equal(output.status, 'completed');
     assert.equal(output.result.rounds[0].backtest.id, 'bt-1');
+    assert.deepEqual(output.nextIterationSeed, {
+      strategyId: 'strategy-1',
+      forkedFromVersionId: 'version-1',
+      round: 1,
+      strategyVersionNumber: 1,
+      backtestId: 'bt-1',
+    });
+    assert.deepEqual(output.result.nextIterationSeed, output.nextIterationSeed);
     assert.equal(output.evaluation.confidence, 'robust');
     assert.equal(output.verdict.decision, 'keep_candidate');
     assert.match(output.report, /Traseq Guided Research Memo/);
@@ -609,6 +632,11 @@ describe('guided research service', () => {
       output.serviceMessages.some(
         (message) =>
           message.links?.backtest === 'https://app.traseq.test/backtests/bt-1',
+      ),
+    );
+    assert.ok(
+      output.serviceMessages.some(
+        (message) => message.title === 'Next iteration seed ready',
       ),
     );
   });
@@ -649,15 +677,12 @@ describe('guided research service', () => {
 });
 
 describe('agent workflow MCP tools', () => {
-  it('registers runner, evaluator, and report tools for MCP clients', () => {
+  it('registers guided research tools for MCP clients', () => {
     const names = AGENT_TOOL_REGISTRY.map((tool) => tool.name);
 
     assert.ok(names.includes('start_research_engagement'));
     assert.ok(names.includes('run_guided_research_round'));
     assert.ok(names.includes('summarize_research_engagement'));
-    assert.ok(names.includes('run_research_draft'));
-    assert.ok(names.includes('evaluate_research_result'));
-    assert.ok(names.includes('format_research_report'));
   });
 
   it('publishes schemas for guided research tools', () => {
@@ -680,97 +705,6 @@ describe('agent workflow MCP tools', () => {
       type: 'string',
       enum: ['conservative', 'moderate', 'aggressive'],
     });
-  });
-
-  it('publishes typed enum and minLength constraints for run_research_draft inputs', () => {
-    const tool = AGENT_TOOL_REGISTRY.find(
-      (entry) => entry.name === 'run_research_draft',
-    );
-    assert.ok(tool, 'run_research_draft tool must be registered');
-
-    const props = tool.input_schema.properties;
-    assert.deepEqual(props.timeframe, {
-      type: 'string',
-      enum: ['15m', '1h', '4h', '1d'],
-    });
-    assert.deepEqual(props.positionStyle, {
-      type: 'string',
-      enum: ['single', 'pyramid', 'accumulate'],
-    });
-    assert.deepEqual(props.prompt, { type: 'string', minLength: 12 });
-  });
-
-  it('rejects short prompts at the tool boundary with a clear error', async () => {
-    const client = makeClient();
-    await assert.rejects(
-      runAgentTool(
-        'run_research_draft',
-        { prompt: 'short', draft: draft() },
-        { client },
-      ),
-      /at least 12 characters/,
-    );
-  });
-
-  it('rejects unknown timeframe values at the tool boundary', async () => {
-    const client = makeClient();
-    await assert.rejects(
-      runAgentTool(
-        'run_research_draft',
-        {
-          prompt: 'Research a BTCUSDT trend strategy.',
-          draft: draft(),
-          timeframe: '2h',
-        },
-        { client },
-      ),
-      /timeframe must be one of/,
-    );
-  });
-
-  it('rejects unknown positionStyle values at the tool boundary', async () => {
-    const client = makeClient();
-    await assert.rejects(
-      runAgentTool(
-        'run_research_draft',
-        {
-          prompt: 'Research a BTCUSDT trend strategy.',
-          draft: draft(),
-          positionStyle: 'martingale',
-        },
-        { client },
-      ),
-      /positionStyle must be one of/,
-    );
-  });
-
-  it('rejects clients missing research runner methods', async () => {
-    await assert.rejects(
-      runAgentTool(
-        'run_research_draft',
-        { prompt: 'Research a BTCUSDT trend strategy.', draft: draft() },
-        { client: { getCapabilities: async () => ({}) } },
-      ),
-      /requires a Traseq client/,
-    );
-  });
-
-  it('runs evaluate_research_result without a platform client', async () => {
-    const output = await runAgentTool('evaluate_research_result', {
-      result: researchResult(),
-    });
-
-    assert.equal(output.confidence, 'robust');
-    assert.equal(output.verdict.decision, 'keep_candidate');
-  });
-
-  it('runs format_research_report without a platform client', async () => {
-    const output = await runAgentTool('format_research_report', {
-      result: researchResult(),
-    });
-
-    assert.match(output.report, /Traseq Guided Research Memo/);
-    assert.match(output.report, /Verdict/);
   });
 
   it('runs guided tools through the local tool registry', async () => {
@@ -804,108 +738,6 @@ describe('agent workflow MCP tools', () => {
     assert.match(summary.report, /Recommended Next Step/);
   });
 
-  it('runs run_research_draft through the research runner using the supplied client', async () => {
-    const client = makeClient();
-    const output = await runAgentTool(
-      'run_research_draft',
-      {
-        prompt: 'Research a BTCUSDT trend strategy.',
-        draft: draft(),
-        instrument: 'BTCUSDT',
-        timeframe: '4h',
-      },
-      { client },
-    );
-
-    assert.equal(output.status, 'completed');
-    assert.equal(output.result.rounds[0].backtest.id, 'bt-1');
-    assert.equal(output.evaluation.confidence, 'robust');
-    assert.match(output.report, /Traseq Guided Research Memo/);
-    assert.ok(client.calls.includes('runBacktest'));
-    assert.ok(output.usageStatus, 'run_research_draft must return usageStatus');
-    assert.ok(['ok', 'low', 'exhausted'].includes(output.usageStatus.level));
-    assert.ok(Array.isArray(output.usageStatus.nextSteps));
-    assert.ok(Array.isArray(output.usageStatus.links));
-  });
-
-  it('forwards strategyId and forkedFromVersionId from run_research_draft into createStrategyVersion', async () => {
-    const base = makeClient();
-    const versionCalls = [];
-    const client = {
-      ...base,
-      get calls() {
-        return base.calls;
-      },
-      async createStrategyVersion(strategyId, payload) {
-        versionCalls.push({ strategyId, payload });
-        return base.createStrategyVersion(strategyId, payload);
-      },
-    };
-
-    const output = await runAgentTool(
-      'run_research_draft',
-      {
-        prompt: 'Resume iteration on an existing strategy.',
-        draft: draft(),
-        instrument: 'BTCUSDT',
-        timeframe: '4h',
-        strategyId: 'strategy-existing',
-        forkedFromVersionId: 'version-prior',
-      },
-      { client },
-    );
-
-    assert.equal(output.status, 'completed');
-    assert.ok(
-      !base.calls.includes('createStrategy'),
-      'createStrategy must be skipped when strategyId is supplied',
-    );
-    assert.equal(
-      versionCalls.length,
-      1,
-      'createStrategyVersion should run once',
-    );
-    assert.equal(versionCalls[0].strategyId, 'strategy-existing');
-    assert.equal(versionCalls[0].payload.forkedFromVersionId, 'version-prior');
-    assert.equal(
-      output.result.rounds[0].createdStrategyId,
-      'strategy-existing',
-    );
-    assert.equal(output.result.rounds[0].forkedFromVersionId, 'version-prior');
-  });
-
-  it('runs run_research_draft through the CLI run command with a platform client', async () => {
-    const result = await runCli(
-      [
-        'run',
-        '--tool',
-        'run_research_draft',
-        '--input',
-        JSON.stringify({
-          prompt: 'Research a BTCUSDT trend strategy.',
-          draft: draft(),
-          instrument: 'BTCUSDT',
-          timeframe: '4h',
-          pollIntervalMs: 1,
-          timeoutMs: 1_000,
-        }),
-      ],
-      {
-        env: {
-          NODE_OPTIONS: '--import ./test/mock-cli-fetch.mjs',
-          TRASEQ_AGENT_TEST_VALIDATION: 'ok',
-          TRASEQ_API_KEY: 'test-key',
-          TRASEQ_BASE_URL: 'https://api.test.local',
-        },
-      },
-    );
-
-    assert.equal(result.code, 0, result.stderr);
-    const parsed = JSON.parse(result.stdout);
-    assert.equal(parsed.status, 'completed');
-    assert.equal(parsed.result.rounds[0].backtest.id, 'bt-1');
-    assert.match(parsed.report, /Traseq Guided Research Memo/);
-  });
 });
 
 describe('report CLI', () => {

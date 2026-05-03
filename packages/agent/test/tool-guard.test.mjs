@@ -2,10 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { TraseqApiError } from '@traseq/sdk';
-import {
-  augmentToolError,
-  preflightToolArgs,
-} from '../dist/mcp/tool-guard.js';
+import { augmentToolError, preflightToolArgs } from '../dist/mcp/tool-guard.js';
 
 describe('preflightToolArgs', () => {
   it('passes through tools without registered preconditions', () => {
@@ -65,7 +62,9 @@ describe('augmentToolError', () => {
   });
 
   it('returns no augmentation for unrelated tools even with matching message', () => {
-    const error = makeApiError({ message: 'strategy version is not finalized' });
+    const error = makeApiError({
+      message: 'strategy version is not finalized',
+    });
     const result = augmentToolError('get_capabilities', error);
     assert.equal(
       result.extraNextSteps.length,
@@ -96,9 +95,7 @@ describe('augmentToolError', () => {
     const result = augmentToolError('create_strategy_version', error);
     assert.equal(result.hintCode, 'STRATEGY_VERSION_FORK_REQUIRED');
     assert.ok(
-      result.extraNextSteps.some((step) =>
-        step.toLowerCase().includes('fork'),
-      ),
+      result.extraNextSteps.some((step) => step.toLowerCase().includes('fork')),
     );
   });
 

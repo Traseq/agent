@@ -476,7 +476,7 @@ async function liveHandshakeCheck(
       title: 'MCP initialize handshake',
       status: 'red',
       detail: looksLikeFraming
-        ? `${target.source}: framing error during initialize — ${detail}. The configured server is using LSP-style framing while Claude Code expects NDJSON. This usually means \`npx\` is serving a stale 0.1.x cache.`
+        ? `${target.source}: framing error during initialize — ${detail}. The configured server is not speaking the expected NDJSON MCP transport.`
         : `${target.source}: ${detail}`,
       fix: 'Run `traseq-agent upgrade` to clear the npx cache and reinstall the latest @traseq/agent.',
     };

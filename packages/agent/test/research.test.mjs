@@ -4,14 +4,14 @@ import { runResearch } from '../dist/index.js';
 
 describe('runResearch', () => {
   it('creates a tool-first research brief without AI provider env', async () => {
-    const legacyProviderEnv = ['OPENAI', 'AI'].map(
+    const providerEnv = ['OPENAI', 'AI'].map(
       (prefix) => `${prefix}_API_KEY`,
     );
     const previousEnv = {
       TRASEQ_API_KEY: process.env.TRASEQ_API_KEY,
       TRASEQ_BASE_URL: process.env.TRASEQ_BASE_URL,
     };
-    for (const key of legacyProviderEnv) {
+    for (const key of providerEnv) {
       previousEnv[key] = process.env[key];
     }
     const previousFetch = globalThis.fetch;
@@ -58,7 +58,7 @@ describe('runResearch', () => {
 
       process.env.TRASEQ_API_KEY = 'test-key';
       process.env.TRASEQ_BASE_URL = 'https://api.test.local';
-      for (const key of legacyProviderEnv) {
+      for (const key of providerEnv) {
         delete process.env[key];
       }
 

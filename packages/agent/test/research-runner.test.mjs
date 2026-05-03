@@ -96,6 +96,20 @@ function makeClient(options = {}) {
       calls.push({ method: 'createStrategy', args: [payload] });
       return { id: 'strategy-1', versions: [{ id: 'draft-v1', version: 1 }] };
     },
+    async getStrategy(strategyId) {
+      calls.push({ method: 'getStrategy', args: [strategyId] });
+      return {
+        id: strategyId,
+        versions: [
+          {
+            id: 'version-ready-default',
+            version: 1,
+            status: 'ready',
+            createdAt: '2024-01-01T00:00:00.000Z',
+          },
+        ],
+      };
+    },
     async createStrategyVersion(strategyId, payload) {
       calls.push({
         method: 'createStrategyVersion',
@@ -453,7 +467,7 @@ describe('runResearchRunner', () => {
     assert.equal(result.championRound, 2);
   });
 
-  it('versions an existing strategy when strategyId is supplied (no createStrategy call)', async () => {
+  it('versions an existing strategy and resolves lineage when strategyId is supplied', async () => {
     const client = makeClient();
 
     const result = await runResearchRunner({
@@ -478,11 +492,119 @@ describe('runResearchRunner', () => {
     assert.equal(createVersionCall.args[0], 'strategy-existing');
     assert.equal(
       createVersionCall.args[1].forkedFromVersionId,
-      undefined,
-      'no forkedFromVersionId when caller did not seed lineage',
+      'version-ready-default',
+      'forkedFromVersionId should resolve from strategy detail',
     );
     assert.equal(result.rounds[0].createdStrategyId, 'strategy-existing');
-    assert.equal(result.rounds[0].forkedFromVersionId, undefined);
+    assert.equal(result.rounds[0].forkedFromVersionId, 'version-ready-default');
+  });
+
+  it('auto-resolves forkedFromVersionId from the latest ready version', async () => {
+    const client = makeClient();
+    client.getStrategy = async (strategyId) => {
+      client.calls.push({ method: 'getStrategy', args: [strategyId] });
+      return {
+        id: strategyId,
+        primaryVersion: {
+          id: 'version-ready-primary',
+          version: 2,
+          status: 'ready',
+          createdAt: '2024-01-02T00:00:00.000Z',
+        },
+        versions: [
+          {
+            id: 'version-draft',
+            version: 3,
+            status: 'draft',
+            createdAt: '2024-01-03T00:00:00.000Z',
+          },
+          {
+            id: 'version-ready-latest',
+            version: 4,
+            status: 'ready',
+            createdAt: '2024-01-04T00:00:00.000Z',
+          },
+          {
+            id: 'version-ready-old',
+            version: 1,
+            status: 'ready',
+            createdAt: '2024-01-01T00:00:00.000Z',
+          },
+        ],
+      };
+    };
+
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Continue iterating on an existing BTC strategy.',
+        rounds: 1,
+      },
+      strategyId: 'strategy-existing',
+      draftProducer: () => makeDraft('Auto-resolved iteration'),
+    });
+
+    assert.equal(result.status, 'completed');
+    const createVersionCall = client.calls.find(
+      (call) => call.method === 'createStrategyVersion',
+    );
+    assert.ok(createVersionCall, 'createStrategyVersion should be called');
+    assert.equal(createVersionCall.args[0], 'strategy-existing');
+    assert.equal(
+      createVersionCall.args[1].forkedFromVersionId,
+      'version-ready-latest',
+    );
+    assert.equal(result.rounds[0].forkedFromVersionId, 'version-ready-latest');
+    assert.ok(
+      result.rounds[0].logs.some(
+        (entry) =>
+          entry.step === 'lineage' &&
+          entry.message.includes('version-ready-latest'),
+      ),
+      'round logs should explain the auto-resolved lineage target',
+    );
+    assert.deepEqual(result.nextIterationSeed, {
+      strategyId: 'strategy-existing',
+      forkedFromVersionId: 'version-1',
+      round: 1,
+      strategyVersionNumber: 1,
+      backtestId: 'bt-1',
+    });
+  });
+
+  it('stops before writes when an existing strategy has no ready version to fork', async () => {
+    const client = makeClient();
+    client.getStrategy = async (strategyId) => {
+      client.calls.push({ method: 'getStrategy', args: [strategyId] });
+      return {
+        id: strategyId,
+        versions: [
+          {
+            id: 'version-draft',
+            version: 1,
+            status: 'draft',
+          },
+        ],
+      };
+    };
+
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Continue iterating on an existing BTC strategy.',
+        rounds: 1,
+      },
+      strategyId: 'strategy-existing',
+      draftProducer: () => makeDraft('Blocked iteration'),
+    });
+
+    assert.equal(result.status, 'failed');
+    assert.equal(result.failure.phase, 'context');
+    assert.match(result.failure.message, /no ready\/finalized/);
+    assert.ok(
+      !methodNames(client).includes('createStrategyVersion'),
+      'createStrategyVersion must not run without a forkable parent',
+    );
   });
 
   it('threads forkedFromVersionId into round 1 when caller seeds lineage', async () => {

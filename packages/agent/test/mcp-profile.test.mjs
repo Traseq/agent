@@ -9,7 +9,7 @@ import {
 } from '../dist/index.js';
 
 describe('mcp profile filter', () => {
-  it('parseMcpProfile defaults to hybrid and rejects removed profiles', () => {
+  it('parseMcpProfile defaults to hybrid and rejects unknown profiles', () => {
     assert.equal(parseMcpProfile(undefined), 'hybrid');
     assert.equal(parseMcpProfile('hybrid'), 'hybrid');
     assert.equal(parseMcpProfile('template'), 'template');

@@ -8,7 +8,6 @@ export {
   TraseqPublicApiError,
   explainTraseqError,
   formatTraseqAgentError,
-  normalizeStrategyDraft,
   preflightStrategyDraft,
   resolveInstrument,
   STRATEGY_AUTHORING_PAYLOAD_JSON_SCHEMA,

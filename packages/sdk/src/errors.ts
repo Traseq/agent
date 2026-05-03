@@ -138,16 +138,17 @@ export function explainTraseqError(
       };
     }
 
+    const backendCode =
+      typeof error.parsedBody?.errorCode === 'string'
+        ? error.parsedBody.errorCode
+        : undefined;
     return {
       status: error.status,
-      code:
-        typeof error.parsedBody?.errorCode === 'string'
-          ? error.parsedBody.errorCode
-          : 'traseq_request_failed',
+      code: backendCode ?? 'traseq_request_failed',
       category:
         (Array.isArray(error.parsedBody?.issues) &&
           error.parsedBody.issues.length > 0) ||
-        error.parsedBody?.errorCode === 'validation_failed'
+        backendCode === 'validation_failed'
           ? 'validation'
           : 'runtime',
       retryable: false,

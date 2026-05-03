@@ -488,6 +488,16 @@ function buildRoundMessages(
       : {}),
   });
 
+  if (result.nextIterationSeed) {
+    messages.push({
+      level: 'info',
+      title: 'Next iteration seed ready',
+      message:
+        'Use this seed for the next guided round so Traseq preserves strategy-version lineage without another lookup.',
+      nextAction: `Pass strategyId=${result.nextIterationSeed.strategyId} and forkedFromVersionId=${result.nextIterationSeed.forkedFromVersionId}.`,
+    });
+  }
+
   return messages;
 }
 
@@ -773,6 +783,9 @@ export async function runGuidedResearchRound(
     evidence: buildGuidedEvidence(result, evaluation),
     verdict: evaluation.verdict,
     usageStatus,
+    ...(result.nextIterationSeed
+      ? { nextIterationSeed: result.nextIterationSeed }
+      : {}),
     result,
     evaluation,
     report,

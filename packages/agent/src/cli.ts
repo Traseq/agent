@@ -215,7 +215,6 @@ function agentToolNeedsPlatformClient(
   input: JsonObject,
 ): boolean {
   return (
-    agentToolName === 'run_research_draft' ||
     agentToolName === 'start_research_engagement' ||
     agentToolName === 'run_guided_research_round' ||
     (agentToolName === 'resolve_strategy_semantics' &&
@@ -931,13 +930,6 @@ async function main(): Promise<void> {
       process.exitCode = code;
       break;
     }
-    case 'setup-mcp':
-    case 'mcp-doctor':
-      process.stderr.write(
-        `\`${subcommand}\` was removed in 0.2.0. Use \`traseq-agent install\`, \`traseq-agent doctor\`, or \`traseq-agent login\` instead.\nSee README 'Upgrading from 0.1.x' for migration steps.\n`,
-      );
-      process.exitCode = 1;
-      break;
     case 'mcp': {
       const { startMcpServer } = await import('./mcp/server.js');
       const { parseMcpProfile } = await import('./mcp/profile.js');

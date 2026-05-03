@@ -1,10 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  normalizeStrategyDraft,
-  resolveInstrument,
-  preflightStrategyDraft,
-} from '../dist/index.js';
+import { resolveInstrument, preflightStrategyDraft } from '../dist/index.js';
 
 const CAPABILITIES = {
   protocol: 'traseq.capabilities',
@@ -78,30 +74,7 @@ function draftWithNodes(nodes) {
   };
 }
 
-test('normalizeStrategyDraft preserves required SuperTrend top-level output', () => {
-  const draft = draftWithNodes([
-    {
-      id: 'st_dir',
-      kind: 'indicator',
-      indicator: 'supertrend',
-      args: { atr_length: 10, multiplier: 3 },
-      output: 'trend_direction',
-    },
-    {
-      id: 'st_bull',
-      kind: 'compare',
-      op: 'eq',
-      left: { ref: 'st_dir' },
-      right: { const: 1 },
-    },
-  ]);
-
-  const result = normalizeStrategyDraft(draft, CAPABILITIES);
-  assert.equal(result.changed, false);
-  assert.equal(result.draft.signalGraph.nodes[0].output, 'trend_direction');
-});
-
-test('normalizeStrategyDraft lifts SuperTrend args.output to top-level output', () => {
+test('preflightStrategyDraft rejects indicator output inside args', () => {
   const draft = draftWithNodes([
     {
       id: 'st_line',
@@ -123,13 +96,16 @@ test('normalizeStrategyDraft lifts SuperTrend args.output to top-level output', 
     },
   ]);
 
-  const result = normalizeStrategyDraft(draft, CAPABILITIES);
-  assert.equal(result.changed, true);
-  assert.equal(result.draft.signalGraph.nodes[0].output, 'supertrend');
-  assert.ok(!('output' in result.draft.signalGraph.nodes[0].args));
+  const result = preflightStrategyDraft(draft, CAPABILITIES);
+  assert.equal(result.valid, false);
+  assert.ok(
+    result.issues.some(
+      (issue) => issue.path === 'signalGraph.nodes[0].args.output',
+    ),
+  );
 });
 
-test('normalizeStrategyDraft does not invent missing required output', () => {
+test('preflightStrategyDraft rejects missing required indicator output', () => {
   const draft = draftWithNodes([
     {
       id: 'st_dir',
@@ -146,38 +122,13 @@ test('normalizeStrategyDraft does not invent missing required output', () => {
     },
   ]);
 
-  const normalized = normalizeStrategyDraft(draft, CAPABILITIES);
-  assert.equal(normalized.changed, false);
-  const preflight = preflightStrategyDraft(normalized.draft, CAPABILITIES);
+  const preflight = preflightStrategyDraft(draft, CAPABILITIES);
   assert.equal(preflight.valid, false);
   assert.ok(
     preflight.issues.some((issue) =>
       issue.message.includes('output is required for indicator "supertrend"'),
     ),
   );
-});
-
-test('normalizeStrategyDraft drops bogus output for single-output indicators', () => {
-  const draft = draftWithNodes([
-    {
-      id: 'ema_20',
-      kind: 'indicator',
-      indicator: 'ema',
-      args: { length: 20 },
-      output: 'value',
-    },
-    {
-      id: 'ema_above',
-      kind: 'compare',
-      op: 'gt',
-      left: { ref: 'ema_20' },
-      right: { const: 100 },
-    },
-  ]);
-
-  const result = normalizeStrategyDraft(draft, CAPABILITIES);
-  assert.equal(result.changed, true);
-  assert.ok(!('output' in result.draft.signalGraph.nodes[0]));
 });
 
 test('resolveInstrument resolves exact symbols and unique base aliases', () => {

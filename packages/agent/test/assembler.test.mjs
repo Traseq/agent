@@ -76,7 +76,7 @@ describe('getAgentContext', () => {
     assert.ok(templatesIdx < skillIdx, 'templates should come before skill');
   });
 
-  it('does not advertise legacy public authoring vocabulary', () => {
+  it('does not advertise unsupported public authoring vocabulary', () => {
     const context = getAgentContext();
     assert.doesNotMatch(context, /\bstrategyAst\b/);
     assert.doesNotMatch(context, /indicator parameters/i);

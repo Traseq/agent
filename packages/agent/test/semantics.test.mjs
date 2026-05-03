@@ -49,6 +49,18 @@ const FULL_CAPABILITIES = {
       ],
     },
     {
+      id: 'sma',
+      args: [
+        { name: 'length', type: 'integer', required: true, minimum: 1 },
+        {
+          name: 'source',
+          type: 'enum',
+          required: false,
+          enumValues: ['open', 'high', 'low', 'close', 'hl2', 'hlc3', 'ohlc4'],
+        },
+      ],
+    },
+    {
       id: 'rsi',
       args: [{ name: 'length', type: 'integer', required: true, minimum: 1 }],
     },
@@ -207,6 +219,20 @@ describe('semantic ontology', () => {
     assert.equal(rsi.tokens[1].type, 'cross_condition');
     assert.equal(rsi.tokens[2].type, 'constant_operand');
 
+    const goldenCross = recipeByImplementation.get('trend.sma_golden_cross');
+    assert.ok(goldenCross, 'trend.sma_golden_cross recipe exists');
+    assert.equal(goldenCross.tokens[0].params.name, 'sma');
+    assert.equal(goldenCross.tokens[0].params.args.length, 50);
+    assert.equal(goldenCross.tokens[1].params.crossOperator, 'cross_up');
+    assert.equal(goldenCross.tokens[2].params.args.length, 200);
+
+    const deathCross = recipeByImplementation.get(
+      'trend.sma_death_cross_exit',
+    );
+    assert.ok(deathCross, 'trend.sma_death_cross_exit recipe exists');
+    assert.equal(deathCross.role, 'exit');
+    assert.equal(deathCross.tokens[1].params.crossOperator, 'cross_down');
+
     const stop = recipeByImplementation.get('risk.percent_stop_loss');
     assert.equal(stop.produces, 'risk');
     assert.deepEqual(stop.tokens, []);
@@ -331,6 +357,30 @@ describe('semantic resolver', () => {
         (candidate) =>
           candidate.id === 'momentum.rsi_cross_up_30' &&
           candidate.status === 'recommended',
+      ),
+    );
+  });
+
+  it('resolves Golden Cross and Death Cross into SMA crossover recipes', () => {
+    const golden = resolve('golden cross 50 200 SMA long entry');
+    const goldenIds = candidateIds(golden);
+    assert.ok(goldenIds.includes('trend.sma_golden_cross'));
+    assert.ok(
+      golden.candidates.some(
+        (candidate) =>
+          candidate.id === 'trend.sma_golden_cross' &&
+          candidate.role === 'entry_trigger',
+      ),
+    );
+
+    const death = resolve('death cross 50 200 SMA exit');
+    const deathIds = candidateIds(death);
+    assert.ok(deathIds.includes('trend.sma_death_cross_exit'));
+    assert.ok(
+      death.candidates.some(
+        (candidate) =>
+          candidate.id === 'trend.sma_death_cross_exit' &&
+          candidate.role === 'exit',
       ),
     );
   });
@@ -466,9 +516,8 @@ describe('agent-local semantic tools', () => {
     assert.ok(names.includes('validate_token_block'));
     assert.ok(names.includes('assemble_strategy_from_blocks'));
     assert.ok(names.includes('resolve_strategy_semantics'));
-    assert.ok(names.includes('run_research_draft'));
-    assert.ok(names.includes('evaluate_research_result'));
-    assert.ok(names.includes('format_research_report'));
+    assert.ok(names.includes('run_guided_research_round'));
+    assert.ok(names.includes('summarize_research_engagement'));
   });
 
   it('returns read-only authoring examples without composing blocks', async () => {
@@ -684,6 +733,42 @@ describe('agent-local semantic tools', () => {
     );
   });
 
+  it('composes Golden Cross and Death Cross token blocks from recipe params', async () => {
+    const entry = await runAgentTool('compose_token_block', {
+      recipeId: 'trend.sma_golden_cross',
+      params: { fastLength: 40, slowLength: 180 },
+    });
+
+    assert.equal(entry.block.role, 'entry_trigger');
+    assert.equal(entry.block.name, 'Golden Cross');
+    assert.equal(entry.block.tokens[0].params.name, 'sma');
+    assert.equal(entry.block.tokens[0].params.args.length, 40);
+    assert.equal(entry.block.tokens[1].params.crossOperator, 'cross_up');
+    assert.equal(entry.block.tokens[2].params.args.length, 180);
+    assert.equal(
+      nodeById({ id: 'materialized', fragment: entry.fragment }, 'sma_fast')
+        .args.length,
+      40,
+    );
+    assert.equal(
+      nodeById({ id: 'materialized', fragment: entry.fragment }, 'sma_slow')
+        .args.length,
+      180,
+    );
+
+    const exit = await runAgentTool('compose_token_block', {
+      recipeId: 'trend.sma_death_cross_exit',
+      params: { fastLength: 40, slowLength: 180 },
+    });
+
+    assert.equal(exit.block.role, 'exit');
+    assert.equal(exit.block.name, 'Death Cross exit');
+    assert.equal(exit.block.tokens[1].params.crossOperator, 'cross_down');
+    assert.deepEqual(exit.fragment.assemblyHints.signalExit, {
+      ref: 'death_cross',
+    });
+  });
+
   it('uses recipe.displayName as the default block name (not the verbose summary)', async () => {
     const result = await runAgentTool('compose_token_block', {
       recipeId: 'momentum.rsi_cross_up_30',
@@ -801,31 +886,6 @@ describe('agent-local semantic tools', () => {
     assert.equal(calls, 1);
     assert.equal(result.valid, true);
     assert.equal(result.source, 'remote');
-  });
-
-  it('still accepts the legacy `period` alias and routes it to the rolling token', async () => {
-    let calls = 0;
-    const result = await runAgentTool(
-      'validate_token_block',
-      { recipeId: 'volume.volume_above_avg_20', params: { period: 45 } },
-      {
-        client: {
-          async validateBlock(payload) {
-            calls += 1;
-            assert.equal(payload.tokens[2].params.period, 45);
-            return {
-              valid: true,
-              role: payload.role,
-              tokens: payload.tokens,
-              issues: [],
-            };
-          },
-        },
-      },
-    );
-
-    assert.equal(calls, 1);
-    assert.equal(result.valid, true);
   });
 
   it('assembles a valid draft from recipe token blocks and risk hints', async () => {

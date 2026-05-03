@@ -337,6 +337,7 @@ export type ResearchRunnerClient = Pick<
   | 'createStrategy'
   | 'createStrategyVersion'
   | 'finalizeStrategyVersion'
+  | 'getStrategy'
   | 'runBacktest'
   | 'waitForBacktestCompletion'
 > &
@@ -420,6 +421,14 @@ export interface GuidedResearchRoundInput extends ResearchEngagementInput {
   forkedFromVersionId?: string;
 }
 
+export interface ResearchIterationSeed {
+  strategyId: string;
+  forkedFromVersionId: string;
+  round: number;
+  strategyVersionNumber?: number;
+  backtestId?: string;
+}
+
 export interface GuidedResearchEvidence {
   completedRounds: number;
   totalRounds: number;
@@ -435,6 +444,7 @@ export interface GuidedResearchRoundResult {
   evidence: GuidedResearchEvidence;
   verdict: ResearchVerdict;
   usageStatus: UsageStatus;
+  nextIterationSeed?: ResearchIterationSeed;
   result: ResearchRunnerResult;
   evaluation: ResearchResultEvaluation;
   report: string;
@@ -495,6 +505,7 @@ export interface ResearchRunnerRound {
   createdStrategyId?: string;
   createdStrategyVersionId?: string;
   finalizedStrategyVersionId?: string;
+  finalizedStrategyVersionNumber?: number;
   forkedFromVersionId?: string;
   /**
    * Pre-flight cost estimate captured between finalize and runBacktest.
@@ -533,6 +544,7 @@ export interface ResearchRunnerResult {
   summary: ResearchRunnerSummary;
   championRound?: number;
   status: ResearchRunnerStatus;
+  nextIterationSeed?: ResearchIterationSeed;
   failure?: ResearchRunnerFailure;
   warnings?: ValidationIssueLike[];
   repairAttempts?: RepairAttemptRecord[];

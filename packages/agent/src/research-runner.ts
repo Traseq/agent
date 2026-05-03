@@ -22,7 +22,6 @@ import {
   normalizeValidation,
   resolveBacktestRangeInPlace,
 } from './normalize.js';
-import { normalizeStrategyDraft } from './semantics/normalize-draft.js';
 import { augmentToolError } from './mcp/tool-guard.js';
 import { buildScoreBreakdown } from './scoring.js';
 import { normalizeRequest } from './research.js';
@@ -42,6 +41,7 @@ import type {
   ResearchRunnerRound,
   ResearchRunnerStatus,
   ResearchRunnerSummary,
+  ResearchIterationSeed,
   RepairAttemptRecord,
   ScoreBreakdown,
   StrategyDraftLike,
@@ -241,35 +241,27 @@ async function validateDraftForResearch(
   draft: StrategyDraftLike,
   capabilities: unknown,
 ): Promise<ValidatedDraftForResearch> {
-  // P-Vocab: pre-normalize indicator-arg vocabulary drift (period→length,
-  // misplaced args.output, etc.) so the producer doesn't have to spend a
-  // repair cycle on mechanical schema fixes. The normalized draft is what
-  // we hand back to the runner, so persist/backtest also see the clean
-  // version.
-  const normalized = normalizeStrategyDraft(draft, capabilities);
-  const effective = normalized.changed ? normalized.draft : draft;
-
   const preflight = normalizeValidation(
-    preflightStrategyDraft(effective, capabilities),
+    preflightStrategyDraft(draft, capabilities),
   );
   if (!preflight.valid) {
-    return { draft: effective, validation: preflight };
+    return { draft, validation: preflight };
   }
   const remote = normalizeValidation(
-    await client.validateStrategy(buildAuthoringPayload(effective)),
+    await client.validateStrategy(buildAuthoringPayload(draft)),
   );
   if (!remote.valid) {
-    return { draft: effective, validation: remote };
+    return { draft, validation: remote };
   }
 
   // Persistence preflight: covers fields the remote validate endpoint skips
   // (instrument symbol etc). Returns the same `ValidationSummaryLike` shape so
   // the runner's repair loop can react identically to a remote failure.
-  const persistence = preflightForPersistence(effective);
+  const persistence = preflightForPersistence(draft);
   if (!persistence.valid) {
-    return { draft: effective, validation: persistence };
+    return { draft, validation: persistence };
   }
-  return { draft: effective, validation: remote };
+  return { draft, validation: remote };
 }
 
 function versionNumberFrom(value: unknown): number | undefined {
@@ -313,6 +305,172 @@ function idFrom(value: unknown, context: string): string {
   }
 
   return rawId;
+}
+
+const FORKABLE_VERSION_STATUSES = new Set(['ready', 'finalized']);
+
+interface ForkableVersionCandidate {
+  id: string;
+  version?: number;
+  createdAt?: string;
+}
+
+interface ResolvedIterationTarget {
+  forkedFromVersionId: string;
+  strategyVersionNumber?: number;
+  source: 'explicit' | 'auto_latest_ready';
+}
+
+function createdAtSortValue(value: unknown): number {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return 0;
+  }
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function strategyVersionValues(strategy: Record<string, unknown>): unknown[] {
+  return [
+    ...(Array.isArray(strategy.versions) ? strategy.versions : []),
+    ...(asJsonObject(strategy.primaryVersion) ? [strategy.primaryVersion] : []),
+  ];
+}
+
+// Assumes Traseq version numbers are monotonically increasing per strategy and
+// only ever advance when a new draft is created — `ready`/`finalized` versions
+// are never re-numbered. If backend introduces rollback semantics that re-mark
+// older versions as `ready`, we'll fork from the lower number, which is wrong.
+// `createdAt` is the secondary key to keep behavior deterministic when version
+// is missing on either side.
+function selectLatestForkableVersion(
+  strategyDetail: unknown,
+): ForkableVersionCandidate | undefined {
+  const strategy = asJsonObject(strategyDetail);
+  if (!strategy) {
+    return undefined;
+  }
+
+  const seenIds = new Set<string>();
+  let best: ForkableVersionCandidate | undefined;
+
+  for (const value of strategyVersionValues(strategy)) {
+    const version = asJsonObject(value);
+    const id = asString(version?.id);
+    const status = asString(version?.status)?.toLowerCase();
+    if (!id || !status || !FORKABLE_VERSION_STATUSES.has(status)) {
+      continue;
+    }
+    if (seenIds.has(id)) {
+      continue;
+    }
+    seenIds.add(id);
+    const versionNumber = asNumber(version?.version);
+    const createdAt = asString(version?.createdAt);
+    const candidate: ForkableVersionCandidate = {
+      id,
+      ...(versionNumber !== undefined
+        ? { version: Math.round(versionNumber) }
+        : {}),
+      ...(createdAt ? { createdAt } : {}),
+    };
+    if (!best || compareForkableCandidates(candidate, best) > 0) {
+      best = candidate;
+    }
+  }
+
+  return best;
+}
+
+function compareForkableCandidates(
+  left: ForkableVersionCandidate,
+  right: ForkableVersionCandidate,
+): number {
+  const versionDelta = (left.version ?? 0) - (right.version ?? 0);
+  if (versionDelta !== 0) {
+    return versionDelta;
+  }
+  return (
+    createdAtSortValue(left.createdAt) - createdAtSortValue(right.createdAt)
+  );
+}
+
+// There is an inherent race between this `getStrategy` lookup and the eventual
+// `createStrategyVersion` call: a concurrent client could finalize a newer
+// version in between, in which case we'd fork from one generation behind.
+// Traseq versions are append-only, so the worst case is a stale parent
+// pointer, not corrupted data. Callers needing strict "fork from the very
+// latest" semantics should pass `forkedFromVersionId` explicitly.
+async function resolveInitialIterationTarget(
+  client: ResearchRunnerClient,
+  strategyId: string | undefined,
+  explicitForkedFromVersionId: string | undefined,
+): Promise<ResolvedIterationTarget | undefined> {
+  if (!strategyId) {
+    return undefined;
+  }
+  if (explicitForkedFromVersionId) {
+    return {
+      forkedFromVersionId: explicitForkedFromVersionId,
+      source: 'explicit',
+    };
+  }
+
+  const strategy = await client.getStrategy(strategyId);
+  const candidate = selectLatestForkableVersion(strategy);
+  if (!candidate) {
+    throw new Error(
+      `Could not auto-resolve forkedFromVersionId for strategyId "${strategyId}": no ready/finalized strategy version was found. Either omit strategyId to create a brand-new strategy, finalize an existing draft first, or pass forkedFromVersionId explicitly to fork from a specific draft.`,
+    );
+  }
+
+  return {
+    forkedFromVersionId: candidate.id,
+    ...(candidate.version !== undefined
+      ? { strategyVersionNumber: candidate.version }
+      : {}),
+    source: 'auto_latest_ready',
+  };
+}
+
+function nextIterationSeedFromRound(
+  round: ResearchRunnerRound,
+): ResearchIterationSeed | undefined {
+  if (round.status !== 'completed') {
+    return undefined;
+  }
+  if (!round.createdStrategyId || !round.finalizedStrategyVersionId) {
+    return undefined;
+  }
+
+  return {
+    strategyId: round.createdStrategyId,
+    forkedFromVersionId: round.finalizedStrategyVersionId,
+    round: round.round,
+    ...(round.finalizedStrategyVersionNumber !== undefined
+      ? { strategyVersionNumber: round.finalizedStrategyVersionNumber }
+      : {}),
+    ...(round.backtest?.id ? { backtestId: round.backtest.id } : {}),
+  };
+}
+
+// Walks rounds in reverse so partial-failure runs (round N completed, round
+// N+1 failed) still surface a usable seed pointing at the last successfully
+// finalized version. The next call can then resume iteration from there
+// without manually patching lineage.
+function buildNextIterationSeed(
+  rounds: readonly ResearchRunnerRound[],
+): ResearchIterationSeed | undefined {
+  for (let index = rounds.length - 1; index >= 0; index -= 1) {
+    const round = rounds[index];
+    if (!round) {
+      continue;
+    }
+    const seed = nextIterationSeedFromRound(round);
+    if (seed) {
+      return seed;
+    }
+  }
+  return undefined;
 }
 
 function createDraftContext(
@@ -405,6 +563,7 @@ function completeResult(args: {
   const summary = buildSummary(args.input, args.rounds, champion);
   const warnings =
     args.warnings ?? args.rounds.flatMap((round) => round.warnings ?? []);
+  const nextIterationSeed = buildNextIterationSeed(args.rounds);
 
   return {
     schemaVersion: RUNNER_SCHEMA_VERSION,
@@ -425,6 +584,7 @@ function completeResult(args: {
     summary,
     ...(champion ? { championRound: champion.round } : {}),
     status,
+    ...(nextIterationSeed ? { nextIterationSeed } : {}),
     ...(args.failure ? { failure: args.failure } : {}),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(args.repairAttempts && args.repairAttempts.length > 0
@@ -593,9 +753,8 @@ interface WarmupBumpResult {
 
 /**
  * Emit one log entry per runner-side normalization patch (range resolution,
- * warmup bump). Keeps the LLM's audit trail symmetric with the existing
- * vocabulary normalizer (`normalizeStrategyDraft`) — every implicit mutation
- * gets a log line so producers can see what the runner adjusted.
+ * warmup bump). Every implicit mutation gets a log line so producers can see
+ * what the runner adjusted.
  */
 function appendRunnerNormalizationLogs(
   round: number,
@@ -1244,21 +1403,61 @@ export async function runResearchRunner(
     });
   }
 
-  const rounds: ResearchRunnerRound[] = [];
   // Allow callers to continue iterating on an existing strategy. When set, the
   // first round skips `createStrategy` and persists as a new version, matching
   // the multi-round versioning path that subsequent rounds already use.
   let strategyId: string | undefined = options.strategyId;
+  let initialIterationTarget: ResolvedIterationTarget | undefined;
+  try {
+    initialIterationTarget = await resolveInitialIterationTarget(
+      client,
+      strategyId,
+      options.forkedFromVersionId,
+    );
+  } catch (caught) {
+    const failure = failureForPhase('context', caught, {
+      message: errorMessage(caught),
+      nextSteps: [
+        'Omit `strategyId` to start a brand-new strategy, or finalize an existing draft before iterating.',
+        'If you intentionally want to fork from a specific draft version, pass `forkedFromVersionId` explicitly.',
+      ],
+    });
+    return completeResult({
+      runId,
+      startedAt,
+      input,
+      live,
+      rounds: [],
+      failure,
+    });
+  }
+
+  const rounds: ResearchRunnerRound[] = [];
   // Seed the lineage chain so callers resuming on an existing strategy can
-  // record the prior finalized version as round 1's parent. Ignored when
-  // `strategyId` is absent — a brand-new strategy has nothing to fork from.
+  // record the prior finalized version as round 1's parent. The runner resolves
+  // the latest ready version itself when the caller does not supply an explicit
+  // fork target.
   let previousFinalizedVersionId: string | undefined =
-    options.strategyId && options.forkedFromVersionId
-      ? options.forkedFromVersionId
+    initialIterationTarget?.forkedFromVersionId;
+
+  // Pre-compute the auto-resolution log once so the round loop stays focused
+  // on per-round work and we don't re-check `round === 1` inside the try.
+  const autoResolveLog =
+    initialIterationTarget?.source === 'auto_latest_ready'
+      ? createLog(
+          1,
+          'lineage',
+          `Runner auto-resolved forkedFromVersionId=${initialIterationTarget.forkedFromVersionId}${
+            initialIterationTarget.strategyVersionNumber !== undefined
+              ? ` v${initialIterationTarget.strategyVersionNumber}`
+              : ''
+          } from the latest ready/finalized version for strategyId=${strategyId}.`,
+        )
       : undefined;
 
   for (let round = 1; round <= input.rounds; round++) {
     const logs: AgentStepLog[] = [
+      ...(round === 1 && autoResolveLog ? [autoResolveLog] : []),
       createLog(round, 'draft', 'Requesting a strategy draft from producer.'),
     ];
     const context = createDraftContext(runId, round, input, live, rounds);
@@ -1474,6 +1673,9 @@ export async function runResearchRunner(
         finalized,
         'finalizeStrategyVersion',
       );
+      const finalizedStrategyVersionNumber = asNumber(
+        asJsonObject(finalized)?.version,
+      );
 
       const estimate = await tryEstimateBacktestCost(client, draft.backtest);
       logs.push(createLog(round, 'estimate', estimate.message));
@@ -1515,6 +1717,13 @@ export async function runResearchRunner(
         ...(strategyId ? { createdStrategyId: strategyId } : {}),
         ...(createdStrategyVersionId ? { createdStrategyVersionId } : {}),
         finalizedStrategyVersionId,
+        ...(finalizedStrategyVersionNumber !== undefined
+          ? {
+              finalizedStrategyVersionNumber: Math.round(
+                finalizedStrategyVersionNumber,
+              ),
+            }
+          : {}),
         ...(forkedFromVersionId ? { forkedFromVersionId } : {}),
         ...(estimate.estimate ? { costEstimate: estimate.estimate } : {}),
         ...(finalizeWarnings.length > 0 ? { warnings: finalizeWarnings } : {}),

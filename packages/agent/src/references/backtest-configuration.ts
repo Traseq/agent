@@ -131,19 +131,6 @@ inputs.
   "range": { "start": "2022-01-01", "end": "2025-12-31" } }
 \`\`\`
 
-### Advanced: numeric epoch (legacy)
-
-The engine still accepts pre-resolved numeric epoch values. 10-digit values are
-treated as seconds (multiplied by 1000); 13-digit values are treated as
-milliseconds. Prefer ISO strings or relative durations for readability.
-
-\`\`\`json
-"range": {
-  "start": 1640995200000,
-  "end":   1767225599000
-}
-\`\`\`
-
 ## Complete Configuration Example
 
 \`\`\`json

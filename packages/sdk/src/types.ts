@@ -54,6 +54,12 @@ export interface TraseqPublicApiErrorBody {
   statusCode?: number;
   message?: string | string[];
   error?: string;
+  /**
+   * Backend i18n / domain error identifier (e.g. `validation_failed`,
+   * `STRATEGY_NOT_FINALIZED`). `publicAgent.code` is the preferred public
+   * contract; this field is the secondary signal still emitted by the
+   * NestJS exception filter and Zod validation pipe.
+   */
   errorCode?: string;
   path?: string;
   valid?: boolean;

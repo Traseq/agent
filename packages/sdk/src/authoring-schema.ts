@@ -5,7 +5,6 @@ import type {
   TraseqValidationIssue,
   TraseqValidationResponse,
 } from './types.js';
-import { normalizeStrategyDraft } from './capabilities.js';
 
 const TIMEFRAMES: Timeframe[] = ['15m', '1h', '4h', '1d'];
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -2158,7 +2157,7 @@ function validateNodeInputsFromCapabilities(
   });
 }
 
-const LEGACY_NODE_KINDS: Record<string, string> = {
+const UNSUPPORTED_NODE_KIND_HINTS: Record<string, string> = {
   price: 'Use kind: "market" with a field such as "close".',
 };
 
@@ -2187,27 +2186,31 @@ function validateNodeBase(
 }
 
 /**
- * Single source of truth for legacy public-authoring vocabulary the agent /
- * SDK no longer accepts. Runs *before* `validateNodeBase` so legacy kinds
- * surface a precise migration message instead of a generic "kind must be
- * one of" enum error.
+ * Single source of truth for unsupported public-authoring vocabulary the agent
+ * and SDK reject. Runs *before* `validateNodeBase` so unsupported kinds surface
+ * a precise remediation message instead of a generic "kind must be one of"
+ * enum error.
  *
- * Returns true when a legacy kind was matched so the caller can short-circuit.
+ * Returns true when an unsupported kind was matched so the caller can
+ * short-circuit.
  */
-function validateNoLegacyNodeFields(
+function validateUnsupportedNodeFields(
   path: string,
   node: Record<string, unknown>,
   issues: DraftSchemaIssue[],
 ): boolean {
-  let legacyKindMatched = false;
+  let unsupportedKindMatched = false;
 
-  if (typeof node.kind === 'string' && node.kind in LEGACY_NODE_KINDS) {
+  if (
+    typeof node.kind === 'string' &&
+    node.kind in UNSUPPORTED_NODE_KIND_HINTS
+  ) {
     pushIssue(
       issues,
       `${path}.kind`,
-      `${path}.kind is not supported. ${LEGACY_NODE_KINDS[node.kind]}`,
+      `${path}.kind is not supported. ${UNSUPPORTED_NODE_KIND_HINTS[node.kind]}`,
     );
-    legacyKindMatched = true;
+    unsupportedKindMatched = true;
   }
 
   if ('shift' in node) {
@@ -2226,7 +2229,7 @@ function validateNoLegacyNodeFields(
         `${path}.params is not supported on event nodes. Use ${path}.args.`,
       );
     }
-    return legacyKindMatched;
+    return unsupportedKindMatched;
   }
 
   if ('name' in node) {
@@ -2261,7 +2264,7 @@ function validateNoLegacyNodeFields(
     );
   }
 
-  return legacyKindMatched;
+  return unsupportedKindMatched;
 }
 
 function validateStrategyDefaults(
@@ -2625,8 +2628,12 @@ function validateNode(
     return null;
   }
 
-  const legacyKindMatched = validateNoLegacyNodeFields(path, node, issues);
-  if (legacyKindMatched) {
+  const unsupportedKindMatched = validateUnsupportedNodeFields(
+    path,
+    node,
+    issues,
+  );
+  if (unsupportedKindMatched) {
     return null;
   }
   const kind = validateNodeBase(path, node, issues);
@@ -3711,8 +3718,7 @@ export function preflightStrategyDraft(
   value: unknown,
   capabilities?: unknown,
 ): TraseqValidationResponse & { draft?: StrategyDraft } {
-  const normalized = normalizeStrategyDraft(value, capabilities);
-  const result = validateStrategyDraft(normalized.draft, capabilities);
+  const result = validateStrategyDraft(value, capabilities);
   if (result.ok) {
     return {
       valid: true,

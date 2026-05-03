@@ -50,6 +50,9 @@ export function emitToolCallEvent(event: ToolCallEvent): void {
 export function classifyError(error: unknown): ToolCallOutcome {
   if (error instanceof TraseqApiError) {
     const category = error.publicAgent?.category;
+    // `publicAgent.code` is the preferred public contract; fall back to the
+    // body-level `errorCode` so backend i18n / domain codes still flow into
+    // telemetry when the publicAgent envelope is missing.
     const code =
       error.publicAgent?.code ??
       (typeof error.parsedBody?.errorCode === 'string'

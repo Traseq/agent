@@ -1,8 +1,8 @@
 {
   "name": "@traseq/agent",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "type": "module",
-  "description": "Guided Traseq strategy research service kit with MCP setup, SDK wrappers, strategy context, scoring, and reports.",
+  "description": "Traseq MCP server, CLI, and SDK for AI-assisted trading strategy research, SignalGraph authoring, validation, backtesting workflows, and system template composition.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -13,8 +13,11 @@
   "keywords": [
     "trading",
     "backtesting",
+    "mcp",
+    "model-context-protocol",
     "ai-agent",
     "agent",
+    "strategy-research",
     "skill",
     "traseq"
   ],

@@ -390,7 +390,7 @@ export async function runDoctorCommand(
   }
   if (readBool(flags, 'fix')) {
     process.stderr.write(
-      '\n--fix is interactive; not yet automated for v0.2.0. Use the suggested commands above.\n',
+      '\n--fix is interactive; use the suggested commands above.\n',
     );
   }
   return exitCodeFromResults(results);

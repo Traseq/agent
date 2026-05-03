@@ -86,7 +86,7 @@ describe('explainValidationIssues', () => {
     );
   });
 
-  it('infers indicator_arg_period_alias from generic strategy_draft_schema issues', () => {
+  it('infers indicator_arg_period_unsupported from generic strategy_draft_schema issues', () => {
     const result = explainValidationIssues({
       validation: validation({
         signalGraph: [
@@ -100,7 +100,7 @@ describe('explainValidationIssues', () => {
         ],
       }),
     });
-    assert.equal(result.issues[0].code, 'indicator_arg_period_alias');
+    assert.equal(result.issues[0].code, 'indicator_arg_period_unsupported');
     assert.match(result.issues[0].suggestedFix, /Rename .* `period` to `length`/);
     assert.ok(
       result.guidance.some((line) => /args\.length/.test(line)),

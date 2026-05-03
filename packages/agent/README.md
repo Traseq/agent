@@ -1,6 +1,27 @@
 # @traseq/agent
 
-Guided strategy research service kit for Traseq.
+Traseq Agent is a Model Context Protocol (MCP) server, CLI, and SDK for
+AI-assisted trading strategy research in Traseq.
+
+Use it when you want an AI coding assistant or research agent to work against a
+Traseq workspace with API-scoped access.
+
+```sh
+npx -y --package @traseq/agent@latest traseq-agent setup
+```
+
+The setup wizard stores your Traseq API key in the OS keychain, detects
+supported MCP clients, and installs the Traseq MCP server without writing
+plaintext secrets into client config files.
+
+## Quick Start
+
+After setup, restart or reload your MCP client if the wizard asks you to. Then
+ask your agent:
+
+```text
+Use the Traseq MCP server to create a strategy.
+```
 
 `@traseq/agent` helps external agents guide users through a professional Traseq
 strategy research engagement: clarify the thesis, state assumptions, validate
@@ -14,14 +35,6 @@ material, and scoring helpers for lower-level automation.
 This package does not call an AI provider and does not place live orders. Your
 agent is responsible for reasoning and authoring strategy payloads; Traseq
 handles validation, persistence, backtests, analysis runs, and comparisons.
-
-## Breaking changes (0.2.x)
-
-If you are upgrading from 0.1.x, two API contracts have changed:
-
-- **Node.js 20 is now the minimum.** The `engines.node` field is `>=20`; Node 18 is no longer supported.
-- **`runResearchRunner` no longer throws on producer / persistence / backtest errors.** It always resolves with `{ status: 'failed', stopReason }` instead. Callers that wrap the function in `try/catch` will silently treat failed runs as success — switch to checking `result.status` and `result.stopReason`. New stop reasons: `context_failed`, `persistence_failed`. Existing reasons (`producer_timeout`, `producer_error`, `validation_failed`, `backtest_timeout`, `backtest_failed`) are unchanged.
-- **`ResearchRunnerRound.draft` and `ResearchRunnerRound.validation` are now optional.** A round can fail before either is produced (for example when the upfront context fetch returns `context_failed`). TypeScript consumers may need to add `?.` access or guards.
 
 ## Requirements
 
@@ -55,13 +68,14 @@ node packages/agent/dist/cli.js check-env
 
 ## MCP In 60 Seconds
 
-The fastest path is the interactive setup wizard, which probes your API key
-into the OS keychain, detects installed MCP clients, and installs the Traseq
-entry pointing at the keychain reference:
+The fastest path is the interactive setup wizard:
 
 ```sh
 npx -y --package @traseq/agent@latest traseq-agent setup
 ```
+
+It probes your API key into the OS keychain, detects installed MCP clients, and
+installs the Traseq entry pointing at the keychain reference.
 
 Manual two-step flow (non-interactive shells, scripts, CI):
 
@@ -86,10 +100,10 @@ traseq-agent install --target=file:-                 # print redacted JSON to st
 `install` writes `npx -y --package @traseq/agent@^<major>.<minor>.0 traseq-agent mcp`
 into the client config and sets `TRASEQ_API_KEY_REF=keychain:traseq/api-key`. The
 MCP server resolves the keychain reference at boot. **No plaintext API key ever
-hits the client config file.** If you really want the legacy inline form, pass
-`--inline` (the secret you currently have in your shell `TRASEQ_API_KEY` env is
-used) and accept the warning. For project-scoped `.mcp.json` the writer refuses
-inline secrets unless you also pass `--i-know-this-is-shared`.
+hits the client config file.** If an environment-only deployment intentionally
+needs plaintext config, pass `--inline` and accept the warning. For
+project-scoped `.mcp.json` the writer refuses inline secrets unless you also
+pass `--i-know-this-is-shared`.
 
 Diagnose any failure with `doctor`:
 
@@ -107,32 +121,8 @@ server shows `✗ failed`.
 After install, ask the client:
 
 ```text
-Use the Traseq MCP server. First call the MCP tool `start_research_engagement` with prompt "Validate a BTCUSDT 4h strategy idea." Do not search the repo; if the tool is unavailable, tell me the Traseq MCP server is not connected.
+Use the Traseq MCP server. First call the MCP tool `start_research_engagement` with prompt "Validate a BTCUSDT 4h strategy idea." Do not search the repo. If the tool is unavailable, tell me the Traseq MCP server is not connected.
 ```
-
-## Upgrading from 0.1.x
-
-0.2.0 is a clean break. The `setup-mcp` command and the `traseq-agent-mcp`
-binary are both gone; the stdio framing layer was rewritten on top of
-`@modelcontextprotocol/sdk` and secret handling moved to the OS keychain. Run
-this once to migrate cleanly:
-
-```sh
-# Remove every existing traseq MCP server, clear stale npx cache, reinstall fresh
-claude mcp remove --scope user traseq 2>/dev/null || true
-claude mcp remove --scope project traseq 2>/dev/null || true
-codex mcp remove traseq 2>/dev/null || true
-rm -rf "$(npm config get cache)/_npx" 2>/dev/null || true
-
-npx -y --package @traseq/agent@latest traseq-agent login
-npx -y --package @traseq/agent@latest traseq-agent install --target=claude-code:user
-npx -y --package @traseq/agent@latest traseq-agent doctor
-```
-
-If your previous `~/.claude.json` had a `trsq_live_*` key inlined under
-`mcpServers.traseq.env.TRASEQ_API_KEY`, treat it as exposed and rotate the key
-from the workspace API keys page. The 0.2.0 default never writes the live key
-to disk — only the keychain reference `keychain:traseq/api-key`.
 
 ## Guided SDK
 
@@ -233,10 +223,12 @@ traseq-agent run --tool get_capabilities
 traseq-agent run --tool get_semantics
 traseq-agent run --tool get_token_semantics
 traseq-agent run --tool compose_token_block --input '{"recipeId":"momentum.rsi_cross_up_30","params":{"threshold":30}}'
+traseq-agent run --tool compose_token_block --input '{"recipeId":"trend.sma_golden_cross","params":{"fastLength":50,"slowLength":200}}'
+traseq-agent run --tool compose_token_block --input '{"recipeId":"trend.sma_death_cross_exit","params":{"fastLength":50,"slowLength":200}}'
 traseq-agent run --tool resolve_strategy_semantics --input '{"prompt":"RSI oversold rebound"}'
 traseq-agent score --backtest-id <backtest-id>
 traseq-agent research --prompt "Research a BTCUSDT 4h trend-following strategy"
-traseq-agent setup-mcp --client codex --probe
+traseq-agent setup --target=codex:user
 traseq-agent mcp
 traseq-agent evaluate --stdin < research-result.json
 traseq-agent report --stdin < research-result.json > research-report.md
@@ -365,7 +357,7 @@ For block/template authoring, use the AST-first token grammar path:
 Recipes remain useful curated shortcuts:
 `get_token_semantics` → `compose_token_block` → `validate_token_block` is a
 macro layer over the grammar, not the source of truth. Raw token-first authoring
-is for existing blocks, migrations, and expert flows, and must pass grammar
+is for existing workspace blocks and expert flows, and must pass grammar
 validation. Tokens and blocks are a provenance/composition layer; public
 strategy writes still use SignalGraph v2.
 
@@ -386,20 +378,20 @@ Use it when the user expresses strategy meaning, such as:
 
 Available local tools:
 
-| Tool                               | Purpose                                                                  |
-| ---------------------------------- | ------------------------------------------------------------------------ |
-| `get_semantics`                    | Read the local semantic ontology and optional implementation fragments.  |
-| `get_token_grammar`                | Read the public AST/token grammar contract and tier-aware limits.        |
-| `materialize_token_ast`            | Compile `StrategyAstV1` or `BoolExpr` into legal `TokenDto`.             |
-| `validate_token_grammar_candidate` | Validate AST-first or token-first grammar candidates.                    |
-| `get_token_semantics`              | Read deterministic token recipe macros, roles, and recipe params.        |
-| `get_authoring_examples`           | Read reference examples for template/block, hybrid, and SG v2 paths.     |
-| `compose_token_block`              | Compose legal TokenDto + paired SignalGraph fragment from a recipe.      |
-| `validate_token_block`             | Validate recipe or raw block tokens locally/remotely when available.     |
-| `assemble_strategy_from_blocks`    | Assemble recipe/workspace blocks into a preflighted strategy draft.      |
-| `resolve_strategy_semantics`       | Resolve facets or prompt text into candidate `signalGraph` fragments.    |
-| `assemble_signal_graph`            | Assemble selected resolver fragments into a complete draft payload.      |
-| `preflight_strategy_draft`         | Validate schema, refs, types, and legacy vocabulary before remote calls. |
+| Tool                               | Purpose                                                                       |
+| ---------------------------------- | ----------------------------------------------------------------------------- |
+| `get_semantics`                    | Read the local semantic ontology and optional implementation fragments.       |
+| `get_token_grammar`                | Read the public AST/token grammar contract and tier-aware limits.             |
+| `materialize_token_ast`            | Compile `StrategyAstV1` or `BoolExpr` into legal `TokenDto`.                  |
+| `validate_token_grammar_candidate` | Validate AST-first or token-first grammar candidates.                         |
+| `get_token_semantics`              | Read deterministic token recipe macros, roles, and recipe params.             |
+| `get_authoring_examples`           | Read reference examples for template/block, hybrid, and SG v2 paths.          |
+| `compose_token_block`              | Compose legal TokenDto + paired SignalGraph fragment from a recipe.           |
+| `validate_token_block`             | Validate recipe or raw block tokens locally/remotely when available.          |
+| `assemble_strategy_from_blocks`    | Assemble recipe/workspace blocks into a preflighted strategy draft.           |
+| `resolve_strategy_semantics`       | Resolve facets or prompt text into candidate `signalGraph` fragments.         |
+| `assemble_signal_graph`            | Assemble selected resolver fragments into a complete draft payload.           |
+| `preflight_strategy_draft`         | Validate schema, refs, types, and unsupported vocabulary before remote calls. |
 
 The resolver output is intentionally not a complete strategy. It returns:
 
@@ -516,7 +508,7 @@ to a PR, or keep them in the current agent conversation.
 4. `get_capabilities`: load the live strategy authoring contract.
 5. `resolve_strategy_semantics`: map user intent to candidate fragments.
 6. `assemble_signal_graph`: compose selected fragments into a complete draft.
-7. `preflight_strategy_draft`: stop local schema/ref/type/legacy errors before
+7. `preflight_strategy_draft`: stop local schema/ref/type errors before
    remote calls.
 8. `validate_strategy`: repair finalize-grade payload issues before writes.
 9. `create_strategy` or `create_strategy_version`: persist a draft.
@@ -538,9 +530,6 @@ tools provide the smoother first path:
    and return a service memo in one auditable call.
 6. `summarize_research_engagement`: render saved runner JSON or guided results
    as a memo without network calls.
-
-The older `run_research_draft`, `evaluate_research_result`, and
-`format_research_report` tools remain available for automation compatibility.
 
 ## API Key Scopes
 

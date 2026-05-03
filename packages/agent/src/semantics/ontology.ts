@@ -73,6 +73,22 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     ['trend.ema_fast_above_slow'],
   ),
   facet(
+    'trend.sma_golden_cross',
+    'trend',
+    'entry_trigger',
+    'SMA(50) crossing above SMA(200) expresses a classic long-term bullish trend entry.',
+    ['golden cross', 'sma 50 200', '50 200 sma', 'sma crossover'],
+    ['trend.sma_golden_cross'],
+  ),
+  facet(
+    'trend.sma_death_cross_exit',
+    'trend',
+    'exit',
+    'SMA(50) crossing below SMA(200) exits a long Golden Cross trend-following position.',
+    ['death cross', 'sma 50 200 exit', 'cross below sma', 'sma crossover exit'],
+    ['trend.sma_death_cross_exit'],
+  ),
+  facet(
     'trend.supertrend_direction',
     'trend',
     'context_filter',
@@ -378,6 +394,103 @@ export const SEMANTIC_IMPLEMENTATIONS: readonly SemanticImplementationDefinition
       },
       validationHints: [
         'Use as a filter when another node provides the trigger.',
+      ],
+    }),
+    implementation({
+      id: 'trend.sma_golden_cross',
+      semanticIds: ['trend.sma_golden_cross'],
+      role: 'entry_trigger',
+      description: 'SMA(50) crosses above SMA(200).',
+      complexity: 'simple',
+      curatedPriority: 92,
+      requiredCapabilities: {
+        nodeKinds: ['indicator', 'cross'],
+        indicators: ['sma'],
+        operators: ['cross_up'],
+      },
+      fragment: {
+        nodes: [
+          {
+            id: 'sma_fast',
+            kind: 'indicator',
+            indicator: 'sma',
+            args: { length: 50, source: 'close' },
+          },
+          {
+            id: 'sma_slow',
+            kind: 'indicator',
+            indicator: 'sma',
+            args: { length: 200, source: 'close' },
+          },
+          {
+            id: 'golden_cross',
+            kind: 'cross',
+            op: 'cross_up',
+            left: { ref: 'sma_fast' },
+            right: { ref: 'sma_slow' },
+          },
+        ],
+        assemblyHints: { entryTrigger: { ref: 'golden_cross' } },
+        settingsHints: { warmupPeriod: 400 },
+      },
+      tradeoffs: {
+        strengths: [
+          'Classic educational long-term trend-following entry.',
+          'Low-frequency signal that is easy to inspect and explain.',
+        ],
+        risks: ['Lagging signal.', 'Can whipsaw in sideways markets.'],
+        assumptions: ['50/200 SMA on close is the intended Golden Cross.'],
+      },
+      validationHints: [
+        'Run a baseline backtest before tuning lengths or adding filters.',
+      ],
+    }),
+    implementation({
+      id: 'trend.sma_death_cross_exit',
+      semanticIds: ['trend.sma_death_cross_exit'],
+      role: 'exit',
+      description: 'SMA(50) crosses below SMA(200).',
+      complexity: 'simple',
+      curatedPriority: 84,
+      requiredCapabilities: {
+        nodeKinds: ['indicator', 'cross'],
+        indicators: ['sma'],
+        operators: ['cross_down'],
+      },
+      fragment: {
+        nodes: [
+          {
+            id: 'sma_fast',
+            kind: 'indicator',
+            indicator: 'sma',
+            args: { length: 50, source: 'close' },
+          },
+          {
+            id: 'sma_slow',
+            kind: 'indicator',
+            indicator: 'sma',
+            args: { length: 200, source: 'close' },
+          },
+          {
+            id: 'death_cross',
+            kind: 'cross',
+            op: 'cross_down',
+            left: { ref: 'sma_fast' },
+            right: { ref: 'sma_slow' },
+          },
+        ],
+        assemblyHints: { signalExit: { ref: 'death_cross' } },
+        settingsHints: { warmupPeriod: 400 },
+      },
+      tradeoffs: {
+        strengths: ['Pairs directly with the Golden Cross entry recipe.'],
+        risks: ['May exit late after fast reversals.'],
+        assumptions: [
+          'The strategy exits 100% of a long position on Death Cross.',
+        ],
+      },
+      validationHints: [
+        'Use as the signal exit for long Golden Cross trend-following templates.',
       ],
     }),
     implementation({

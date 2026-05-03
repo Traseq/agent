@@ -60,8 +60,8 @@ export interface SummarizeUsageHintsInput {
 /**
  * Resolve the frontend base URL for deeplink construction. Manifest is the
  * source of truth (the backend knows which frontend it's bound to); the
- * hardcoded constant is only the fallback for old API servers that predate
- * `manifest.appBaseUrl`, or for malformed values.
+ * hardcoded constant is only the fallback for missing or malformed
+ * `manifest.appBaseUrl` values.
  *
  * Defense-in-depth: the manifest comes from a trusted server, but a
  * misconfigured or buggy server could emit a non-http(s) value (e.g.

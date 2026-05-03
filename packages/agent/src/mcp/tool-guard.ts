@@ -78,9 +78,9 @@ export function preflightToolArgs(
  * Detect Traseq API errors caused by state-machine violations and rewrite
  * the rendered output to include an explicit guided-flow recovery hint.
  *
- * We look at three signals (in order):
+ * We look at these signals (in order):
  *   - `publicAgent.code` for known structured codes the API may emit
- *   - `parsedBody.errorCode` for legacy code shape
+ *   - `parsedBody.errorCode` for the backend i18n / domain code
  *   - error message + body string match for state-related phrases
  *
  * Returns the original error reference (for safeErrorMessage to format
@@ -110,7 +110,8 @@ const STATE_HINT_PATTERNS: ReadonlyArray<{
     hintCode: 'STRATEGY_VERSION_FORK_REQUIRED',
     nextSteps: [
       'Iterating on an existing strategy requires `forkedFromVersionId` pointing at the previous finalized version.',
-      'Call run_guided_research_round with both `strategyId` and `forkedFromVersionId` — it derives the fork target automatically when you pass the prior round result.',
+      'Prefer run_guided_research_round with `strategyId`; the runner auto-resolves the latest ready/finalized version and returns `nextIterationSeed` for the following round.',
+      'If you use a lower-level write tool, fetch the strategy detail and pass the previous version id as `forkedFromVersionId` explicitly.',
     ],
   },
   {

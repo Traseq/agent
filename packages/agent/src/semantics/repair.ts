@@ -93,11 +93,8 @@ const CODE_PROFILES: Record<
   },
   // Synthetic codes derived in `inferSyntheticCode` from SDK preflight issues
   // (which all carry `strategy_draft_schema`). They give the LLM specific
-  // remediation language for the most common indicator-arg drift cases —
-  // mostly the same ones `normalizeStrategyDraft` already auto-repairs, but
-  // some drafts skip normalize (raw validate_strategy calls, custom flows),
-  // so the explanations need to stand on their own.
-  indicator_arg_period_alias: {
+  // remediation language for the most common indicator-arg shape errors.
+  indicator_arg_period_unsupported: {
     humanReason:
       'Indicator nodes use `args.length` for the lookback window; `args.period` is reserved for `kind: "rolling"` nodes only.',
     suggestedFix:
@@ -173,7 +170,7 @@ function inferSyntheticCode(
   const indicatorIdPath = /^signalGraph\.nodes\[\d+\]\.indicator$/;
 
   if (indicatorArgsPath.test(path) && path.endsWith('.args.period')) {
-    return { code: 'indicator_arg_period_alias' };
+    return { code: 'indicator_arg_period_unsupported' };
   }
   if (indicatorArgsPath.test(path) && path.endsWith('.args.output')) {
     return { code: 'indicator_arg_output_misplaced' };
@@ -306,12 +303,12 @@ export function explainValidationIssues(input: {
   if (
     issues.some(
       (i) =>
-        i.code === 'indicator_arg_period_alias' ||
+        i.code === 'indicator_arg_period_unsupported' ||
         i.code === 'indicator_arg_output_misplaced',
     )
   ) {
     guidance.push(
-      'Indicator nodes use `args.length` and a top-level `output`. preflight_strategy_draft auto-normalizes both, but raw drafts going straight to validate_strategy must hand-fix them.',
+      'Indicator nodes use `args.length` and a top-level `output`. Fix unsupported indicator arg shapes before calling validate_strategy.',
     );
   }
   if (

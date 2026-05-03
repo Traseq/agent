@@ -11,7 +11,6 @@ import {
   type TraseqClient,
 } from '../client/index.js';
 import { asJsonObject, asNumber, asString } from '../normalize.js';
-import { evaluateResearchResult } from '../evaluation.js';
 import {
   runGuidedResearchRound,
   startResearchEngagement,
@@ -19,12 +18,8 @@ import {
   updateResearchEngagement,
   type ResearchEngagementPatch,
 } from '../guided-research.js';
-import { formatResearchReport } from '../report.js';
-import { runResearchRunner } from '../research-runner.js';
-import { summarizeUsageHints } from '../usage-hints.js';
 import { getSemantics, resolveStrategySemantics } from './resolver.js';
 import { explainValidationIssues, suggestMinimalRepairs } from './repair.js';
-import { normalizeStrategyDraft } from './normalize-draft.js';
 import { SEMANTIC_FACETS, SEMANTIC_IMPLEMENTATIONS } from './ontology.js';
 import {
   TOKEN_RECIPES,
@@ -70,9 +65,6 @@ export interface AgentToolDefinition {
     | 'start_research_engagement'
     | 'run_guided_research_round'
     | 'summarize_research_engagement'
-    | 'run_research_draft'
-    | 'evaluate_research_result'
-    | 'format_research_report'
     | 'explain_validation_issues'
     | 'suggest_minimal_repairs'
     | 'compose_strategy_from_template'
@@ -472,7 +464,7 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
   {
     name: 'run_guided_research_round',
     description:
-      'Run one externally-authored strategy draft as a guided research service round: validate, persist (create or version) only after validation, backtest, evaluate evidence, and return a service memo. Provider-agnostic; caller authors the draft. Pass `strategyId` when iterating on an existing strategy — the runner persists the draft as a new version under that id instead of creating a new strategy. Omit `strategyId` to create a brand-new strategy. Optionally pass `forkedFromVersionId` alongside `strategyId` to preserve lineage from a prior finalized version.',
+      'Run one externally-authored strategy draft as a guided research service round: validate, persist (create or version) only after validation, backtest, evaluate evidence, and return a service memo. Provider-agnostic; caller authors the draft. Pass `strategyId` when iterating on an existing strategy — the runner persists the draft as a new version under that id instead of creating a new strategy. Omit `strategyId` to create a brand-new strategy. Optionally pass `forkedFromVersionId` alongside `strategyId` to preserve lineage from a prior finalized version; when omitted, the runner auto-resolves the latest ready/finalized version and returns `nextIterationSeed` for the following round.',
     local: true,
     input_schema: objectSchema(
       {
@@ -498,50 +490,6 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
     name: 'summarize_research_engagement',
     description:
       'Render a guided research round or runResearchRunner result into a user-facing service memo. Pure local JSON tool.',
-    local: true,
-    input_schema: objectSchema(
-      {
-        result: objectProp,
-        evaluation: objectProp,
-      },
-      ['result'],
-    ),
-  },
-  {
-    name: 'run_research_draft',
-    description:
-      'Run one externally-authored strategy draft through validate, persist (create or version), finalize, backtest, wait, evaluate, and report. Single round, no validation-repair loop — caller is responsible for repairing rejected drafts. Pass `strategyId` to persist the draft as a new version under that strategy; omit it to create a brand-new strategy. Optionally pass `forkedFromVersionId` alongside `strategyId` to preserve lineage from a prior finalized version. Uses the configured Traseq client.',
-    local: true,
-    input_schema: objectSchema(
-      {
-        prompt: { type: 'string', minLength: PROMPT_MIN_LENGTH },
-        draft: objectProp,
-        instrument: stringProp,
-        timeframe: enumProp(TIMEFRAME_VALUES),
-        initialBalance: numberProp,
-        warmupPeriod: numberProp,
-        positionStyle: enumProp(POSITION_STYLE_VALUES),
-        maxConcurrentPositions: numberProp,
-        pollIntervalMs: numberProp,
-        timeoutMs: numberProp,
-        producerTimeoutMs: numberProp,
-        strategyId: stringProp,
-        forkedFromVersionId: stringProp,
-      },
-      ['prompt', 'draft'],
-    ),
-  },
-  {
-    name: 'evaluate_research_result',
-    description:
-      'Evaluate a runResearchRunner JSON result into confidence, risk flags, and a next decision. Pure local JSON tool.',
-    local: true,
-    input_schema: objectSchema({ result: objectProp }, ['result']),
-  },
-  {
-    name: 'format_research_report',
-    description:
-      'Format a runResearchRunner JSON result and optional evaluation into a human-readable Markdown report. Pure local JSON tool.',
     local: true,
     input_schema: objectSchema(
       {
@@ -650,10 +598,13 @@ function isResearchRunnerClient(
   }
 
   // Cheap runtime guard — runBacktest is the load-bearing method that
-  // distinguishes a research-capable client from a capabilities-only stub.
+  // distinguishes a research-capable client from a capabilities-only stub;
+  // getStrategy is required so iteration lineage never degrades to an
+  // un-forked createStrategyVersion call.
   // Full method coverage is enforced by the TypeScript signature at compile time.
   return (
-    typeof (client as { runBacktest?: unknown }).runBacktest === 'function'
+    typeof (client as { runBacktest?: unknown }).runBacktest === 'function' &&
+    typeof (client as { getStrategy?: unknown }).getStrategy === 'function'
   );
 }
 
@@ -991,14 +942,7 @@ function readRecipeParamRaw(
   supplied: Record<string, unknown>,
   param: TokenRecipeDefinition['params'][number],
 ): unknown {
-  // Canonical name wins; aliases are a transitional fallback so legacy
-  // callers that still pass e.g. `period` for a renamed `length` param keep
-  // working. Order-stable scan so the first declared alias is preferred.
-  if (param.name in supplied) return supplied[param.name];
-  for (const alias of param.aliases ?? []) {
-    if (alias in supplied) return supplied[alias];
-  }
-  return undefined;
+  return param.name in supplied ? supplied[param.name] : undefined;
 }
 
 function recipeParamValues(
@@ -1006,6 +950,20 @@ function recipeParamValues(
   rawParams: unknown,
 ): Record<string, string | number> {
   const supplied = asJsonObject(rawParams) ?? {};
+  // Aliases were removed so callers must use the canonical param name. If we
+  // silently fall back to defaults on misnamed keys, a caller passing
+  // `{ period: 45 }` to a recipe whose param is `length` would get
+  // `length: <default>` with `period` ignored — silent wrong-value, not a
+  // clear schema error. Reject unknown keys eagerly with the accepted set.
+  const accepted = new Set(recipe.params.map((p) => p.name));
+  const unknown = Object.keys(supplied).filter((key) => !accepted.has(key));
+  if (unknown.length > 0) {
+    const acceptedList =
+      recipe.params.map((p) => p.name).join(', ') || '(none)';
+    throw new Error(
+      `Unknown parameter(s) for ${recipe.recipeId}: ${unknown.join(', ')}. Accepted: ${acceptedList}.`,
+    );
+  }
   const values: Record<string, string | number> = {};
   for (const param of recipe.params) {
     const raw = readRecipeParamRaw(supplied, param);
@@ -1216,6 +1174,10 @@ function semanticSummaryForRecipe(
       return `Close is above EMA(${params.length}).`;
     case 'trend.ema_fast_above_slow':
       return `EMA(${params.fastLength}) is above EMA(${params.slowLength}).`;
+    case 'trend.sma_golden_cross':
+      return `SMA(${params.fastLength}) crosses above SMA(${params.slowLength}).`;
+    case 'trend.sma_death_cross_exit':
+      return `SMA(${params.fastLength}) crosses below SMA(${params.slowLength}).`;
     case 'trend.supertrend_bullish_regime':
       return `SuperTrend(${params.atrLength}, ${params.multiplier}) direction is bullish.`;
     case 'trend.supertrend_bearish_regime':
@@ -1287,6 +1249,22 @@ function materializeRecipe(
       if (slowLength !== undefined) {
         setTokenArgsLength(tokens, 2, slowLength);
         setFragmentIndicatorLength(fragment, 'ema', slowLength, 'ema_slow');
+        setWarmup(fragment, Math.max(50, Math.ceil(slowLength * 2)));
+      }
+      break;
+    }
+    case 'trend.sma_golden_cross':
+    case 'trend.sma_death_cross_exit': {
+      const fastLength = numberRecipeParam(params, 'fastLength');
+      const slowLength = numberRecipeParam(params, 'slowLength');
+      // tokens: [sma(fast), cross, sma(slow)] — fast=0, slow=2.
+      if (fastLength !== undefined) {
+        setTokenArgsLength(tokens, 0, fastLength);
+        setFragmentIndicatorLength(fragment, 'sma', fastLength, 'sma_fast');
+      }
+      if (slowLength !== undefined) {
+        setTokenArgsLength(tokens, 2, slowLength);
+        setFragmentIndicatorLength(fragment, 'sma', slowLength, 'sma_slow');
         setWarmup(fragment, Math.max(50, Math.ceil(slowLength * 2)));
       }
       break;
@@ -2257,32 +2235,14 @@ export async function runAgentTool(
         throw new Error('preflight_strategy_draft requires draft.');
       }
 
-      // P-Vocab: normalize first so deterministic vocabulary drift
-      // (`args.period`, misplaced `args.output`, etc.) does not show up as
-      // SDK schema errors the LLM has to manually patch. The normalize
-      // result is returned alongside the validation summary so callers can
-      // see exactly what was rewritten and surface it to the user.
-      const normalized = normalizeStrategyDraft(
-        draft as unknown as StrategyDraftLike,
-        input.capabilities,
-      );
-      const draftToValidate = normalized.changed
-        ? (normalized.draft as unknown as Record<string, unknown>)
-        : draft;
-      const result = preflightStrategyDraft(
-        draftToValidate,
-        input.capabilities,
-      );
+      const result = preflightStrategyDraft(draft, input.capabilities);
       // P2-I: tier-aware lint. The SDK preflight runs the structural schema;
       // we layer count-based capacity checks on top so the LLM sees "you have
       // 3 entry filters but free tier caps at 2" before validate_strategy
       // returns a 400 for the same reason. Warnings (severity: 'warning') are
       // additive — never flip valid:false — so callers can choose to ignore
       // and let the backend reconfirm.
-      const tierIssues = tierAwarePreflightIssues(
-        draftToValidate,
-        input.capabilities,
-      );
+      const tierIssues = tierAwarePreflightIssues(draft, input.capabilities);
       const baseIssues = result.issues ?? [];
       const baseSummary = result.summary ?? { errors: 0, warnings: 0 };
       const issues = [...baseIssues, ...tierIssues];
@@ -2295,15 +2255,6 @@ export async function runAgentTool(
         ...result,
         summary,
         issues,
-        ...(normalized.changed
-          ? {
-              normalize: {
-                applied: true,
-                patches: normalized.patches,
-                draft: normalized.draft,
-              },
-            }
-          : {}),
       };
     }
     case 'start_research_engagement': {
@@ -2375,118 +2326,6 @@ export async function runAgentTool(
           result as unknown as ResearchRunnerResult,
           evaluation as ResearchResultEvaluation | undefined,
         ),
-      };
-    }
-    case 'run_research_draft': {
-      if (!isResearchRunnerClient(options.client)) {
-        throw new Error(
-          'run_research_draft requires a Traseq client with research runner methods.',
-        );
-      }
-
-      const prompt = typeof input.prompt === 'string' ? input.prompt : '';
-      const draft = asJsonObject(input.draft);
-      if (prompt.trim().length < PROMPT_MIN_LENGTH) {
-        throw new Error(
-          `run_research_draft requires prompt of at least ${PROMPT_MIN_LENGTH} characters.`,
-        );
-      }
-      if (!draft) {
-        throw new Error('run_research_draft requires draft.');
-      }
-      if (
-        input.timeframe !== undefined &&
-        !TIMEFRAME_VALUES.includes(input.timeframe as Timeframe)
-      ) {
-        throw new Error(
-          `run_research_draft timeframe must be one of: ${TIMEFRAME_VALUES.join(', ')}.`,
-        );
-      }
-      if (
-        input.positionStyle !== undefined &&
-        !POSITION_STYLE_VALUES.includes(
-          input.positionStyle as (typeof POSITION_STYLE_VALUES)[number],
-        )
-      ) {
-        throw new Error(
-          `run_research_draft positionStyle must be one of: ${POSITION_STYLE_VALUES.join(', ')}.`,
-        );
-      }
-
-      const result = await runResearchRunner({
-        client: options.client,
-        input: {
-          prompt,
-          ...(typeof input.instrument === 'string'
-            ? { instrument: input.instrument }
-            : {}),
-          ...(typeof input.timeframe === 'string'
-            ? { timeframe: input.timeframe as Timeframe }
-            : {}),
-          ...(typeof input.initialBalance === 'number'
-            ? { initialBalance: input.initialBalance }
-            : {}),
-          ...(typeof input.warmupPeriod === 'number'
-            ? { warmupPeriod: input.warmupPeriod }
-            : {}),
-          ...(typeof input.positionStyle === 'string'
-            ? { positionStyle: input.positionStyle }
-            : {}),
-          ...(typeof input.maxConcurrentPositions === 'number'
-            ? { maxConcurrentPositions: input.maxConcurrentPositions }
-            : {}),
-          rounds: 1,
-        },
-        draftProducer: () => draft as unknown as StrategyDraftLike,
-        ...(typeof input.pollIntervalMs === 'number'
-          ? { pollIntervalMs: input.pollIntervalMs }
-          : {}),
-        ...(typeof input.timeoutMs === 'number'
-          ? { timeoutMs: input.timeoutMs }
-          : {}),
-        ...(typeof input.producerTimeoutMs === 'number'
-          ? { producerTimeoutMs: input.producerTimeoutMs }
-          : {}),
-        ...(typeof input.strategyId === 'string' && input.strategyId.length > 0
-          ? { strategyId: input.strategyId }
-          : {}),
-        ...(typeof input.forkedFromVersionId === 'string' &&
-        input.forkedFromVersionId.length > 0
-          ? { forkedFromVersionId: input.forkedFromVersionId }
-          : {}),
-      });
-      const evaluation = evaluateResearchResult(result);
-      const usageStatus = summarizeUsageHints({
-        usage: result.live.usage,
-        workspace: result.live.workspace,
-        manifest: result.live.manifest,
-      });
-      const report = formatResearchReport(result, evaluation, { usageStatus });
-
-      return { status: result.status, usageStatus, result, evaluation, report };
-    }
-    case 'evaluate_research_result': {
-      const result = asJsonObject(input.result);
-      if (!result) {
-        throw new Error('evaluate_research_result requires result.');
-      }
-
-      return evaluateResearchResult(result as unknown as ResearchRunnerResult);
-    }
-    case 'format_research_report': {
-      const result = asJsonObject(input.result);
-      if (!result) {
-        throw new Error('format_research_report requires result.');
-      }
-
-      const evaluation = asJsonObject(input.evaluation);
-      return {
-        report: evaluation
-          ? formatResearchReport(
-              result as unknown as ResearchRunnerResult,
-              evaluation as unknown as ResearchResultEvaluation,
-            )
-          : formatResearchReport(result as unknown as ResearchRunnerResult),
       };
     }
     case 'explain_validation_issues': {
@@ -2563,7 +2402,7 @@ export async function runAgentTool(
       const template = await client.getSystemStrategy(templateKey);
       if (!template?.signalGraph) {
         throw new Error(
-          `compose_strategy_from_template: template "${templateKey}" has no signalGraph (template may be deprecated or token-only).`,
+          `compose_strategy_from_template: template "${templateKey}" has no signalGraph available for composition.`,
         );
       }
       const overrideSettings = asJsonObject(input.settingsOverride) ?? {};

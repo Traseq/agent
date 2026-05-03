@@ -195,7 +195,7 @@ export function assembleSignalGraphDraft(
       issues.push(
         issue(
           `fragments[${fragmentIndex}].bindings`,
-          'Use assemblyHints instead of legacy fragment bindings.',
+          'Use assemblyHints instead of fragment bindings.',
         ),
       );
     }

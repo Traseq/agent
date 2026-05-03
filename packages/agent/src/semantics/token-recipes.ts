@@ -30,13 +30,11 @@ const numberParam = (
   name: string,
   description: string,
   defaultValue: number,
-  aliases?: readonly string[],
 ): TokenRecipeParameter => ({
   name,
   type: 'number',
   default: defaultValue,
   description,
-  ...(aliases && aliases.length > 0 ? { aliases: [...aliases] } : {}),
 });
 
 const token = (type: string, params?: Record<string, unknown>): TokenDto =>
@@ -105,6 +103,8 @@ const defaults = {
   close: market('close'),
   high: market('high'),
   volume: volume(),
+  sma50: price('sma', { length: 50, source: 'close' }),
+  sma200: price('sma', { length: 200, source: 'close' }),
   ema20: price('ema', { length: 20 }),
   ema50: price('ema', { length: 50 }),
   ema100: price('ema', { length: 100 }),
@@ -153,6 +153,34 @@ export const TOKEN_RECIPES: readonly TokenRecipeDefinition[] = [
     tokens: [defaults.ema20, compare('gt'), defaults.ema50],
   }),
   recipe({
+    recipeId: 'trend.sma_golden_cross',
+    implementationId: 'trend.sma_golden_cross',
+    role: 'entry_trigger',
+    produces: 'bool',
+    validAs: ['entry.trigger', 'entry.filter'],
+    displayName: 'Golden Cross',
+    semanticSummary: 'SMA(50) crosses above SMA(200).',
+    params: [
+      numberParam('fastLength', 'Fast SMA length.', 50),
+      numberParam('slowLength', 'Slow SMA length.', 200),
+    ],
+    tokens: [defaults.sma50, cross('cross_up'), defaults.sma200],
+  }),
+  recipe({
+    recipeId: 'trend.sma_death_cross_exit',
+    implementationId: 'trend.sma_death_cross_exit',
+    role: 'exit',
+    produces: 'bool',
+    validAs: ['strategy.exit.when'],
+    displayName: 'Death Cross exit',
+    semanticSummary: 'SMA(50) crosses below SMA(200).',
+    params: [
+      numberParam('fastLength', 'Fast SMA length.', 50),
+      numberParam('slowLength', 'Slow SMA length.', 200),
+    ],
+    tokens: [defaults.sma50, cross('cross_down'), defaults.sma200],
+  }),
+  recipe({
     recipeId: 'trend.supertrend_bullish_regime',
     implementationId: 'trend.supertrend_bullish_regime',
     role: 'context_filter',
@@ -161,10 +189,7 @@ export const TOKEN_RECIPES: readonly TokenRecipeDefinition[] = [
     displayName: 'SuperTrend bullish',
     semanticSummary: 'SuperTrend direction is bullish.',
     params: [
-      numberParam('atrLength', 'SuperTrend ATR lookback length.', 10, [
-        'length',
-        'atr_length',
-      ]),
+      numberParam('atrLength', 'SuperTrend ATR lookback length.', 10),
       numberParam('multiplier', 'SuperTrend ATR multiplier.', 3),
     ],
     tokens: [defaults.supertrendDirection, compare('eq'), constant(1)],
@@ -178,10 +203,7 @@ export const TOKEN_RECIPES: readonly TokenRecipeDefinition[] = [
     displayName: 'SuperTrend bearish',
     semanticSummary: 'SuperTrend direction is bearish.',
     params: [
-      numberParam('atrLength', 'SuperTrend ATR lookback length.', 10, [
-        'length',
-        'atr_length',
-      ]),
+      numberParam('atrLength', 'SuperTrend ATR lookback length.', 10),
       numberParam('multiplier', 'SuperTrend ATR multiplier.', 3),
     ],
     tokens: [defaults.supertrendDirection, compare('eq'), constant(-1)],
@@ -195,10 +217,7 @@ export const TOKEN_RECIPES: readonly TokenRecipeDefinition[] = [
     displayName: 'Close crosses up SuperTrend',
     semanticSummary: 'Close crosses above the SuperTrend line.',
     params: [
-      numberParam('atrLength', 'SuperTrend ATR lookback length.', 10, [
-        'length',
-        'atr_length',
-      ]),
+      numberParam('atrLength', 'SuperTrend ATR lookback length.', 10),
       numberParam('multiplier', 'SuperTrend ATR multiplier.', 3),
     ],
     tokens: [defaults.close, cross('cross_up'), defaults.supertrendLine],
@@ -212,10 +231,7 @@ export const TOKEN_RECIPES: readonly TokenRecipeDefinition[] = [
     displayName: 'Close crosses down SuperTrend',
     semanticSummary: 'Close crosses below the SuperTrend line.',
     params: [
-      numberParam('atrLength', 'SuperTrend ATR lookback length.', 10, [
-        'length',
-        'atr_length',
-      ]),
+      numberParam('atrLength', 'SuperTrend ATR lookback length.', 10),
       numberParam('multiplier', 'SuperTrend ATR multiplier.', 3),
     ],
     tokens: [defaults.close, cross('cross_down'), defaults.supertrendLine],
@@ -278,13 +294,7 @@ export const TOKEN_RECIPES: readonly TokenRecipeDefinition[] = [
     validAs: ['entry.trigger'],
     displayName: 'Range-high breakout',
     semanticSummary: 'Close crosses above the prior 20-bar high.',
-    // P-Vocab: canonical name is `length` (matches indicator vocabulary the
-    // LLM uses everywhere else); accept `period` as an alias because the
-    // rolling token internally still uses `period` and earlier recipes shipped
-    // with that name. Auto-normalize handles the same drift on raw drafts.
-    params: [
-      numberParam('length', 'Rolling high lookback length.', 20, ['period']),
-    ],
+    params: [numberParam('length', 'Rolling high lookback length.', 20)],
     tokens: [
       defaults.close,
       cross('cross_up'),
@@ -321,9 +331,7 @@ export const TOKEN_RECIPES: readonly TokenRecipeDefinition[] = [
     validAs: ['entry.filter', 'entry.confirmation_filter'],
     displayName: 'Volume above average',
     semanticSummary: 'Volume is above its 20-bar average.',
-    params: [
-      numberParam('length', 'Average volume lookback length.', 20, ['period']),
-    ],
+    params: [numberParam('length', 'Average volume lookback length.', 20)],
     tokens: [
       defaults.volume,
       compare('gt'),

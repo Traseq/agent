@@ -91,7 +91,7 @@ describe('redactEntry', () => {
   it('replaces inlined keys with <redacted>', () => {
     const entry = {
       command: 'npx',
-      args: ['-y', '--package', '@traseq/agent@^0.2.0', 'traseq-agent', 'mcp'],
+      args: ['-y', '--package', '@traseq/agent@^0.11.0', 'traseq-agent', 'mcp'],
       env: {
         TRASEQ_API_KEY: 'trsq_live_secret_value',
       },

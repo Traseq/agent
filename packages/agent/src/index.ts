@@ -67,11 +67,6 @@ export {
   explainValidationIssues,
   suggestMinimalRepairs,
 } from './semantics/repair.js';
-export { normalizeStrategyDraft } from './semantics/normalize-draft.js';
-export type {
-  DraftNormalizePatch,
-  NormalizeStrategyDraftResult,
-} from './semantics/normalize-draft.js';
 
 // Operational layer
 export { buildScoreBreakdown } from './scoring.js';
@@ -173,6 +168,7 @@ export type {
   ResearchRunnerRound,
   ResearchRunnerStatus,
   ResearchRunnerSummary,
+  ResearchIterationSeed,
   ResearchConfidence,
   ResearchDecision,
   ResearchEvidenceMetrics,

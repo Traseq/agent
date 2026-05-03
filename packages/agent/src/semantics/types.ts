@@ -62,12 +62,6 @@ export interface TokenRecipeParameter {
   default?: string | number;
   enumValues?: string[];
   description: string;
-  /**
-   * Alternate names accepted for the parameter. Lets callers pass legacy
-   * vocabulary (e.g. `period` for a renamed `length` param) without breaking
-   * round-trips. The canonical `name` always wins when both are present.
-   */
-  aliases?: string[];
 }
 
 export interface TokenRecipeDefinition {

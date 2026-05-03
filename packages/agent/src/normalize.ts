@@ -414,9 +414,9 @@ export function resolveBacktestRangeInPlace(
  *
  * Recognized lookback fields, in priority order:
  *   - `args.length`  (canonical indicator vocabulary)
- *   - `args.period`  (rolling nodes, plus pre-vocab-normalization indicators)
+ *   - `args.period`  (nested rolling/operator lookbacks)
  *   - `args.window`  (rolling nodes alternate)
- *   - `period`       (top-level on rolling nodes; some legacy shapes)
+ *   - `period`       (top-level on rolling nodes)
  *
  * Multi-indicator nodes (e.g. MACD with `fastLength`/`slowLength`/
  * `signalLength`) expose all three lengths under `args`; we scan every

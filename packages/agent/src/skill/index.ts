@@ -65,7 +65,7 @@ that implements the selected semantics.
    AST-first token grammar path for block/template work:
    \`get_token_grammar\` → \`materialize_token_ast\` →
    \`validate_token_grammar_candidate\` → \`assemble_strategy_from_blocks\`.
-   Use token-first raw streams only for existing blocks, migrations, or expert
+   Use token-first raw streams only for existing workspace blocks or expert
    flows, and always validate them before assembly.
 3. If you need candidate discovery first, call \`resolve_strategy_semantics\`
    with the extracted facets, constraints, and live capabilities. If facets are
@@ -183,8 +183,11 @@ See the **Iteration Playbook Reference** for a detailed decision tree.
 Core principles:
 - Change one variable at a time between iterations.
 - Document what changed and why for each version.
-- Use the \`forkedFromVersionId\` parameter when creating new versions to
-  maintain lineage.
+- Prefer the \`nextIterationSeed\` returned by \`run_guided_research_round\`
+  when starting the next version. It contains the \`strategyId\` and
+  \`forkedFromVersionId\` needed to maintain lineage.
+- If you use lower-level tools, pass \`forkedFromVersionId\` explicitly when
+  creating new versions.
 - After 3-5 iterations, step back and evaluate whether the original thesis
   is sound before continuing to tune.
 
