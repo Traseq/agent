@@ -58,12 +58,15 @@ that implements the selected semantics.
 1. Extract the user's intent into semantic facets before writing JSON. Identify
    roles such as entry trigger, confirmation filter, context filter, exit, risk,
    and sizing/execution.
-2. Prefer the AST-first token grammar path for guided work:
+2. Follow the authoring route returned by \`start_research_engagement\`.
+   Vague intent should start from templates, recipes, or editable blocks.
+   Concrete custom strategy logic should be authored directly as SG v2 with
+   \`assemble_signal_graph\` → \`preflight_strategy_draft\`. Use the
+   AST-first token grammar path for block/template work:
    \`get_token_grammar\` → \`materialize_token_ast\` →
    \`validate_token_grammar_candidate\` → \`assemble_strategy_from_blocks\`.
-   Author typed \`StrategyAstV1\` or \`BoolExpr\` and let Traseq materialize
-   legal \`TokenDto\`. Use token-first raw streams only for existing blocks,
-   migrations, or expert flows, and always validate them before assembly.
+   Use token-first raw streams only for existing blocks, migrations, or expert
+   flows, and always validate them before assembly.
 3. If you need candidate discovery first, call \`resolve_strategy_semantics\`
    with the extracted facets, constraints, and live capabilities. If facets are
    uncertain, include the prompt and ask the resolver for candidates rather than
@@ -74,8 +77,10 @@ that implements the selected semantics.
    priors; do not force the user into a predefined pattern when capabilities can
    express their intent compositionally.
 6. Recipes are semantic macros over the grammar, not the grammar source of
-   truth. Use \`get_token_semantics\` → \`compose_token_block\` →
-   \`validate_token_block\` when a curated recipe cleanly matches the thesis.
+   truth. Use \`get_authoring_examples\` for read-only examples. Use
+   \`get_token_semantics\` → \`compose_token_block\` →
+   \`validate_token_block\` only when a curated recipe exactly matches the
+   thesis. Do not force concrete custom logic into a recipe shape.
    For existing workspace blocks, read/list blocks and use the public
    compile/validate block endpoints through \`validate_token_block\` or
    \`assemble_strategy_from_blocks\`. Always supply an explicit role for

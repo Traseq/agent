@@ -238,6 +238,33 @@ export interface AutoAgentRequest {
 
 export type ResearchRiskTolerance = 'conservative' | 'moderate' | 'aggressive';
 
+export const AUTHORING_PREFERENCE_VALUES = [
+  'auto',
+  'template',
+  'block',
+  'hybrid',
+  'sg_v2',
+] as const;
+export type AuthoringPreference = (typeof AUTHORING_PREFERENCE_VALUES)[number];
+
+export const RESEARCH_INTENT_MATURITY_VALUES = [
+  'vague',
+  'exploratory',
+  'concrete',
+  'expert',
+] as const;
+export type ResearchIntentMaturity =
+  (typeof RESEARCH_INTENT_MATURITY_VALUES)[number];
+
+export const RESEARCH_RECOMMENDED_MODE_VALUES = [
+  'template',
+  'block',
+  'hybrid',
+  'sg_v2',
+] as const;
+export type ResearchRecommendedMode =
+  (typeof RESEARCH_RECOMMENDED_MODE_VALUES)[number];
+
 export interface ResearchEngagementInput {
   prompt: string;
   instrument?: string;
@@ -249,6 +276,7 @@ export interface ResearchEngagementInput {
   positionStyle?: 'single' | 'pyramid' | 'accumulate';
   maxConcurrentPositions?: number;
   riskTolerance?: ResearchRiskTolerance;
+  authoringPreference?: AuthoringPreference;
 }
 
 export interface ServiceMessage {
@@ -278,6 +306,12 @@ export interface ResearchEngagementBrief {
   serviceMessages: ServiceMessage[];
   decisionPoints: ResearchDecisionPoint[];
   authoringInstructions: string;
+  intentMaturity: ResearchIntentMaturity;
+  recommendedMode: ResearchRecommendedMode;
+  recommendedToolPath: string[];
+  fallbackToolPath: string[];
+  referenceTools: string[];
+  routingRationale: string;
   live: AutoAgentResearchResult['live'];
   usageStatus: UsageStatus;
   recommendedWorkflow: ResearchWorkflowStep[];
@@ -438,6 +472,18 @@ export interface ResearchRunnerRound {
   errors?: string[];
   validationIssues?: ValidationIssueLike[];
   repairAttempts?: RepairAttemptRecord[];
+  /**
+   * Recovery hint produced when the runner can pattern-match the failure
+   * (typically persistence or backtest stage) to a known guided-flow recovery
+   * step. Mirrors the `guidedFlowHint` shape used by `safeErrorMessage` in
+   * `mcp/server.ts` so MCP renderers can show the same affordance whether the
+   * failure came from a direct platform tool call or from inside a research
+   * round.
+   */
+  guidedFlowHint?: {
+    hintCode: string | null;
+    nextSteps: readonly string[];
+  };
 }
 
 export interface ResearchRunnerSummary {

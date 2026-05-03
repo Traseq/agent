@@ -28,10 +28,12 @@ import {
   getAgentToolDefinition,
   runAgentTool,
 } from '../semantics/index.js';
+import { GUIDED_TOOL_NAMES, GUIDED_TOOL_ORDER } from '../internal/literals.js';
 import { packageVersion } from '../install/version.js';
 import {
   DEFAULT_MCP_PROFILE,
-  GUIDED_AGENT_TOOL_NAMES,
+  agentToolNamesForProfile,
+  formatMcpProfileList,
   operationStage,
   parseMcpProfile,
   platformOperationsForProfile,
@@ -48,35 +50,184 @@ import {
   type ToolCallOutcome,
 } from './telemetry.js';
 
+/**
+ * Static documentation surfaced via `traseq://persistence-requirements`.
+ *
+ * Why static rather than fetched: `validateStrategy` (remote) only sees
+ * `{signalGraph, settings}` per `STRATEGY_AUTHORING_PAYLOAD_JSON_SCHEMA` in
+ * @traseq/sdk, but the persistence + backtest pipeline rejects drafts on
+ * additional fields (`backtest.signalInstrument.symbol`, `execution.feeModel`,
+ * `meta.source.editor`, etc.). Those fields ARE in the capability spec, but
+ * the validate-vs-persist gap is not obvious from the API alone — LLMs
+ * routinely pass validate and then fail persistence. This resource names the
+ * gap explicitly and points at the right discovery surface for each field,
+ * so the recovery loop is "read this, fix that one field" instead of "guess
+ * and retry".
+ *
+ * Update this when a new persistence-only requirement is added on the server.
+ */
+const PERSISTENCE_REQUIREMENTS_DOC = {
+  description:
+    'Fields enforced by Traseq persistence and backtest endpoints that the remote `validateStrategy` does NOT cover. A draft can pass `validate_strategy` (which inspects only `signalGraph + settings`) and still fail at `create_strategy_version`, `finalize_strategy_version`, or `run_backtest`. Each entry below names the field, why validate misses it, and the recovery action.',
+  validateChecks: ['signalGraph', 'settings'],
+  validateSkips: [
+    'backtest.* (entire section)',
+    'meta.source.* (server-owned provenance)',
+  ],
+  requirements: [
+    {
+      field: 'backtest.signalInstrument.symbol',
+      requiredAt: ['create_strategy_version', 'run_backtest'],
+      requiredByValidate: false,
+      reason:
+        'The remote validate endpoint does not see backtest config. Persistence and runBacktest both reject a missing or unknown symbol.',
+      discovery: 'traseq://instruments (or capabilities.instruments)',
+      legalValuesShape: 'Exact symbol strings, e.g. "BTCUSDT", "BNBUSDT".',
+      recovery:
+        "Read traseq://instruments, set `backtest.signalInstrument.symbol` to one of the listed symbols, and confirm `range.start` is at or after the symbol's `dataStart`.",
+    },
+    {
+      field: 'backtest.range.start / backtest.range.end',
+      requiredAt: ['run_backtest'],
+      requiredByValidate: false,
+      reason:
+        'Optional at runBacktest — when omitted, the engine covers the full available history for the instrument. When set, runBacktest accepts ISO dates ("2024-01-01"), relative durations ("1y", "6m", "30d", "2w", "ytd"), the symbolic tokens "now"/"inception", or numeric epoch (10-digit seconds or 13-digit milliseconds). Validate ignores this section entirely.',
+      discovery:
+        "traseq://instruments for the symbol's `dataStart` lower bound; the response\\'s runContext.resolvedRange echoes the {start, end} epoch ms the engine actually used.",
+      legalValuesShape:
+        "ISO date | relative duration | 'now' | 'inception' | 'ytd' | epoch seconds | epoch milliseconds. range.start must resolve to a value >= the symbol's `dataStart`. When both are set, range.start < range.end after resolution.",
+      recovery:
+        'Pass any supported form — runBacktest resolves it. The agent runner pre-resolves common forms client-side so persistence/preflight never see un-resolved strings (see `resolveRangePoint` in normalize). Do not pass candle indices.',
+    },
+    {
+      field: 'backtest.execution.feeModel',
+      requiredAt: [
+        'create_strategy_version',
+        'finalize_strategy_version',
+        'run_backtest',
+      ],
+      requiredByValidate: false,
+      reason:
+        'Validate does not check backtest config. The execution schema in capabilities documents the legal `feeModel` shape (`kind: "tiered_maker_taker"` with `tiers`).',
+      discovery:
+        'traseq://capabilities → look for `backtest.execution.feeModel` schema; or fork a system strategy via compose_strategy_from_template (templates carry valid feeModels).',
+      legalValuesShape:
+        '{ kind: "tiered_maker_taker", tiers: [{ minCumulativeNotional: number, makerRate: 0..1, takerRate: 0..1 }, ...] }',
+      recovery:
+        'Either copy a feeModel from a system template (preferred — it stays in sync with the venue) or build one from the capability spec. Do not invent rate values.',
+    },
+    {
+      field: 'meta.source.editor',
+      requiredAt: [
+        'create_strategy',
+        'create_strategy_version',
+        'finalize_strategy_version',
+      ],
+      requiredByValidate: false,
+      reason:
+        'Server-owned provenance enum. Values vary by deployment; the local repo lists `token-flow | text-dsl | ai | runtime-strategy | signal-graph`, but other deployments expose different sets (e.g. `workspace | ai-pasta | ai-pesto`). LLMs frequently pass a guessed string like `ai` or `llm`.',
+      discovery:
+        'traseq://capabilities → look for the source.editor enum, or run start_research_engagement which fills meta on the server side.',
+      legalValuesShape: 'Server-defined string enum (deployment-specific).',
+      recovery:
+        'Prefer omitting `meta.source.editor` entirely — start_research_engagement / run_guided_research_round set it correctly server-side. Only set it explicitly when the capability spec lists the value you intend to use.',
+    },
+  ],
+  notes: [
+    'When a draft passes validate but fails persistence, prefer fixing the field above to retrying. Validate is signalGraph + settings only.',
+    'When uncertain about any persistence-only field, re-fork a system template (compose_strategy_from_template) — they ship pre-validated for the persistence layer.',
+  ],
+} as const;
+
 export const GUIDED_RESEARCH_PROMPT_NAME = 'traseq_guided_research';
 export const GUIDED_RESEARCH_PROMPT_DESCRIPTION =
   'Start a Traseq guided strategy research engagement by calling the start_research_engagement MCP tool first.';
 
-const GUIDED_TOOL_ORDER = [
-  'start_research_engagement',
-  'run_guided_research_round',
-  'summarize_research_engagement',
-] as const;
-const GUIDED_TOOL_NAMES = new Set<string>(GUIDED_TOOL_ORDER);
-
 export const MCP_SERVICE_INSTRUCTIONS = [
   'Use Traseq as a guided strategy research service, not as a raw toolbox.',
-  '`Traseq research engagement` is this MCP tool workflow. When asked to validate or research a strategy, call the MCP tool start_research_engagement first; do not search the local repo or ask the user for an entry point.',
-  'Default flow: call start_research_engagement first, read token grammar, materialize AST-first token candidates or use deterministic recipes as macros, assemble_strategy_from_blocks, then run_guided_research_round to validate remotely, persist after validation, backtest, evaluate evidence, and return a memo.',
-  'For strategy composition, prefer get_token_grammar -> materialize_token_ast -> validate_token_grammar_candidate -> assemble_strategy_from_blocks. Use get_token_semantics -> compose_token_block for common semantic macros. Token-first raw streams are for existing blocks, migration, or expert flows and must validate before assembly. Tokens/blocks are provenance/composition; SignalGraph v2 remains the strategy write contract.',
-  'If start_research_engagement is not available, tell the user the Traseq MCP server is not connected or not enabled.',
+  '`Traseq research engagement` is this MCP tool workflow. When the active profile exposes start_research_engagement and the user asks to validate or research a strategy, call it first; do not search the local repo or ask the user for an entry point.',
+  'Default flow: call start_research_engagement first, then follow the returned recommendedToolPath. Vague intent should start from templates, recipes, or editable blocks. Concrete or expert strategy intent should be authored directly as SG v2, then preflighted before run_guided_research_round.',
+  'For strategy composition, use recipes/blocks only when they exactly preserve the user intent or when the user is exploring from templates. Do not force concrete custom logic into a recipe shape. Tokens/blocks are provenance/composition; SignalGraph v2 remains the strategy write contract.',
+  'If start_research_engagement should be available for the active workflow profile but is missing, tell the user the Traseq MCP server is not connected or not enabled.',
   'Show users the research task, assumptions, verdict, evidence, risk flags, Traseq app links, and next step. Do not lead with raw tool names or JSON.',
-  'Use lower-level platform tools only for advanced automation or when the guided tools cannot cover the requested workflow. Existing workspace/system blocks can be inspected with list_blocks/get_block and compiled/validated with compile_block/validate_block before assembly. Always pass an explicit role for workspace/raw token blocks.',
+  'Use lower-level platform tools only for advanced automation or when the recommended authoring path cannot cover the requested workflow. Existing workspace/system blocks can be inspected with list_blocks/get_block and compiled/validated with compile_block/validate_block before assembly. Always pass an explicit role for workspace/raw token blocks.',
   'Tier limits in Traseq are: research credits (USD/month), active strategy count, saved backtest count, and workspaces. Backtest period is NOT tier-limited; all tiers can run all available history. Only treat a failure as a plan/billing problem if the response carries `publicAgent.category` of `plan` or `usage`. Errors with `category: validation` are schema/parameter problems — re-read the relevant reference doc and fix the call, do not suggest the user upgrade.',
   'When validation fails, read `validationIssues` (or response body `issues`) for `code` / `path` / `severity` and fix the draft directly. Do not assume the platform is broken when validation reports issues; only escalate when issues are absent AND the response has no useful body.',
-  'If you need a write or destructive platform tool that is not exposed, ask the operator to enable `--profile=full`. Do not assume it is missing by accident — the server filters writes out of the default `guided` profile.',
+  '`validate_strategy` only checks `signalGraph + settings`. It does NOT cover the `backtest` section, `execution.feeModel`, `meta.source.editor`, or other persistence-stage fields. A draft that passes validate can still fail at `create_strategy_version` / `finalize_strategy_version` / `run_backtest`. When that happens, read `traseq://persistence-requirements` for the gap fields and recovery actions; do not retry blindly.',
+  'If you need a write or destructive platform tool that is not exposed, ask the operator to enable `--profile=full`. Do not assume it is missing by accident — non-full profiles filter writes out of tools/list.',
   '@traseq/agent does not call an AI provider, place live orders, or provide investment advice. Historical backtests are research evidence only.',
   'Destructive platform tools require confirm=true.',
   'Quick capability reference: timeframes are 15m, 1h, 4h, 1d. Market fields are open/high/low/close/hl2/hlc3/ohlc4/typical/median/volume. Operator categories: compare, cross, rolling, math, conflict policies. Patterns and indicators (~30+) are listed in the reference docs. For the authoritative current list call get_capabilities, or call start_research_engagement which dumps capabilities into the engagement context.',
   'Available instruments are Binance spot, USDT-quoted only. Each symbol has its own `dataStart` — a backtest range that begins before this date returns no candles, not a quota error, and the request is rejected with `category: validation`. Approximate set: BTCUSDT/ETHUSDT from 2017-08, XRPUSDT from 2017-11, ADAUSDT/TRXUSDT/BNBUSDT from 2018, LINKUSDT/DOGEUSDT from 2019, SOLUSDT from 2020, SUIUSDT from 2023. The authoritative list with exact dates lives in `capabilities.instruments` (read once via `traseq://capabilities`). Pass `signalInstrument.symbol` as one of those exact strings.',
   'Cacheable read-only data is exposed via MCP resources: `traseq://capabilities` (full capability spec, includes `instruments` with `dataStart`/`dataEnd`), `traseq://instruments` (instruments-only shortcut), and `traseq://system-strategies` (template index). Prefer reading these resources once per session over calling the equivalent tools on each turn — capabilities alone is large.',
-  'Backtest range fields use `range.start` and `range.end` in **epoch milliseconds** (UTC). Not `startDate/endDate`, not candle indices.',
+  'Backtest range fields use `range.start` and `range.end`. The runBacktest endpoint accepts flexible time inputs (ISO date "2024-01-01", relative duration "1y"/"6m"/"ytd", symbolic "now"/"inception", or numeric epoch in seconds or milliseconds). The response\'s `runContext.resolvedRange` echoes the {start,end} epoch ms the engine used. The agent runner additionally resolves common forms client-side before persistence so guided rounds work uniformly. Do NOT pass `startDate/endDate` or candle indices.',
 ].join('\n');
+
+const PROFILE_INSTRUCTIONS: Record<McpProfile, string> = {
+  hybrid:
+    'Current profile: hybrid. Lean default surface with one entry point per authoring path. For raw token-grammar inspection (materialize_token_ast / validate_token_grammar_candidate / get_token_grammar) restart with --profile=template. For SG v2 deep-dive (get_semantics) restart with --profile=authoring.',
+  template:
+    'Current profile: template. Token recipes, system templates, and editable blocks are exposed; direct SG v2 helpers (assemble_signal_graph / preflight_strategy_draft / suggest_minimal_repairs) are NOT. Do not advertise SG v2 paths to the user — restart with --profile=authoring or --profile=full if SG v2 is required.',
+  authoring:
+    'Current profile: authoring. Direct SG v2 helpers and the semantic resolver are exposed; recipe composers (compose_token_block / assemble_strategy_from_blocks) are NOT. Do not advertise recipe paths — restart with --profile=template or --profile=full if recipe composition is required.',
+  reference:
+    'Current profile: reference. Read-only examples, grammar, and semantics. Do NOT call composer or assembler tools (none are exposed). Use get_authoring_examples / get_token_grammar / get_token_semantics / get_semantics as reference material only.',
+  full: 'Current profile: full. Every agent tool and platform operation is exposed, including write/destructive ones. Continue to call start_research_engagement first and follow its recommendedToolPath unless the user explicitly requests a different exposed authoring path. Destructive platform tools still require confirm=true.',
+};
+
+function mcpServiceInstructionsForProfile(profile: McpProfile): string {
+  return `${MCP_SERVICE_INSTRUCTIONS}\n${PROFILE_INSTRUCTIONS[profile]}`;
+}
+
+/**
+ * Parse a JSON string, returning `undefined` if parsing fails. Used when
+ * wrapping a tool's text output into a structured envelope (with `warnings`)
+ * — if the inner text isn't valid JSON we leave it as a raw string so the
+ * envelope still serializes cleanly.
+ */
+function safeParseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * Compare the caller's tool args against the tool's input_schema.properties
+ * and return the list of top-level keys the schema does not declare. Returned
+ * as a `warnings` field on successful tool responses so agents can audit the
+ * exact keys their JSON included that the SDK / API will silently ignore.
+ *
+ * Why top-level only: the JSON Schemas in the operation registry routinely
+ * use `additionalProperties: false` at the root, and the persistence pipeline
+ * cares about whether unknown SHAPE fields landed at the wrong level. Going
+ * deeper (e.g. unknown keys inside `config.signalGraph.nodes[i].args`) is
+ * already handled by the dedicated normalizer in
+ * `normalizeStrategyDraft` / `validate_strategy`, and would generate noise
+ * for legitimately-passthrough sub-objects.
+ */
+function detectUnknownTopLevelArgs(
+  args: Record<string, unknown>,
+  inputSchema: Record<string, unknown> | undefined,
+): readonly string[] {
+  if (!inputSchema || typeof inputSchema !== 'object') return [];
+  const properties = (inputSchema as { properties?: unknown }).properties;
+  if (
+    !properties ||
+    typeof properties !== 'object' ||
+    Array.isArray(properties)
+  ) {
+    return [];
+  }
+  const declared = new Set(Object.keys(properties as Record<string, unknown>));
+  const additional = (inputSchema as { additionalProperties?: unknown })
+    .additionalProperties;
+  // When additionalProperties is true, the schema deliberately accepts extras
+  // (rare in this registry, but respected when present).
+  if (additional === true) return [];
+  return Object.keys(args).filter((key) => !declared.has(key));
+}
 
 /**
  * Render a tool failure into the MCP `text` content payload.
@@ -160,20 +311,20 @@ function preflightFailureContent(
 }
 
 function orderedAgentTools(profile: McpProfile = readProfileFromEnv()) {
-  const guidedHeadOrder = GUIDED_TOOL_ORDER.map((name) =>
-    getAgentToolDefinition(name),
-  ).filter((tool) => tool !== undefined);
-  // In guided mode, hide internal helpers (resolve/assemble/preflight/etc.)
-  // from tools/list — they are reachable inside run_guided_research_round and
-  // exposing every local helper pushes some clients into deferred-tool flows.
-  // Full mode still exposes everything so advanced operators can intervene
-  // step-by-step.
-  if (profile === 'guided') {
+  const allowedAgentTools = agentToolNamesForProfile(profile);
+  const guidedHeadOrder = GUIDED_TOOL_ORDER.flatMap((name) => {
+    const tool = getAgentToolDefinition(name);
+    if (!tool) return [];
+    if (allowedAgentTools !== undefined && !allowedAgentTools.has(tool.name)) {
+      return [];
+    }
+    return [tool];
+  });
+  if (allowedAgentTools) {
     const guidedHeadNames = new Set(guidedHeadOrder.map((tool) => tool.name));
     const tail = AGENT_TOOL_REGISTRY.filter(
       (tool) =>
-        GUIDED_AGENT_TOOL_NAMES.has(tool.name) &&
-        !guidedHeadNames.has(tool.name),
+        allowedAgentTools.has(tool.name) && !guidedHeadNames.has(tool.name),
     );
     return [...guidedHeadOrder, ...tail];
   }
@@ -343,7 +494,7 @@ export function buildMcpServer(
         prompts: { listChanged: false },
         resources: { listChanged: false },
       },
-      instructions: MCP_SERVICE_INSTRUCTIONS,
+      instructions: mcpServiceInstructionsForProfile(profile),
     },
   );
 
@@ -373,7 +524,7 @@ export function buildMcpServer(
         uri: 'traseq://capabilities',
         name: 'Traseq capability spec',
         description:
-          'Full capability document: indicators, operators, node kinds, timeframes, tier limits, and the instrument universe (each instrument carries its `dataStart`). Read once and cache; stable across a server lifetime.',
+          'Full capability document: indicators, operators, node kinds, timeframes, tier limits, and the instrument universe (each instrument carries its `dataStart`). Read once and cache; stable across a server lifetime. NOTE: capabilities reports the *signalGraph + settings + execution* schema. Some persistence-only requirements (e.g. `meta.source.editor` enum, default `execution.feeModel`) are documented separately in `traseq://persistence-requirements`.',
         mimeType: 'application/json',
       },
       {
@@ -388,6 +539,20 @@ export function buildMcpServer(
         name: 'Traseq system strategy index',
         description:
           'List of forkable strategy templates with key, name, category, and tags. Use compose_strategy_from_template to fork one.',
+        mimeType: 'application/json',
+      },
+      {
+        uri: 'traseq://persistence-requirements',
+        name: 'Traseq persistence requirements (validate-vs-persist gap)',
+        description:
+          'Fields enforced by the persistence + backtest pipeline that are NOT covered by `validateStrategy` (which only sees `signalGraph + settings`). Read this when an LLM-authored draft passes `validate_strategy` but fails at `create_strategy_version` / `finalize_strategy_version` / `run_backtest`. Lists each required field, its discovery surface, and the recovery action.',
+        mimeType: 'application/json',
+      },
+      {
+        uri: 'traseq://tool-schemas',
+        name: 'Traseq MCP tool input schemas',
+        description:
+          'Per-tool input JSON Schemas for every tool exposed by this MCP server in the current profile. Use to look up the legal field shape of a single tool (e.g. `run_backtest.config.range`) without enumerating the full tools/list payload. The same schemas are present on tools/list, but this resource is a smaller, cacheable read for agents that only need field-level introspection on one tool.',
         mimeType: 'application/json',
       },
     ],
@@ -407,6 +572,29 @@ export function buildMcpServer(
       }
       if (uri === 'traseq://system-strategies') {
         return JSON.stringify(await client.listSystemStrategies(), null, 2);
+      }
+      if (uri === 'traseq://persistence-requirements') {
+        return JSON.stringify(PERSISTENCE_REQUIREMENTS_DOC, null, 2);
+      }
+      if (uri === 'traseq://tool-schemas') {
+        const schemas = Object.fromEntries(
+          toToolList(profile).map((tool) => [
+            tool.name,
+            {
+              description: tool.description,
+              inputSchema: tool.inputSchema,
+            },
+          ]),
+        );
+        return JSON.stringify(
+          {
+            profile,
+            schemas,
+            note: 'Top-level keys not declared in `inputSchema.properties` are surfaced as `unknownArgs` warnings on tool responses (when the schema does not set `additionalProperties: true`). Read the per-tool schema before passing custom metadata fields.',
+          },
+          null,
+          2,
+        );
       }
       throw new McpError(
         ErrorCode.InvalidParams,
@@ -483,11 +671,55 @@ export function buildMcpServer(
       return preflightFailureContent(name, preflight);
     }
 
+    // Top-level unknown-arg detection: if the caller sent fields the tool's
+    // schema does not declare (and the schema isn't `additionalProperties:
+    // true`), we DO NOT reject — those fields would just be silently dropped
+    // by the SDK / API. Instead we surface them in a `warnings` array on the
+    // success response so agents can audit "why was my metadata not echoed
+    // back?" without reverse-engineering the schema. Computed once here so
+    // both agent-tool and platform-tool dispatch paths use the same list.
+    const schemaForTool = toToolList(profile).find(
+      (tool) => tool.name === name,
+    );
+    const unknownArgs = schemaForTool
+      ? detectUnknownTopLevelArgs(args, schemaForTool.inputSchema)
+      : [];
+    const buildSuccessPayload = (resultText: string) => {
+      if (unknownArgs.length === 0) {
+        return { content: [{ type: 'text', text: resultText }] };
+      }
+      const ignoredKeysList = unknownArgs
+        .map((key) => JSON.stringify(key))
+        .join(', ');
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                result: safeParseJson(resultText),
+                warnings: [
+                  {
+                    code: 'UNKNOWN_TOP_LEVEL_ARGS',
+                    ignoredKeys: unknownArgs,
+                    message: `${name} ignored ${unknownArgs.length} top-level arg key(s) not declared in its input schema: ${ignoredKeysList}. Read traseq://tool-schemas#${name} for the legal field list.`,
+                  },
+                ],
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    };
+
     const agentTool = getAgentToolDefinition(name);
     if (agentTool) {
+      const allowedAgentTools = agentToolNamesForProfile(profile);
       if (
-        profile === 'guided' &&
-        !GUIDED_AGENT_TOOL_NAMES.has(agentTool.name)
+        allowedAgentTools !== undefined &&
+        !allowedAgentTools.has(agentTool.name)
       ) {
         // Profile rejection throws — emit telemetry first so dashboards see it.
         log({
@@ -496,15 +728,13 @@ export function buildMcpServer(
         });
         throw new McpError(
           ErrorCode.InvalidParams,
-          `Tool "${name}" is an advanced agent helper and is not available in profile "guided". Use run_guided_research_round (which composes resolve/assemble/preflight internally) or restart with --profile=full to access this helper directly.`,
+          `Tool "${name}" is not available in profile "${profile}". Choose a profile that exposes this authoring path (${formatMcpProfileList()}) or restart with --profile=full for every agent helper.`,
         );
       }
       try {
         const result = await runAgentTool(agentTool.name, args, { client });
         log({ kind: 'success' });
-        return {
-          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-        };
+        return buildSuccessPayload(JSON.stringify(result, null, 2));
       } catch (error) {
         const augmentation = augmentToolError(name, error);
         log(
@@ -528,7 +758,7 @@ export function buildMcpServer(
       log({ kind: 'preflight_blocked', code: 'PROFILE_TOOL_HIDDEN' });
       throw new McpError(
         ErrorCode.InvalidParams,
-        `Tool "${name}" is not available in profile "${profile}". Restart the MCP server with --profile=full or set TRASEQ_MCP_PROFILE=full to enable advanced platform tools.`,
+        `Tool "${name}" is not available in profile "${profile}". Restart with one of: ${formatMcpProfileList()}. Write/destructive platform tools require --profile=full.`,
       );
     }
 
@@ -539,9 +769,7 @@ export function buildMcpServer(
         args,
       );
       log({ kind: 'success' });
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
+      return buildSuccessPayload(JSON.stringify(result, null, 2));
     } catch (error) {
       const augmentation = augmentToolError(name, error);
       log(

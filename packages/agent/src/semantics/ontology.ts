@@ -61,7 +61,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'trend',
     'context_filter',
     'Price trades above a moving average to express bullish trend regime.',
-    ['trend', 'uptrend', 'above ma', 'ema', 'sma', '趨勢', '多頭', '均線上方'],
+    ['trend', 'uptrend', 'above ma', 'ema', 'sma'],
     ['trend.close_above_ema_100'],
   ),
   facet(
@@ -69,7 +69,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'trend',
     'context_filter',
     'Fast moving average above slow moving average to express trend alignment.',
-    ['ma alignment', 'fast above slow', 'golden cross', '均線排列', '黃金交叉'],
+    ['ma alignment', 'fast above slow', 'golden cross'],
     ['trend.ema_fast_above_slow'],
   ),
   facet(
@@ -77,15 +77,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'momentum',
     'entry_trigger',
     'Momentum oscillator crosses back above a threshold.',
-    [
-      'reclaim',
-      'rsi reclaim',
-      'cross above',
-      'momentum',
-      '動能',
-      '站回',
-      '收復',
-    ],
+    ['reclaim', 'rsi reclaim', 'cross above', 'momentum'],
     ['momentum.rsi_cross_up_30'],
   ),
   facet(
@@ -93,7 +85,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'momentum',
     'entry_trigger',
     'MACD line crosses above signal line.',
-    ['macd', 'signal line', 'momentum cross', '動能交叉'],
+    ['macd', 'signal line', 'momentum cross'],
     ['momentum.macd_cross_signal'],
   ),
   facet(
@@ -101,15 +93,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'mean_reversion',
     'entry_trigger',
     'Oversold oscillator recovers and signals mean-reversion entry.',
-    [
-      'oversold',
-      'mean reversion',
-      'rsi 30',
-      'rebound',
-      '超賣',
-      '反彈',
-      '均值回歸',
-    ],
+    ['oversold', 'mean reversion', 'rsi 30', 'rebound'],
     ['momentum.rsi_cross_up_30'],
   ),
   facet(
@@ -117,7 +101,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'mean_reversion',
     'entry_trigger',
     'Price stretches below a mean and begins reverting.',
-    ['deviation', 'revert to mean', 'pullback', '偏離', '回歸', '拉回'],
+    ['deviation', 'revert to mean', 'pullback'],
     ['mean_reversion.close_near_ema_after_pullback'],
   ),
   facet(
@@ -125,15 +109,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'breakout',
     'entry_trigger',
     'Close breaks above a recent range high.',
-    [
-      'breakout',
-      'range high',
-      '20-bar high',
-      'previous high',
-      '突破',
-      '前高',
-      '區間高點',
-    ],
+    ['breakout', 'range high', '20-bar high', 'previous high'],
     ['breakout.close_crosses_20_high'],
   ),
   facet(
@@ -141,13 +117,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'breakout',
     'entry_trigger',
     'Close breaks a confirmed pivot high.',
-    [
-      'pivot breakout',
-      'swing high',
-      'structure breakout',
-      '結構突破',
-      '轉折高點',
-    ],
+    ['pivot breakout', 'swing high', 'structure breakout'],
     ['breakout.close_crosses_pivot_high'],
   ),
   facet(
@@ -155,7 +125,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'compression_range',
     'context_filter',
     'Range or volatility compresses before a breakout.',
-    ['compression', 'squeeze', 'narrow range', '壓縮', '收斂', '窄幅'],
+    ['compression', 'squeeze', 'narrow range'],
     ['compression.atr_below_average', 'stateful.compression_then_breakout'],
   ),
   facet(
@@ -163,14 +133,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'volume',
     'confirmation_filter',
     'Volume is higher than its recent average.',
-    [
-      'volume confirmation',
-      'relative volume',
-      'volume above average',
-      '放量',
-      '量能',
-      '成交量確認',
-    ],
+    ['volume confirmation', 'relative volume', 'volume above average'],
     ['volume.volume_above_avg_20'],
   ),
   facet(
@@ -178,7 +141,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'volume',
     'confirmation_filter',
     'Current volume spikes above recent maximum or baseline.',
-    ['volume spike', 'unusual volume', '爆量', '異常量'],
+    ['volume spike', 'unusual volume'],
     ['volume.volume_above_max_50'],
   ),
   facet(
@@ -186,7 +149,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'volatility',
     'context_filter',
     'ATR or volatility identifies tradable high/low-volatility regime.',
-    ['volatility regime', 'atr filter', '波動', '波動過濾'],
+    ['volatility regime', 'atr filter'],
     ['volatility.atr_above_avg_50'],
   ),
   facet(
@@ -194,7 +157,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'volatility',
     'confirmation_filter',
     'Volatility expands as a confirmation signal.',
-    ['volatility expansion', 'atr rising', '波動擴張', 'atr上升'],
+    ['volatility expansion', 'atr rising'],
     ['volatility.atr_crosses_avg_20'],
   ),
   facet(
@@ -202,7 +165,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'market_structure',
     'confirmation_filter',
     'A fresh pivot confirmation event marks market structure change.',
-    ['pivot confirmed', 'swing confirmed', '結構確認', 'pivot確認'],
+    ['pivot confirmed', 'swing confirmed'],
     ['structure.pivot_low_confirmed'],
   ),
   facet(
@@ -210,7 +173,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'market_structure',
     'confirmation_filter',
     'Recent pivot high exceeds the previous pivot high.',
-    ['higher high', 'market structure', '更高高點', '高點抬高'],
+    ['higher high', 'market structure'],
     ['structure.last_pivot_high_above_previous'],
   ),
   facet(
@@ -218,7 +181,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'temporal',
     'context_filter',
     'Restrict strategy evaluation to an execution session.',
-    ['session', 'trading hours', 'time filter', '時段', '交易時間'],
+    ['session', 'trading hours', 'time filter'],
     ['temporal.weekday_session'],
   ),
   facet(
@@ -226,7 +189,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'temporal',
     'context_filter',
     'Restrict strategy evaluation to selected weekdays.',
-    ['weekday', 'weekdays only', '星期', '週內'],
+    ['weekday', 'weekdays only'],
     ['temporal.weekday_session'],
   ),
   facet(
@@ -234,7 +197,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'stateful_setup',
     'entry_trigger',
     'A setup must occur before a later trigger.',
-    ['setup then trigger', 'sequence', '先', '之後', '然後', '先壓縮再突破'],
+    ['setup then trigger', 'sequence'],
     ['stateful.compression_then_breakout'],
   ),
   facet(
@@ -242,7 +205,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'stateful_setup',
     'entry_trigger',
     'A setup arms a later trigger for a limited number of bars.',
-    ['armed', 'ttl', 'within bars', '等待觸發', '有效期'],
+    ['armed', 'ttl', 'within bars'],
     ['stateful.pivot_event_arms_breakout'],
   ),
   facet(
@@ -250,15 +213,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'position_account_state',
     'exit',
     'Exit if a position has been open for too many bars.',
-    [
-      'bars since entry',
-      'time stop',
-      'holding bars',
-      '進場後',
-      '幾根',
-      '沒動',
-      '出場',
-    ],
+    ['bars since entry', 'time stop', 'holding bars'],
     ['position.exit_after_10_bars'],
   ),
   facet(
@@ -266,7 +221,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'position_account_state',
     'exit',
     'Exit or filter based on unrealized position PnL.',
-    ['pnl', 'unrealized', 'drawdown', '浮盈', '浮虧', '損益'],
+    ['pnl', 'unrealized', 'drawdown'],
     ['position.exit_unrealized_loss'],
   ),
   facet(
@@ -274,7 +229,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'risk_exit',
     'risk',
     'Attach a fixed-percent stop loss.',
-    ['stop loss', 'sl', 'risk', '停損', '風控'],
+    ['stop loss', 'sl', 'risk'],
     ['risk.percent_stop_loss'],
   ),
   facet(
@@ -282,7 +237,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'risk_exit',
     'risk',
     'Attach a fixed-percent take profit.',
-    ['take profit', 'tp', 'target', '停利', '目標價'],
+    ['take profit', 'tp', 'target'],
     ['risk.percent_take_profit'],
   ),
   facet(
@@ -290,7 +245,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'risk_exit',
     'risk',
     'Attach a trailing stop after price moves favorably.',
-    ['trailing', 'trail stop', '移動停損', '追蹤停損'],
+    ['trailing', 'trail stop'],
     ['risk.trailing_stop'],
   ),
   facet(
@@ -298,7 +253,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'sizing_execution',
     'risk',
     'Size entries as a percent of equity.',
-    ['percent equity', 'position size', 'sizing', '倉位', '資金比例'],
+    ['percent equity', 'position size', 'sizing'],
     ['sizing.percent_equity_10'],
   ),
   facet(
@@ -306,14 +261,7 @@ export const SEMANTIC_FACETS: readonly SemanticFacetDefinition[] = [
     'sizing_execution',
     'confirmation_filter',
     'Avoid chasing entries too far away from the trigger level.',
-    [
-      'do not chase',
-      'avoid chasing',
-      'not too far',
-      '不要追太遠',
-      '避免追高',
-      '距離',
-    ],
+    ['do not chase', 'avoid chasing', 'not too far'],
     ['execution.close_near_breakout_level'],
   ),
 ];

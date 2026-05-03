@@ -208,11 +208,6 @@ const CLIENT_METHOD_MAP = [
     path: '/public/v1/backtests/:param/progress',
   },
   {
-    method: 'getBacktestChartData',
-    verb: 'GET',
-    path: '/public/v1/backtests/:param/chart-data',
-  },
-  {
     method: 'getBacktestPricePreview',
     verb: 'GET',
     path: '/public/v1/backtests/:param/price-preview',

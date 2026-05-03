@@ -1,6 +1,6 @@
 {
   "name": "@traseq/agent",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "type": "module",
   "description": "Guided Traseq strategy research service kit with MCP setup, SDK wrappers, strategy context, scoring, and reports.",
   "license": "MIT",
@@ -90,8 +90,10 @@
     "sync": "node --import tsx scripts/sync-constants.ts",
     "build:sdk": "pnpm --dir ../sdk build",
     "build": "pnpm run build:sdk && tsc -p tsconfig.json",
+    "build:watch": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "check": "pnpm run build:sdk && tsc -p tsconfig.json --noEmit",
     "test": "pnpm run build && node --test ./test/*.test.mjs",
+    "test:fast": "tsc -p tsconfig.json && node --test ./test/*.test.mjs",
     "demo:context": "node --import tsx src/cli.ts context",
     "demo:context:skill": "node --import tsx src/cli.ts context --section skill",
     "demo:templates": "node --import tsx src/cli.ts templates",

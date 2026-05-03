@@ -125,4 +125,41 @@ describe('augmentToolError', () => {
     assert.equal(result.extraNextSteps.length, 0);
     assert.equal(result.hintCode, null);
   });
+
+  it('augments finalize warmup-too-low errors with WARMUP_TOO_LOW hint', () => {
+    const error = makeApiError({
+      message:
+        'warmupPeriod is shorter than the longest indicator lookback (200)',
+    });
+    const result = augmentToolError('finalize_strategy_version', error);
+    assert.equal(result.hintCode, 'WARMUP_TOO_LOW');
+    assert.ok(
+      result.extraNextSteps.some((step) =>
+        step.toLowerCase().includes('warmup'),
+      ),
+      'next steps must guide the LLM to bump warmup',
+    );
+  });
+
+  it('augments range/dataStart errors with BACKTEST_RANGE_INVALID hint', () => {
+    const error = makeApiError({
+      message: 'range.start is earlier than the symbol dataStart',
+    });
+    const result = augmentToolError('run_backtest', error);
+    assert.equal(result.hintCode, 'BACKTEST_RANGE_INVALID');
+    assert.ok(
+      result.extraNextSteps.some((step) =>
+        step.toLowerCase().includes('inception'),
+      ),
+      'next steps must remind the LLM that flexible time inputs are accepted',
+    );
+  });
+
+  it('augments range epoch-ms rejection messages with BACKTEST_RANGE_INVALID', () => {
+    const error = makeApiError({
+      message: 'config.range.start must be epoch milliseconds',
+    });
+    const result = augmentToolError('validate_strategy', error);
+    assert.equal(result.hintCode, 'BACKTEST_RANGE_INVALID');
+  });
 });

@@ -646,17 +646,6 @@ const OPERATIONS = [
     input_schema: objectSchema({ backtestId: stringProp }, ['backtestId']),
   },
   {
-    name: 'get_backtest_chart_data',
-    description: 'Get candles and indicator chart data for a backtest.',
-    endpoint: {
-      method: 'GET',
-      path: '/public/v1/backtests/{backtestId}/chart-data',
-    },
-    input_schema: objectSchema({ backtestId: stringProp }, ['backtestId'], {
-      additionalProperties: true,
-    }),
-  },
-  {
     name: 'get_backtest_price_preview',
     description: 'Get bucketed OHLC preview and trade density for a backtest.',
     endpoint: {

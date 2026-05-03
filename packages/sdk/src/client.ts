@@ -6,7 +6,6 @@ import type {
   BacktestListResponse,
   BlockListResponse,
   CapabilityDocument,
-  ChartDataResponse,
   ComparisonSetDetail,
   ComparisonSetListResponse,
   ComparisonSetRequest,
@@ -485,16 +484,6 @@ export class TraseqClient {
     return this.request<JsonObject>(
       'GET',
       `/public/v1/backtests/${encodeURIComponent(backtestId)}/progress`,
-    );
-  }
-
-  getBacktestChartData(
-    backtestId: string,
-    query?: QueryParams,
-  ): Promise<ChartDataResponse> {
-    return this.request<ChartDataResponse>(
-      'GET',
-      `/public/v1/backtests/${encodeURIComponent(backtestId)}/chart-data${buildQuery(query)}`,
     );
   }
 

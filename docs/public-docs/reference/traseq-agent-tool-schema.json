@@ -2379,24 +2379,6 @@
     }
   },
   {
-    "name": "get_backtest_chart_data",
-    "description": "Get candles and indicator chart data for a backtest.",
-    "endpoint": {
-      "method": "GET",
-      "path": "/public/v1/backtests/{backtestId}/chart-data"
-    },
-    "input_schema": {
-      "type": "object",
-      "additionalProperties": true,
-      "required": ["backtestId"],
-      "properties": {
-        "backtestId": {
-          "type": "string"
-        }
-      }
-    }
-  },
-  {
     "name": "get_backtest_price_preview",
     "description": "Get bucketed OHLC preview and trade density for a backtest.",
     "endpoint": {

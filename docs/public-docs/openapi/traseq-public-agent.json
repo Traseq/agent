@@ -76,7 +76,6 @@
                         "analysis_runs_write",
                         "comparison_sets_read",
                         "comparison_sets_write",
-                        "market_read",
                         "signal_monitors_read",
                         "signal_monitors_write",
                         "signal_events_read",
@@ -96,8 +95,7 @@
                       "analysis_runs_read",
                       "analysis_runs_write",
                       "comparison_sets_read",
-                      "comparison_sets_write",
-                      "market_read"
+                      "comparison_sets_write"
                     ]
                   },
                   "expiresAt": {
@@ -12583,49 +12581,6 @@
           }
         ],
         "summary": "Get backtest progress",
-        "tags": ["Agent API"]
-      }
-    },
-    "/public/v1/backtests/{id}/chart-data": {
-      "get": {
-        "operationId": "PublicOpenApiController_getBacktestChartData",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "includeEquityCurve",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "includeTrades",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Backtest chart data"
-          }
-        },
-        "security": [
-          {
-            "traseq-api-key": []
-          }
-        ],
-        "summary": "Get chart data for a backtest",
         "tags": ["Agent API"]
       }
     },

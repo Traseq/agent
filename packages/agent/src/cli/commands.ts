@@ -16,6 +16,11 @@ import {
   type InstallTarget,
 } from '../install/index.js';
 import { packagePin, packageVersion } from '../install/version.js';
+import {
+  DEFAULT_MCP_PROFILE,
+  parseMcpProfile,
+  type McpProfile,
+} from '../mcp/profile.js';
 import { probeTraseqMcpSetup } from '../mcp/probe.js';
 import {
   DEFAULT_SECRET_REF,
@@ -229,7 +234,7 @@ interface InstallFlags {
   packageVersion?: string;
   acknowledgeShared: boolean;
   dryRun: boolean;
-  profile: 'guided' | 'full';
+  profile: McpProfile;
 }
 
 function parseInstallFlags(argv: readonly string[]): InstallFlags {
@@ -254,7 +259,10 @@ function parseInstallFlags(argv: readonly string[]): InstallFlags {
       : {}),
     acknowledgeShared: readBool(flags, 'i-know-this-is-shared'),
     dryRun: readBool(flags, 'dry-run'),
-    profile: readFlag(flags, 'profile') === 'full' ? 'full' : 'guided',
+    profile:
+      readFlag(flags, 'profile') !== undefined
+        ? parseMcpProfile(readFlag(flags, 'profile'))
+        : DEFAULT_MCP_PROFILE,
   };
 }
 

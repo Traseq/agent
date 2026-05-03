@@ -118,7 +118,7 @@ function printUsage(): void {
       '  events listen --mode poll [--once] [--adapter <name|path>]  Poll neutral condition events and run a local adapter.',
       '  events serve-webhook --port 8787 [--adapter <name|path>]   Serve a signed local webhook bridge.',
       '  events test-adapter ./adapter.js                 Run a neutral test event through a local adapter.',
-      '  setup [--target=<client>:<location>] [--profile=guided|full] [--api-key <key>]',
+      '  setup [--target=<client>:<location>] [--profile=hybrid|template|authoring|reference|full] [--api-key <key>]',
       '                                                  Interactive wizard: probe key → install → doctor. Recommended first-time path.',
       '  login [--api-key <key>] [--store keychain|env|inline]',
       '                                                  Probe an API key and persist it to the OS keychain (default).',

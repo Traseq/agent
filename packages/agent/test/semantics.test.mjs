@@ -290,7 +290,7 @@ describe('semantic ontology', () => {
 
 describe('semantic resolver', () => {
   it('resolves breakout with no-chase semantics', () => {
-    const result = resolve('突破前高但不要追太遠');
+    const result = resolve('breakout above previous high but do not chase');
     const ids = candidateIds(result);
 
     assert.ok(ids.includes('breakout.close_crosses_20_high'));
@@ -308,7 +308,7 @@ describe('semantic resolver', () => {
   });
 
   it('resolves RSI oversold rebound into oscillator reclaim', () => {
-    const result = resolve('RSI 超賣反彈');
+    const result = resolve('RSI oversold rebound reclaim');
     const ids = candidateIds(result);
 
     assert.ok(ids.includes('momentum.rsi_cross_up_30'));
@@ -322,7 +322,7 @@ describe('semantic resolver', () => {
   });
 
   it('resolves volume breakout into trigger and confirmation candidates', () => {
-    const result = resolve('放量突破');
+    const result = resolve('volume confirmation breakout');
     const ids = candidateIds(result);
 
     assert.ok(ids.includes('breakout.close_crosses_20_high'));
@@ -335,7 +335,7 @@ describe('semantic resolver', () => {
   });
 
   it('resolves compression then breakout into sequence candidate', () => {
-    const result = resolve('先壓縮再突破');
+    const result = resolve('compression setup then breakout trigger');
     const ids = candidateIds(result);
 
     assert.ok(ids.includes('stateful.compression_then_breakout'));
@@ -343,7 +343,7 @@ describe('semantic resolver', () => {
   });
 
   it('resolves holding-bars exit semantics', () => {
-    const result = resolve('進場後 N 根沒動就出場');
+    const result = resolve('exit after holding bars without movement');
     const ids = candidateIds(result);
 
     assert.ok(ids.includes('position.exit_after_10_bars'));
@@ -352,7 +352,7 @@ describe('semantic resolver', () => {
 
   it('filters unavailable candidates by live capabilities', () => {
     const result = resolveStrategySemantics({
-      prompt: 'RSI 超賣反彈',
+      prompt: 'RSI oversold rebound reclaim',
       capabilities: {
         ...FULL_CAPABILITIES,
         indicators: [{ id: 'ema' }],
@@ -362,7 +362,7 @@ describe('semantic resolver', () => {
     assert.equal(result.candidates.length, 0);
 
     const withUnavailable = resolveStrategySemantics({
-      prompt: 'RSI 超賣反彈',
+      prompt: 'RSI oversold rebound reclaim',
       capabilities: {
         ...FULL_CAPABILITIES,
         indicators: [{ id: 'ema' }],
@@ -379,7 +379,7 @@ describe('semantic resolver', () => {
   });
 
   it('ranks simple capability-supported candidates above risky candidates', () => {
-    const result = resolve('爆量 放量');
+    const result = resolve('volume above average and unusual volume spike');
     const avg = result.candidates.find(
       (candidate) => candidate.id === 'volume.volume_above_avg_20',
     );
@@ -395,6 +395,11 @@ describe('semantic resolver', () => {
 });
 
 describe('agent-local semantic tools', () => {
+  it('keeps core semantic keywords locale-neutral', () => {
+    const result = getSemantics({});
+    assert.doesNotMatch(JSON.stringify(result), /\p{Script=Han}/u);
+  });
+
   it('registers the expected local tools', () => {
     const names = AGENT_TOOL_REGISTRY.map((tool) => tool.name).sort();
     assert.ok(names.includes('get_semantics'));
@@ -402,6 +407,7 @@ describe('agent-local semantic tools', () => {
     assert.ok(names.includes('materialize_token_ast'));
     assert.ok(names.includes('validate_token_grammar_candidate'));
     assert.ok(names.includes('get_token_semantics'));
+    assert.ok(names.includes('get_authoring_examples'));
     assert.ok(names.includes('compose_token_block'));
     assert.ok(names.includes('validate_token_block'));
     assert.ok(names.includes('assemble_strategy_from_blocks'));
@@ -409,6 +415,82 @@ describe('agent-local semantic tools', () => {
     assert.ok(names.includes('run_research_draft'));
     assert.ok(names.includes('evaluate_research_result'));
     assert.ok(names.includes('format_research_report'));
+  });
+
+  it('returns read-only authoring examples without composing blocks', async () => {
+    const result = await runAgentTool('get_authoring_examples', {
+      pattern: 'rsi',
+    });
+
+    assert.equal(result.protocol, 'traseq.agent.authoring-examples');
+    assert.ok(result.guidance.primaryRule.includes('SG v2'));
+    assert.ok(
+      result.examples.some(
+        (example) =>
+          example.mode === 'sg_v2' && example.exampleSignalGraph !== undefined,
+      ),
+    );
+    assert.ok(
+      result.examples.some(
+        (example) =>
+          example.mode === 'block' &&
+          typeof example.recipeId === 'string' &&
+          example.composedBlock === undefined,
+      ),
+      'reference examples should name recipes without calling compose_token_block',
+    );
+  });
+
+  it('ships an exampleSignalGraph that survives preflight (schema drift trap)', async () => {
+    // The exampleSignalGraph in get_authoring_examples is the *only* SG v2
+    // literal we hand directly to LLM agents as a "what should a concrete
+    // draft look like" reference. If the SG v2 schema drifts, every agent
+    // that copies this shape produces an invalid draft. Pin the example to
+    // preflight here so any incompatible change to node kinds, strategy
+    // shape, or risk/exit structure is caught at test time.
+    const examples = await runAgentTool('get_authoring_examples', {
+      mode: 'sg_v2',
+    });
+    const sgV2Example = examples.examples.find(
+      (example) => example.mode === 'sg_v2',
+    );
+    assert.ok(sgV2Example?.exampleSignalGraph, 'sg_v2 example must exist');
+
+    const draft = {
+      name: 'Authoring example reference draft',
+      signalGraph: sgV2Example.exampleSignalGraph,
+      settings: { positionStyle: 'single' },
+      backtest: {
+        timeframe: '4h',
+        signalInstrument: { symbol: 'BTCUSDT' },
+        initialBalance: 10000,
+      },
+    };
+    const result = await runAgentTool('preflight_strategy_draft', {
+      draft,
+      capabilities: FULL_CAPABILITIES,
+    });
+    const errors = (result.issues ?? []).filter(
+      (issue) => issue.severity === 'error',
+    );
+    assert.deepEqual(
+      errors,
+      [],
+      `exampleSignalGraph must preflight cleanly; got errors: ${JSON.stringify(errors, null, 2)}`,
+    );
+  });
+
+  it('describes recipes as exact-match macros, not the only authoring path', () => {
+    const byName = new Map(
+      AGENT_TOOL_REGISTRY.map((tool) => [tool.name, tool.description]),
+    );
+
+    assert.match(byName.get('compose_token_block') ?? '', /exact/i);
+    assert.match(byName.get('assemble_signal_graph') ?? '', /concrete/i);
+    assert.doesNotMatch(
+      byName.get('assemble_strategy_from_blocks') ?? '',
+      /Prefer compose_token_block/,
+    );
   });
 
   it('runs get_semantics without a platform client', async () => {
@@ -514,14 +596,15 @@ describe('agent-local semantic tools', () => {
     assert.match(result.warning, /local token shape/);
   });
 
-  it('returns deterministic token semantics for guided recipe selection', async () => {
+  it('returns deterministic token semantics as exact-match macros', async () => {
     const result = await runAgentTool('get_token_semantics', {
       role: 'entry_trigger',
       includeTokens: true,
     });
 
     assert.equal(result.protocol, 'traseq.agent.token-semantics');
-    assert.match(result.grammar.authoringRule, /Choose a semantic recipe/);
+    assert.match(result.grammar.authoringRule, /exact-match macros/);
+    assert.match(result.grammar.authoringRule, /SG v2 directly/);
     assert.ok(
       result.recipes.some(
         (recipe) => recipe.recipeId === 'momentum.rsi_cross_up_30',
@@ -803,7 +886,7 @@ describe('agent-local semantic tools', () => {
     const result = await runAgentTool(
       'resolve_strategy_semantics',
       {
-        prompt: '放量突破',
+        prompt: 'volume confirmation breakout',
         capabilities: FULL_CAPABILITIES,
       },
       {
@@ -826,7 +909,7 @@ describe('agent-local semantic tools', () => {
     let calls = 0;
     const result = await runAgentTool(
       'resolve_strategy_semantics',
-      { prompt: 'RSI 超賣反彈' },
+      { prompt: 'RSI oversold rebound reclaim' },
       {
         client: {
           async getCapabilities() {

@@ -714,8 +714,6 @@ export interface PineExportRequest {
   strategyName?: string;
 }
 
-export type ChartDataResponse = JsonObject;
-
 export interface RobustnessAnalysisRequest {
   sourceBacktestId: string;
   preset?: 'core_v1';

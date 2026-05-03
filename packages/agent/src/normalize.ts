@@ -121,6 +121,22 @@ function tryParseObject(text: string): JsonObject | undefined {
 // Draft normalization
 // ---------------------------------------------------------------------------
 
+/**
+ * Normalize a raw draft (typically straight from an LLM producer) into the
+ * `StrategyDraftLike` shape consumed by the runner.
+ *
+ * Intentional non-defaults: when `source.backtest` is missing or omits
+ * `signalInstrument`, we DO NOT inject `BTCUSDT`. Earlier versions did, which
+ * silently overrode the caller's `input.instrument` because `buildBacktestConfig`
+ * preferred `draftBacktest.signalInstrument` when present. The runner now lets
+ * `buildBacktestConfig` fill the symbol from `input.instrument` instead, and
+ * the `signalInstrument` field is left undefined here so the spread merge in
+ * `buildBacktestConfig` resolves to the caller's intent.
+ *
+ * Callers that consume `normalizeDraft` directly (i.e. without going through
+ * `buildBacktestConfig`) should treat `backtest.signalInstrument` as optional
+ * and handle the missing-symbol case explicitly.
+ */
 export function normalizeDraft(draft: unknown): StrategyDraftLike {
   const source = asJsonObject(draft) ?? {};
   return {
@@ -134,9 +150,315 @@ export function normalizeDraft(draft: unknown): StrategyDraftLike {
     },
     backtest: (asJsonObject(source.backtest) ?? {
       timeframe: '4h',
-      signalInstrument: { symbol: 'BTCUSDT' },
-    }) as BacktestConfigLike,
+    }) as unknown as BacktestConfigLike,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Range / time-input normalization (request side)
+// ---------------------------------------------------------------------------
+
+/**
+ * Result of `resolveRangePoint`. The runBacktest endpoint itself accepts
+ * strings ("inception", "now", "1y", ISO dates, etc.), but earlier stages in
+ * the agent pipeline — preflight, validate, persistence-stage feeModel/range
+ * checks — historically expected numeric epoch values. To bridge the two,
+ * the runner pre-resolves common string forms to epoch ms BEFORE the draft
+ * leaves the agent layer. We keep the original string in `originalInput` so
+ * an audit log can show the LLM what we did.
+ *
+ *   - `resolved: number`              — finite epoch ms (UTC)
+ *   - `resolved: undefined`           — caller passed null/undefined; let API default
+ *   - `resolved: 'inception' | 'now'` — symbolic token preserved (server resolves)
+ *
+ * Anything we can't recognize is left as the original string so the API still
+ * has a chance to handle it; we never throw from this helper.
+ */
+export interface ResolvedRangePoint {
+  /**
+   * Either an epoch-ms number, a symbolic token the API understands
+   * ('inception' | 'now'), or undefined to fall back to the API default.
+   * Unrecognized strings are returned verbatim so the API still has a chance
+   * to interpret them — typing this as `string` keeps the passthrough sound.
+   */
+  resolved: number | string | undefined;
+  /** True when we changed the value (e.g. ISO → ms). */
+  changed: boolean;
+  originalInput: unknown;
+}
+
+const ISO_DATE_RE =
+  /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+// 10-digit unix seconds (≈ 2001-09-09 .. 2286-11-20) and 13-digit unix ms.
+const EPOCH_SECONDS_MIN = 1_000_000_000; // 2001-09
+const EPOCH_SECONDS_MAX = 9_999_999_999; // 2286-11
+const EPOCH_MS_MIN = 1_000_000_000_000; // 2001-09
+const EPOCH_MS_MAX = 99_999_999_999_999; // 5138-11
+
+/**
+ * Resolve a single range endpoint into either an epoch-ms number, undefined
+ * (defer to API default), or one of the symbolic tokens runBacktest understands.
+ *
+ * Why this exists: LLM-authored drafts frequently set `range.start = "inception"`
+ * or `range.end = "now"`. The runBacktest endpoint accepts those, but earlier
+ * pipeline stages (estimateBacktestCost, persistence preflight, agent-side
+ * validators) historically required numbers. Pre-resolving here lets the
+ * runner pass a numeric value through the whole pipeline without divergence.
+ *
+ * Accepted inputs:
+ *   - number   → if 13-digit ms, returned verbatim; if 10-digit seconds, scaled.
+ *   - string ISO date ("2024-01-01" or "2024-01-01T00:00:00Z") → parsed to ms.
+ *   - "inception" / "now" / "ytd" → preserved as symbolic token (or resolved
+ *     for "ytd" — Jan 1 of current year — since "ytd" is end-anchored more
+ *     often than start-anchored and the engine gives identical resolution).
+ *   - relative durations ("1y", "6m", "30d", "2w") → resolved relative to
+ *     `referenceMs` (default Date.now()) by SUBTRACTING the duration. Common
+ *     LLM idiom for `range.start = "1y"` means "one year ago".
+ *   - undefined / null / empty string → undefined (API default applies).
+ *
+ * Anything else → the original input is returned in `originalInput` and
+ * `resolved` is the input itself (string passthrough). The API may still
+ * accept it; we don't reject client-side.
+ */
+export function resolveRangePoint(
+  value: unknown,
+  options: { referenceMs?: number } = {},
+): ResolvedRangePoint {
+  if (value === undefined || value === null) {
+    return { resolved: undefined, changed: false, originalInput: value };
+  }
+
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      return { resolved: undefined, changed: true, originalInput: value };
+    }
+    if (value >= EPOCH_MS_MIN && value <= EPOCH_MS_MAX) {
+      return { resolved: value, changed: false, originalInput: value };
+    }
+    if (value >= EPOCH_SECONDS_MIN && value <= EPOCH_SECONDS_MAX) {
+      return {
+        resolved: Math.round(value * 1000),
+        changed: true,
+        originalInput: value,
+      };
+    }
+    // Out-of-range numeric — let the API decide.
+    return { resolved: value, changed: false, originalInput: value };
+  }
+
+  if (typeof value !== 'string') {
+    return { resolved: undefined, changed: false, originalInput: value };
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return { resolved: undefined, changed: true, originalInput: value };
+  }
+
+  const lowered = trimmed.toLowerCase();
+  if (lowered === 'inception' || lowered === 'now') {
+    return { resolved: lowered, changed: false, originalInput: value };
+  }
+  const reference = options.referenceMs ?? Date.now();
+  if (lowered === 'ytd') {
+    const yearStart = Date.UTC(new Date(reference).getUTCFullYear(), 0, 1);
+    return { resolved: yearStart, changed: true, originalInput: value };
+  }
+
+  const relativeMs = parseRelativeDurationMs(lowered);
+  if (relativeMs !== undefined) {
+    return {
+      resolved: reference - relativeMs,
+      changed: true,
+      originalInput: value,
+    };
+  }
+
+  if (ISO_DATE_RE.test(trimmed)) {
+    const parsed = Date.parse(
+      // Bare YYYY-MM-DD is parsed as UTC midnight by Date.parse in V8, but a
+      // YYYY-MM-DD HH:MM (space, no zone) is parsed as local time. Normalize
+      // the space form to ISO before parsing so the result is venue-stable.
+      trimmed.replace(' ', 'T'),
+    );
+    if (Number.isFinite(parsed)) {
+      return { resolved: parsed, changed: true, originalInput: value };
+    }
+  }
+
+  // Fallback: leave the string as-is. runBacktest may still accept it.
+  return { resolved: trimmed, changed: false, originalInput: value };
+}
+
+const RELATIVE_DURATION_RE = /^(\d+)\s*([ymwd])$/;
+const DURATION_UNITS: Record<string, number> = {
+  y: 365 * 24 * 60 * 60 * 1000,
+  m: 30 * 24 * 60 * 60 * 1000,
+  w: 7 * 24 * 60 * 60 * 1000,
+  d: 24 * 60 * 60 * 1000,
+};
+
+function parseRelativeDurationMs(value: string): number | undefined {
+  const match = RELATIVE_DURATION_RE.exec(value);
+  if (!match) {
+    return undefined;
+  }
+  const amount = Number.parseInt(match[1] ?? '', 10);
+  const unitMs = DURATION_UNITS[match[2] ?? ''];
+  if (!Number.isFinite(amount) || amount <= 0 || unitMs === undefined) {
+    return undefined;
+  }
+  return amount * unitMs;
+}
+
+export interface ResolvedBacktestRangePatch {
+  /** When true, the caller mutated `range` and should reflect the new shape. */
+  changed: boolean;
+  /** Human-readable patch list for audit/log entries. */
+  patches: readonly string[];
+}
+
+/**
+ * Resolve a backtest range in-place on a draft's backtest config. Returns the
+ * audit patches so the runner can emit one log line per resolved field. The
+ * mutated config matches whatever shape the caller passed (we only touch
+ * `range.start`/`range.end`).
+ *
+ * Rules:
+ *   - `range` undefined/null              → no-op
+ *   - either endpoint resolves to number  → write back as number
+ *   - either endpoint resolves to symbolic token → leave as the lowercased token
+ *   - either endpoint resolves to undefined → DELETE that endpoint entirely
+ *     (callers expect `start: undefined` to mean "use API default")
+ */
+export function resolveBacktestRangeInPlace(
+  config: { range?: unknown } | undefined,
+  options: { referenceMs?: number } = {},
+): ResolvedBacktestRangePatch {
+  if (!config) {
+    return { changed: false, patches: [] };
+  }
+  const range = asJsonObject(config.range);
+  if (!range) {
+    return { changed: false, patches: [] };
+  }
+
+  const hadStart = 'start' in range;
+  const hadEnd = 'end' in range;
+  const patches: string[] = [];
+  let changed = false;
+
+  for (const key of ['start', 'end'] as const) {
+    if (!(key in range)) continue;
+    const before = range[key];
+    const result = resolveRangePoint(before, options);
+    // Symbolic tokens get stripped unconditionally: omitting `range.start`
+    // is equivalent to the API default ("inception"), and omitting
+    // `range.end` is equivalent to "now". The SDK's local preflight would
+    // otherwise reject the string even though runBacktest accepts it.
+    // Same end-state, fewer rejections.
+    const isSymbolicToken =
+      result.resolved === 'inception' || result.resolved === 'now';
+    if (result.resolved === undefined || isSymbolicToken) {
+      delete range[key];
+      changed = true;
+      patches.push(
+        `range.${key}: ${JSON.stringify(before)} → omitted (API default${
+          isSymbolicToken ? ` "${String(result.resolved)}"` : ''
+        })`,
+      );
+      continue;
+    }
+    if (!result.changed && before === result.resolved) {
+      continue;
+    }
+    (range as Record<string, unknown>)[key] = result.resolved;
+    changed = true;
+    patches.push(
+      `range.${key}: ${JSON.stringify(before)} → ${JSON.stringify(
+        result.resolved,
+      )}`,
+    );
+  }
+
+  // If we dropped both endpoints and nothing else lives on `range`, remove
+  // the whole `range` object too. SDK preflight and persistence treat
+  // `range: {}` differently from `range: undefined`; the latter means "use
+  // full available history", which is what dropping symbolic tokens implied.
+  if (
+    (hadStart || hadEnd) &&
+    !('start' in range) &&
+    !('end' in range) &&
+    Object.keys(range).length === 0
+  ) {
+    delete (config as Record<string, unknown>).range;
+    changed = true;
+    patches.push('range: {} → omitted (no remaining endpoints)');
+  }
+
+  return { changed, patches };
+}
+
+// ---------------------------------------------------------------------------
+// Indicator-period extraction (used to bump warmup before persistence)
+// ---------------------------------------------------------------------------
+
+/**
+ * Inspect a signalGraph and return the largest lookback period any indicator
+ * or rolling node uses, or `undefined` if no period-bearing nodes are present.
+ *
+ * Why: persistence and finalize gate on a warmup that's at least as long as
+ * the longest indicator's lookback. The validator may emit a "warmup
+ * insufficient" warning that blocks finalize. We can compute the same number
+ * client-side from the draft and bump warmup proactively, so the LLM doesn't
+ * spend a repair cycle on a deterministic fix.
+ *
+ * Recognized lookback fields, in priority order:
+ *   - `args.length`  (canonical indicator vocabulary)
+ *   - `args.period`  (rolling nodes, plus pre-vocab-normalization indicators)
+ *   - `args.window`  (rolling nodes alternate)
+ *   - `period`       (top-level on rolling nodes; some legacy shapes)
+ *
+ * Multi-indicator nodes (e.g. MACD with `fastLength`/`slowLength`/
+ * `signalLength`) expose all three lengths under `args`; we scan every
+ * numeric arg key ending in /length|period|window/i to catch them.
+ */
+export function maxIndicatorPeriod(signalGraph: unknown): number | undefined {
+  const source = asJsonObject(signalGraph);
+  if (!source) return undefined;
+  const nodes = source.nodes;
+  if (!Array.isArray(nodes)) return undefined;
+
+  let best: number | undefined;
+  const considerCandidate = (raw: unknown): void => {
+    const value = asNumber(raw);
+    if (value === undefined || value <= 0) return;
+    const rounded = Math.round(value);
+    if (best === undefined || rounded > best) {
+      best = rounded;
+    }
+  };
+
+  const PERIOD_KEY_RE = /(length|period|window)$/i;
+  for (const rawNode of nodes) {
+    const node = asJsonObject(rawNode);
+    if (!node) continue;
+
+    considerCandidate(node.period);
+    considerCandidate(node.length);
+    considerCandidate(node.window);
+
+    const args = asJsonObject(node.args);
+    if (!args) continue;
+
+    for (const [key, value] of Object.entries(args)) {
+      if (PERIOD_KEY_RE.test(key)) {
+        considerCandidate(value);
+      }
+    }
+  }
+
+  return best;
 }
 
 // ---------------------------------------------------------------------------

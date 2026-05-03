@@ -67,7 +67,7 @@ const result = await client.waitForBacktestCompletion(backtestId, {
 
 ### Backtests
 
-`runBacktest()` · `listBacktests()` · `getBacktest()` · `getBacktestProgress()` · `getBacktestChartData()` · `getBacktestPricePreview()` · `setPrimaryBacktest()` · `deleteBacktest()` · `waitForBacktestCompletion()`
+`runBacktest()` · `listBacktests()` · `getBacktest()` · `getBacktestProgress()` · `getBacktestPricePreview()` · `setPrimaryBacktest()` · `deleteBacktest()` · `waitForBacktestCompletion()`
 
 ### Analysis Runs
 

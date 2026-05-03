@@ -1,13 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { TraseqClient } from '@traseq/sdk';
 
-import { readEnv, requireEnv } from './env.js';
+import {
+  capabilitySummary,
+  createTraseqClient,
+  toIsoNow,
+} from './internal/runtime.js';
+import { isPositionStyle, isTimeframe } from './internal/literals.js';
 import { asJsonObject, asNumber, asString } from './normalize.js';
 import type {
   AutoAgentRequest,
   AutoAgentResearchResult,
   EmitResearchEvent,
-  JsonObject,
   ResearchContextClient,
   ResearchWorkflowStep,
   Timeframe,
@@ -25,54 +28,19 @@ function roundNumber(value: number, digits = 2): number {
   return Number(value.toFixed(digits));
 }
 
-function toIsoNow(): string {
-  return new Date().toISOString();
-}
-
-function createClient(): TraseqClient {
-  return new TraseqClient({
-    apiKey: requireEnv('TRASEQ_API_KEY'),
-    baseUrl: readEnv('TRASEQ_BASE_URL') ?? 'https://api.traseq.com',
-  });
-}
-
-function countArray(value: unknown): number | undefined {
-  return Array.isArray(value) ? value.length : undefined;
-}
-
-function capabilitySummary(capabilities: unknown): JsonObject {
-  const source = asJsonObject(capabilities) ?? {};
-  const signalGraph = asJsonObject(source.signalGraph) ?? {};
-  const operators = asJsonObject(source.operators) ?? {};
-
-  return {
-    protocol: source.protocol,
-    version: source.version,
-    subscriptionTier: source.subscriptionTier,
-    limits: asJsonObject(source.limits),
-    nodeKinds: countArray(signalGraph.nodes),
-    bindings: countArray(signalGraph.bindings),
-    indicators: countArray(source.indicators),
-    compareOperators: countArray(operators.compare),
-    crossOperators: countArray(operators.cross),
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Request normalization
 // ---------------------------------------------------------------------------
 
 function normalizeTimeframe(value: unknown): Timeframe {
-  return value === '15m' || value === '1h' || value === '4h' || value === '1d'
-    ? value
-    : '4h';
+  return isTimeframe(value) ? value : '4h';
 }
 
 function normalizePositionStyle(
   value: unknown,
   maxConcurrentPositions: number,
 ): AutoAgentRequest['positionStyle'] {
-  if (value === 'single' || value === 'pyramid' || value === 'accumulate') {
+  if (isPositionStyle(value)) {
     return value;
   }
 
@@ -167,7 +135,7 @@ function buildRevisionPromptTemplate(input: AutoAgentRequest): string {
     '- validate_strategy issues',
     '- resolve_strategy_semantics output when changing strategy semantics',
     '- get_backtest summary/result',
-    '- get_backtest_chart_data or get_backtest_price_preview when visual evidence is useful',
+    '- get_backtest_price_preview when visual evidence is useful',
     '- score output from traseq-agent score when available',
     '',
     'Make one targeted revision at a time. Re-validate, finalize, run_backtest, wait_backtest, and compare results.',
@@ -224,7 +192,6 @@ function buildWorkflow(): ResearchWorkflowStep[] {
     {
       phase: 'analyze',
       tools: [
-        'get_backtest_chart_data',
         'get_backtest_price_preview',
         'preview_robustness_analysis',
         'create_robustness_analysis',
@@ -257,7 +224,7 @@ export async function runResearch(
   const input = normalizeRequest(rawInput);
   const runId = randomUUID();
   const startedAt = toIsoNow();
-  const client = options.client ?? createClient();
+  const client = options.client ?? createTraseqClient();
 
   await emit({
     type: 'meta',

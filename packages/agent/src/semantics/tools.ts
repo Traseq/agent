@@ -32,16 +32,17 @@ import {
   findTokenRecipeForImplementation,
   tokenRoleForSemanticRole,
 } from './token-recipes.js';
-import type {
-  GuidedResearchRoundInput,
-  ResearchContextClient,
-  ResearchEngagementInput,
-  ResearchResultEvaluation,
-  ResearchRunnerClient,
-  ResearchRunnerResult,
-  StrategyDraftLike,
-  Timeframe,
-  ValidationSummaryLike,
+import {
+  AUTHORING_PREFERENCE_VALUES,
+  type GuidedResearchRoundInput,
+  type ResearchContextClient,
+  type ResearchEngagementInput,
+  type ResearchResultEvaluation,
+  type ResearchRunnerClient,
+  type ResearchRunnerResult,
+  type StrategyDraftLike,
+  type Timeframe,
+  type ValidationSummaryLike,
 } from '../types.js';
 import type {
   GetSemanticsInput,
@@ -58,6 +59,7 @@ export interface AgentToolDefinition {
     | 'materialize_token_ast'
     | 'validate_token_grammar_candidate'
     | 'get_token_semantics'
+    | 'get_authoring_examples'
     | 'compose_token_block'
     | 'validate_token_block'
     | 'assemble_strategy_from_blocks'
@@ -228,14 +230,14 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
   {
     name: 'get_token_grammar',
     description:
-      'Read the public AST-first/token-first token grammar contract. Prefer this before generating token blocks; semantic recipes are macros over this grammar.',
+      'Read the public AST/token grammar contract for block/template authoring and reference examples. SG v2 direct authoring remains the primary path for concrete custom strategies.',
     local: true,
     input_schema: EMPTY_SCHEMA,
   },
   {
     name: 'materialize_token_ast',
     description:
-      'Materialize a StrategyAstV1 or BoolExpr into legal TokenDto through the public token grammar compiler. AST-first path; requires a Traseq client/API key.',
+      'Materialize a StrategyAstV1 or BoolExpr into legal TokenDto through the public token grammar compiler. Use for block/template authoring; concrete custom strategies may author SG v2 directly.',
     local: true,
     input_schema: objectSchema({
       role: enumProp(TOKEN_BLOCK_ROLE_VALUES),
@@ -263,7 +265,7 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
   {
     name: 'get_token_semantics',
     description:
-      'Read deterministic token recipes and token-block grammar. Guided agents must choose a recipe and fill slots; do not invent raw token/operator sequences.',
+      'Read deterministic token recipes and token-block grammar. Recipes are exact-match macros for block/template authoring, not the only strategy authoring path.',
     local: true,
     input_schema: objectSchema({
       role: enumProp(TOKEN_RECIPE_ROLE_VALUES),
@@ -273,9 +275,20 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
     }),
   },
   {
+    name: 'get_authoring_examples',
+    description:
+      'Read-only reference examples for choosing template/block, hybrid, or direct SG v2 authoring. Does not compose or validate blocks.',
+    local: true,
+    input_schema: objectSchema({
+      pattern: stringProp,
+      mode: enumProp(['template', 'block', 'hybrid', 'sg_v2'] as const),
+      includeSignalGraph: booleanProp,
+    }),
+  },
+  {
     name: 'compose_token_block',
     description:
-      'Compose one semantic token block from a deterministic recipeId, implementationId, or semantic facet plus params. Returns legal TokenDto, block role, SignalGraph fragment, rationale, and tradeoffs.',
+      'Compose one semantic token block only when a deterministic recipe exactly matches the intended strategy facet. Returns legal TokenDto, block role, SignalGraph fragment, rationale, and tradeoffs.',
     local: true,
     input_schema: objectSchema({
       recipeId: stringProp,
@@ -306,7 +319,7 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
   {
     name: 'assemble_strategy_from_blocks',
     description:
-      'Assemble recipe blocks, remote-compiled workspace token blocks, or explicit fragments into a complete SignalGraph draft, then run local preflight. Prefer compose_token_block before this tool.',
+      'Assemble recipe blocks, remote-compiled workspace token blocks, or explicit fragments into a complete SignalGraph draft, then run local preflight. Use for template/block or hybrid paths.',
     local: true,
     input_schema: objectSchema(
       {
@@ -370,7 +383,7 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
   {
     name: 'assemble_signal_graph',
     description:
-      'Assemble resolver fragments with assemblyHints into a complete SignalGraph strategy draft, then run local preflight validation. Pure local JSON tool.',
+      'Assemble resolver fragments with assemblyHints into a complete SignalGraph strategy draft, then run local preflight validation. Primary path for concrete custom SG v2 strategies.',
     local: true,
     input_schema: objectSchema(
       {
@@ -422,7 +435,7 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
   {
     name: 'start_research_engagement',
     description:
-      'Start a service-style Traseq research engagement. Reads live workspace context, usage, and capabilities, then returns assumptions, decision points, evidence boundaries, and provider-agnostic authoring instructions.',
+      'Start a service-style Traseq research engagement. Reads live workspace context, usage, and capabilities, then returns assumptions, intent maturity, recommended authoring mode, tool paths, evidence boundaries, and provider-agnostic authoring instructions.',
     local: true,
     input_schema: objectSchema(
       {
@@ -436,6 +449,7 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
         positionStyle: enumProp(POSITION_STYLE_VALUES),
         maxConcurrentPositions: numberProp,
         riskTolerance: enumProp(RISK_TOLERANCE_VALUES),
+        authoringPreference: enumProp(AUTHORING_PREFERENCE_VALUES),
       },
       ['prompt'],
     ),
@@ -551,7 +565,7 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
   {
     name: 'update_research_engagement',
     description:
-      'Patch an existing in-memory research engagement (riskTolerance, instrument, timeframe, positionStyle, objective, initialBalance, maxConcurrentPositions) without re-running the manifest/workspace/usage/capabilities fetch. Use after start_research_engagement when the user adjusts a parameter mid-conversation. State is per-process and resets when the MCP server restarts.',
+      'Patch an existing in-memory research engagement (riskTolerance, instrument, timeframe, positionStyle, objective, initialBalance, maxConcurrentPositions, authoringPreference) without re-running the manifest/workspace/usage/capabilities fetch. Use after start_research_engagement when the user adjusts a parameter mid-conversation. State is per-process and resets when the MCP server restarts.',
     local: true,
     input_schema: objectSchema(
       {
@@ -563,6 +577,7 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
         objective: stringProp,
         initialBalance: numberProp,
         maxConcurrentPositions: numberProp,
+        authoringPreference: enumProp(AUTHORING_PREFERENCE_VALUES),
       },
       ['runId'],
     ),
@@ -1593,7 +1608,7 @@ function getTokenSemantics(input: Record<string, unknown>) {
     version: 1,
     grammar: {
       authoringRule:
-        'Choose a semantic recipe and fill typed params. Do not freely invent raw token types, operators, or token order.',
+        'Recipes are exact-match macros for block/template authoring. For concrete custom strategies, author SG v2 directly and use recipes only when they preserve the facet literally.',
       tokenBlockFlow: [
         'get_token_semantics',
         'compose_token_block',
@@ -1615,6 +1630,186 @@ function getTokenSemantics(input: Record<string, unknown>) {
       requestedFamily ? facet.family === requestedFamily : true,
     ),
     recipes,
+  };
+}
+
+// Canonical SG v2 reference draft for sg_v2-mode authoring examples.
+// IMPORTANT: this literal is the single example handed to LLM agents as a
+// "what should a concrete SG v2 draft look like" reference. Any drift from the
+// SG v2 schema cascades into every agent that copies the shape. The
+// "validates against preflight" test in semantics.test.mjs is the safety net —
+// keep it green.
+export const SG_V2_EXAMPLE = {
+  protocol: 'traseq.signal-graph',
+  version: 2,
+  nodes: [
+    { id: 'close_price', kind: 'market', field: 'close' },
+    {
+      id: 'rsi_14',
+      kind: 'indicator',
+      indicator: 'rsi',
+      args: { length: 14 },
+    },
+    {
+      id: 'ema_100',
+      kind: 'indicator',
+      indicator: 'ema',
+      args: { length: 100 },
+    },
+    { id: 'rsi_threshold', kind: 'const', value: 30 },
+    {
+      id: 'rsi_reclaim',
+      kind: 'cross',
+      op: 'cross_up',
+      left: { ref: 'rsi_14' },
+      right: { ref: 'rsi_threshold' },
+    },
+    {
+      id: 'trend_ok',
+      kind: 'compare',
+      op: 'gt',
+      left: { ref: 'close_price' },
+      right: { ref: 'ema_100' },
+    },
+    {
+      id: 'entry_trigger',
+      kind: 'all',
+      items: [{ ref: 'rsi_reclaim' }, { ref: 'trend_ok' }],
+    },
+    { id: 'rsi_overbought', kind: 'const', value: 70 },
+    {
+      id: 'exit_signal',
+      kind: 'cross',
+      op: 'cross_up',
+      left: { ref: 'rsi_14' },
+      right: { ref: 'rsi_overbought' },
+    },
+  ],
+  strategy: {
+    kind: 'strategy',
+    entry: {
+      kind: 'entry',
+      trigger: { ref: 'entry_trigger' },
+      action: {
+        side: 'long',
+        sizing: { mode: 'percent_equity', value: 10 },
+      },
+    },
+    exits: [
+      {
+        kind: 'exit',
+        when: { ref: 'exit_signal' },
+        action: { mode: 'percent_position', value: 100 },
+      },
+    ],
+    risk: {
+      stopLoss: { mode: 'percent', value: 2 },
+    },
+  },
+} as const;
+
+function getAuthoringExamples(input: Record<string, unknown>) {
+  const requestedMode = asString(input.mode);
+  const pattern = asString(input.pattern).toLowerCase();
+  const includeSignalGraph = input.includeSignalGraph !== false;
+  const rsiRecipe = findTokenRecipe('momentum.rsi_cross_up_30');
+  const emaRecipe = findTokenRecipe('trend.close_above_ema_100');
+
+  const examples = [
+    {
+      id: 'template.vague_start',
+      mode: 'template',
+      title:
+        'Start from a system template when the user has no concrete rules.',
+      whenToUse:
+        'Use when the user asks for ideas, templates, or a general research starting point.',
+      recommendedToolPath: [
+        'list_system_strategies',
+        'get_system_strategy',
+        'compose_strategy_from_template',
+        'run_guided_research_round',
+      ],
+      customizationHints:
+        'Fork the closest system strategy, then revise only the smallest set of settings or conditions the user names.',
+    },
+    ...(rsiRecipe
+      ? [
+          {
+            id: 'block.rsi_reclaim',
+            mode: 'block',
+            title: 'RSI reclaim editable block',
+            whenToUse:
+              'Use only when the user literally wants an RSI reclaim/cross-up condition.',
+            recipeId: rsiRecipe.recipeId,
+            implementationId: rsiRecipe.implementationId,
+            role: rsiRecipe.role,
+            semanticSummary: rsiRecipe.semanticSummary,
+            params: cloneJson(rsiRecipe.params),
+            recommendedToolPath: [
+              'compose_token_block',
+              'validate_token_block',
+              'assemble_strategy_from_blocks',
+              'run_guided_research_round',
+            ],
+          },
+        ]
+      : []),
+    ...(emaRecipe
+      ? [
+          {
+            id: 'hybrid.rsi_with_trend_filter',
+            mode: 'hybrid',
+            title: 'SG v2 primary draft with exact-match block macros',
+            whenToUse:
+              'Use when some facets match curated recipes exactly, but the whole strategy should preserve custom SG v2 structure.',
+            recipeIds: [rsiRecipe?.recipeId, emaRecipe.recipeId].filter(
+              (value): value is string => typeof value === 'string',
+            ),
+            recommendedToolPath: [
+              'resolve_strategy_semantics',
+              'assemble_signal_graph',
+              'preflight_strategy_draft',
+              'assemble_strategy_from_blocks',
+              'run_guided_research_round',
+            ],
+          },
+        ]
+      : []),
+    {
+      id: 'sg_v2.rsi_ema_stop',
+      mode: 'sg_v2',
+      title: 'Direct SG v2 for concrete RSI + EMA + stop logic',
+      whenToUse:
+        'Use when the user gives concrete conditions and preserving the exact strategy logic matters more than fitting a recipe.',
+      recommendedToolPath: [
+        'get_capabilities',
+        'resolve_strategy_semantics',
+        'assemble_signal_graph',
+        'preflight_strategy_draft',
+        'run_guided_research_round',
+      ],
+      ...(includeSignalGraph ? { exampleSignalGraph: SG_V2_EXAMPLE } : {}),
+    },
+  ];
+
+  const filtered = examples.filter((example) => {
+    if (requestedMode && example.mode !== requestedMode) return false;
+    if (!pattern) return true;
+    return JSON.stringify(example).toLowerCase().includes(pattern);
+  });
+
+  return {
+    protocol: 'traseq.agent.authoring-examples',
+    version: 1,
+    guidance: {
+      primaryRule:
+        'Use SG v2 directly for concrete custom strategies; use templates, recipes, and blocks for vague intent or exact-match reusable facets.',
+      recipeRule:
+        'Recipes are deterministic macros. Inspect them as references or compose them only when they exactly preserve the user intent.',
+      nonGoal:
+        'This tool is read-only and never materializes TokenDto or validates a block.',
+    },
+    examples: filtered,
   };
 }
 
@@ -1881,6 +2076,8 @@ export async function runAgentTool(
       return validateTokenGrammarCandidate(input, options.client);
     case 'get_token_semantics':
       return getTokenSemantics(input);
+    case 'get_authoring_examples':
+      return getAuthoringExamples(input);
     case 'compose_token_block':
       return composeTokenBlock(input);
     case 'validate_token_block':

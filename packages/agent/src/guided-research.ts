@@ -1,46 +1,193 @@
-import { TraseqClient } from '@traseq/sdk';
-
 import { evaluateResearchResult } from './evaluation.js';
-import { readEnv, requireEnv } from './env.js';
+import { createTraseqClient } from './internal/runtime.js';
+import { isRiskTolerance } from './internal/literals.js';
 import { asJsonObject } from './normalize.js';
 import { formatResearchReport, representativeBacktest } from './report.js';
 import { normalizeRequest, runResearch } from './research.js';
 import { runResearchRunner } from './research-runner.js';
 import { summarizeUsageHints, type UsageStatus } from './usage-hints.js';
-import type {
-  GuidedResearchEvidence,
-  GuidedResearchRoundInput,
-  GuidedResearchRoundResult,
-  ResearchContextClient,
-  ResearchDecisionPoint,
-  ResearchEngagementBrief,
-  ResearchEngagementInput,
-  ResearchResultEvaluation,
-  ResearchRiskTolerance,
-  ResearchRunnerClient,
-  ResearchRunnerResult,
-  ServiceMessage,
-  StrategyDraftLike,
+import {
+  AUTHORING_PREFERENCE_VALUES,
+  type AuthoringPreference,
+  type GuidedResearchEvidence,
+  type GuidedResearchRoundInput,
+  type GuidedResearchRoundResult,
+  type ResearchContextClient,
+  type ResearchDecisionPoint,
+  type ResearchEngagementBrief,
+  type ResearchEngagementInput,
+  type ResearchIntentMaturity,
+  type ResearchRecommendedMode,
+  type ResearchResultEvaluation,
+  type ResearchRiskTolerance,
+  type ResearchRunnerClient,
+  type ResearchRunnerResult,
+  type ServiceMessage,
+  type StrategyDraftLike,
 } from './types.js';
 
-const RISK_TOLERANCE_VALUES: readonly ResearchRiskTolerance[] = [
-  'conservative',
-  'moderate',
-  'aggressive',
-];
-
-function createClient(): TraseqClient {
-  return new TraseqClient({
-    apiKey: requireEnv('TRASEQ_API_KEY'),
-    baseUrl: readEnv('TRASEQ_BASE_URL') ?? 'https://api.traseq.com',
-  });
+interface AuthoringRoute {
+  intentMaturity: ResearchIntentMaturity;
+  recommendedMode: ResearchRecommendedMode;
+  recommendedToolPath: string[];
+  fallbackToolPath: string[];
+  referenceTools: string[];
+  routingRationale: string;
 }
 
+// Keyword tables for intent-maturity inference. Keep core routing
+// locale-neutral; language-specific normalization belongs outside this runtime.
+const EXPERT_PATTERNS_EN =
+  /\b(signalgraph|sg\s*v?2|json|api|custom graph|node refs?|explicit refs?)\b/;
+
+const VAGUE_PATTERNS_EN =
+  /\b(no idea|no strategy idea|recommend|template|example|ideas?|find .*strategy)\b/;
+
+const INDICATOR_PATTERNS_EN =
+  /\b(rsi|ema|sma|macd|atr|bollinger|bbands?|volume|close|price|pivot|breakout|stop loss|take profit)\b/;
+
+const OPERATOR_PATTERNS_EN =
+  /\b(above|below|cross(?:es|ing)?|greater than|less than|over|under|reclaim)\b/;
+
+const THRESHOLD_PATTERN = /\b\d+(?:\.\d+)?\s*%?\b/;
+const STRATEGY_FAMILY_PATTERN = /\b(trend|momentum|breakout|mean reversion)\b/;
+
+// Mode lookup keyed by intent maturity. Updating routing semantics is a
+// one-line change here instead of a nested ternary.
+const MODE_BY_MATURITY: Record<
+  ResearchIntentMaturity,
+  ResearchRecommendedMode
+> = {
+  expert: 'sg_v2',
+  concrete: 'sg_v2',
+  exploratory: 'block',
+  vague: 'template',
+};
+
+// Recommended path is the user-narrative chain a human would follow in the UI.
+// We deliberately collapse internal helpers (materialize_token_ast,
+// validate_token_grammar_candidate, validate_token_block) into the higher-level
+// composers — the agent never needs to see them as separate steps.
+const RECOMMENDED_PATH_BY_MODE: Record<ResearchRecommendedMode, string[]> = {
+  template: [
+    'list_system_strategies',
+    'get_system_strategy',
+    'compose_strategy_from_template',
+    'run_guided_research_round',
+  ],
+  block: [
+    'compose_token_block',
+    'assemble_strategy_from_blocks',
+    'run_guided_research_round',
+  ],
+  hybrid: [
+    'resolve_strategy_semantics',
+    'assemble_signal_graph',
+    'preflight_strategy_draft',
+    'run_guided_research_round',
+  ],
+  sg_v2: [
+    'resolve_strategy_semantics',
+    'assemble_signal_graph',
+    'preflight_strategy_draft',
+    'run_guided_research_round',
+  ],
+};
+
+const SG_V2_FALLBACK_PATH = [
+  'get_authoring_examples',
+  'compose_token_block',
+  'assemble_strategy_from_blocks',
+  'run_guided_research_round',
+];
+const TEMPLATE_FALLBACK_PATH = [
+  'resolve_strategy_semantics',
+  'assemble_signal_graph',
+  'preflight_strategy_draft',
+  'run_guided_research_round',
+];
+const FALLBACK_PATH_BY_MODE: Record<ResearchRecommendedMode, string[]> = {
+  template: TEMPLATE_FALLBACK_PATH,
+  block: TEMPLATE_FALLBACK_PATH,
+  hybrid: SG_V2_FALLBACK_PATH,
+  sg_v2: SG_V2_FALLBACK_PATH,
+};
+
+const RATIONALE_BY_MODE: Record<ResearchRecommendedMode, string> = {
+  sg_v2:
+    'Concrete or expert intent should be authored directly as SG v2 so the strategy logic is preserved.',
+  hybrid:
+    'Concrete intent should be authored as SG v2 first; recipes are only applied when they exactly preserve a facet.',
+  block:
+    'Exploratory intent has enough structure for editable token blocks but not enough precision to require direct SG v2.',
+  template:
+    'Vague intent benefits from templates or curated blocks before custom SG v2 authoring.',
+};
+
+const REFERENCE_TOOLS_FOR_BRIEF: readonly string[] = [
+  'get_authoring_examples',
+  'get_token_semantics',
+  'get_token_grammar',
+];
+
 function normalizeRiskTolerance(value: unknown): ResearchRiskTolerance {
+  return isRiskTolerance(value) ? value : 'moderate';
+}
+
+function normalizeAuthoringPreference(value: unknown): AuthoringPreference {
   return typeof value === 'string' &&
-    (RISK_TOLERANCE_VALUES as readonly string[]).includes(value)
-    ? (value as ResearchRiskTolerance)
-    : 'moderate';
+    (AUTHORING_PREFERENCE_VALUES as readonly string[]).includes(value)
+    ? (value as AuthoringPreference)
+    : 'auto';
+}
+
+function inferIntentMaturity(prompt: string): ResearchIntentMaturity {
+  const lower = prompt.toLowerCase();
+
+  if (EXPERT_PATTERNS_EN.test(lower)) {
+    return 'expert';
+  }
+
+  const indicator = INDICATOR_PATTERNS_EN.test(lower);
+  const operator = OPERATOR_PATTERNS_EN.test(lower);
+  const threshold = THRESHOLD_PATTERN.test(lower);
+  const concreteScore =
+    (indicator ? 1 : 0) + (operator ? 1 : 0) + (threshold ? 1 : 0);
+
+  // Concrete logic always wins: if the user names two of {indicator, operator,
+  // threshold} we treat that as actionable strategy logic even when they hedge
+  // it with vague phrasing ("I have no idea, maybe RSI < 30").
+  if (concreteScore >= 2) return 'concrete';
+
+  const vague = VAGUE_PATTERNS_EN.test(lower);
+  if (vague) return 'vague';
+
+  // Single concrete signal or a strategy family keyword is enough to call this
+  // exploratory rather than vague — the user has a direction, just not a rule.
+  if (indicator || operator || STRATEGY_FAMILY_PATTERN.test(lower)) {
+    return 'exploratory';
+  }
+  return 'vague';
+}
+
+function buildAuthoringRoute(input: ResearchEngagementInput): AuthoringRoute {
+  const intentMaturity = inferIntentMaturity(input.prompt);
+  const preference = normalizeAuthoringPreference(input.authoringPreference);
+  const recommendedMode: ResearchRecommendedMode =
+    preference === 'auto' ? MODE_BY_MATURITY[intentMaturity] : preference;
+  const routingRationale =
+    preference === 'auto'
+      ? RATIONALE_BY_MODE[recommendedMode]
+      : `Authoring preference ${preference} overrides automatic routing.`;
+
+  return {
+    intentMaturity,
+    recommendedMode,
+    recommendedToolPath: [...RECOMMENDED_PATH_BY_MODE[recommendedMode]],
+    fallbackToolPath: [...FALLBACK_PATH_BY_MODE[recommendedMode]],
+    referenceTools: [...REFERENCE_TOOLS_FOR_BRIEF],
+    routingRationale,
+  };
 }
 
 function sourceHasMeaningfulValue(
@@ -322,6 +469,7 @@ export interface ResearchEngagementPatch {
   objective?: string;
   initialBalance?: number;
   maxConcurrentPositions?: number;
+  authoringPreference?: AuthoringPreference;
 }
 
 function rebuildBrief(
@@ -340,6 +488,8 @@ function rebuildBrief(
     overlay.initialBalance = patch.initialBalance;
   if (patch.maxConcurrentPositions !== undefined)
     overlay.maxConcurrentPositions = patch.maxConcurrentPositions;
+  if (patch.authoringPreference !== undefined)
+    overlay.authoringPreference = patch.authoringPreference;
 
   const mergedRawInput = {
     ...base.input,
@@ -349,6 +499,7 @@ function rebuildBrief(
   const riskTolerance = normalizeRiskTolerance(
     patch.riskTolerance ?? base.riskTolerance,
   );
+  const route = buildAuthoringRoute(mergedRawInput);
 
   const serviceMessages = buildEngagementMessages(normalized, riskTolerance);
   const usageMessage = buildUsageStatusMessage(base.usageStatus);
@@ -363,6 +514,13 @@ function rebuildBrief(
     assumptions: buildAssumptions(mergedRawInput, normalized, riskTolerance),
     serviceMessages,
     decisionPoints: buildDecisionPoints(normalized, riskTolerance),
+    authoringInstructions: base.authoringInstructions,
+    intentMaturity: route.intentMaturity,
+    recommendedMode: route.recommendedMode,
+    recommendedToolPath: route.recommendedToolPath,
+    fallbackToolPath: route.fallbackToolPath,
+    referenceTools: route.referenceTools,
+    routingRationale: route.routingRationale,
     completedAt: new Date().toISOString(),
   };
 }
@@ -373,6 +531,7 @@ export async function startResearchEngagement(
 ): Promise<ResearchEngagementBrief> {
   const normalized = normalizeRequest(input);
   const riskTolerance = normalizeRiskTolerance(input.riskTolerance);
+  const route = buildAuthoringRoute(input);
   const research = await runResearch(input, undefined, {
     ...(options.client ? { client: options.client } : {}),
   });
@@ -398,6 +557,12 @@ export async function startResearchEngagement(
     serviceMessages,
     decisionPoints: buildDecisionPoints(normalized, riskTolerance),
     authoringInstructions: research.prompts.authoring,
+    intentMaturity: route.intentMaturity,
+    recommendedMode: route.recommendedMode,
+    recommendedToolPath: route.recommendedToolPath,
+    fallbackToolPath: route.fallbackToolPath,
+    referenceTools: route.referenceTools,
+    routingRationale: route.routingRationale,
     live: research.live,
     usageStatus,
     recommendedWorkflow: research.recommendedWorkflow,
@@ -468,6 +633,15 @@ export function formatResearchEngagementBrief(
         `- ${point.question} Recommended: ${sentence(point.recommended)} Rationale: ${point.rationale}`,
     ),
     '',
+    '## Authoring Route',
+    '',
+    `- Intent maturity: ${brief.intentMaturity}`,
+    `- Recommended mode: ${brief.recommendedMode}`,
+    `- Recommended tool path: ${brief.recommendedToolPath.join(' -> ')}`,
+    `- Fallback tool path: ${brief.fallbackToolPath.join(' -> ')}`,
+    `- Reference tools: ${brief.referenceTools.join(', ')}`,
+    `- Rationale: ${brief.routingRationale}`,
+    '',
     '## Evidence Boundaries',
     '',
     ...brief.evidenceBoundaries.map((item) => `- ${item}`),
@@ -485,7 +659,7 @@ export async function runGuidedResearchRound(
     throw new Error('runGuidedResearchRound requires a draft object.');
   }
 
-  const client = options.client ?? createClient();
+  const client = options.client ?? createTraseqClient();
   const result = await runResearchRunner({
     client,
     input: {

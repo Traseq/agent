@@ -1,22 +1,25 @@
 import { randomUUID } from 'node:crypto';
-import {
-  TraseqApiError,
-  TraseqClient,
-  preflightStrategyDraft,
-} from '@traseq/sdk';
+import { TraseqApiError, preflightStrategyDraft } from '@traseq/sdk';
 
 import { analyzeRound } from './analysis.js';
-import { readEnv, requireEnv } from './env.js';
+import {
+  capabilitySummary,
+  createTraseqClient,
+  toIsoNow,
+} from './internal/runtime.js';
 import {
   asJsonObject,
   asNumber,
   asString,
   isJsonObject,
+  maxIndicatorPeriod,
   normalizeBacktest,
   normalizeDraft,
   normalizeValidation,
+  resolveBacktestRangeInPlace,
 } from './normalize.js';
 import { normalizeStrategyDraft } from './semantics/normalize-draft.js';
+import { augmentToolError } from './mcp/tool-guard.js';
 import { buildScoreBreakdown } from './scoring.js';
 import { normalizeRequest } from './research.js';
 import type {
@@ -57,39 +60,6 @@ const DEFAULT_MAX_REPAIR_ATTEMPTS = 4;
 const DEFAULT_POLL_INTERVAL_MS = 3_000;
 const DEFAULT_TIMEOUT_MS = 240_000;
 const DEFAULT_PRODUCER_TIMEOUT_MS = 120_000;
-
-function toIsoNow(): string {
-  return new Date().toISOString();
-}
-
-function createClient(): ResearchRunnerClient {
-  return new TraseqClient({
-    apiKey: requireEnv('TRASEQ_API_KEY'),
-    baseUrl: readEnv('TRASEQ_BASE_URL') ?? 'https://api.traseq.com',
-  });
-}
-
-function countArray(value: unknown): number | undefined {
-  return Array.isArray(value) ? value.length : undefined;
-}
-
-function capabilitySummary(capabilities: unknown): JsonObject {
-  const source = asJsonObject(capabilities) ?? {};
-  const signalGraph = asJsonObject(source.signalGraph) ?? {};
-  const operators = asJsonObject(source.operators) ?? {};
-
-  return {
-    protocol: source.protocol,
-    version: source.version,
-    subscriptionTier: source.subscriptionTier,
-    limits: asJsonObject(source.limits),
-    nodeKinds: countArray(signalGraph.nodes),
-    bindings: countArray(signalGraph.bindings),
-    indicators: countArray(source.indicators),
-    compareOperators: countArray(operators.compare),
-    crossOperators: countArray(operators.cross),
-  };
-}
 
 function metric(summary: JsonObject | undefined, key: string): number {
   const value = summary?.[key];
@@ -151,6 +121,111 @@ function buildAuthoringPayload(draft: StrategyDraftLike) {
   };
 }
 
+/**
+ * Local checks for fields that the remote `validateStrategy` endpoint does NOT
+ * cover but that the persistence + backtest pipeline still rejects.
+ *
+ * Why: `validateStrategy` only sees `{signalGraph, settings}`
+ * (see STRATEGY_AUTHORING_PAYLOAD_JSON_SCHEMA in @traseq/sdk). The draft's
+ * `backtest` section — symbol, range, executions, feeModel — is validated
+ * locally by `preflightStrategyDraft`, but only for *shape*. Some persistence
+ * requirements (a concrete instrument symbol, a resolvable range, an
+ * indicator-aware warmup) are not enforced by either path.
+ *
+ * This function fills that gap with conservative checks. We surface issues as
+ * a `ValidationSummaryLike` so the existing repair loop can handle them in the
+ * same shape as remote validation issues — no new error channel.
+ *
+ * Each issue carries a `suggestion` pointing at the correct discovery surface
+ * (`get_capabilities` / `traseq://capabilities`) so the LLM has a clear
+ * recovery action without having to grep the API for the right enum.
+ *
+ * Conservative bias: we only emit `severity: 'error'` for things the
+ * persistence layer is GUARANTEED to reject. Anything that may merely produce
+ * a server-side warning (e.g. warmup vs indicator period, range below the
+ * symbol's `dataStart` when we don't know dataStart locally) is reported as
+ * `severity: 'warning'` so it surfaces in logs without blocking the round.
+ */
+function preflightForPersistence(
+  draft: StrategyDraftLike,
+): ValidationSummaryLike {
+  const issues: ValidationIssueLike[] = [];
+
+  const backtest = asJsonObject(draft.backtest);
+  const signalInstrument = asJsonObject(backtest?.signalInstrument);
+  const symbol = asString(signalInstrument?.symbol);
+  if (!symbol) {
+    issues.push({
+      code: 'PERSISTENCE_MISSING_INSTRUMENT',
+      path: 'backtest.signalInstrument.symbol',
+      field: 'signalGraph',
+      message:
+        'backtest.signalInstrument.symbol is required for persistence and runBacktest. The remote validateStrategy endpoint only checks signalGraph + settings, so this gap is not caught upstream.',
+      suggestion:
+        'Read traseq://instruments (or call get_capabilities and read `instruments`) for the legal symbol list, then set backtest.signalInstrument.symbol to one of those exact strings.',
+      severity: 'error',
+    });
+  }
+
+  // Range shape check: by the time we get here, `resolveBacktestRangeInPlace`
+  // should have converted ISO/relative/symbolic strings to numbers. The only
+  // remaining error is `start >= end` after resolution — that one we know is
+  // wrong without consulting the API.
+  const range = asJsonObject(backtest?.range);
+  if (range) {
+    const start = asNumber(range.start);
+    const end = asNumber(range.end);
+    if (start !== undefined && end !== undefined && start >= end) {
+      issues.push({
+        code: 'PERSISTENCE_RANGE_INVERTED',
+        path: 'backtest.range',
+        field: 'signalGraph',
+        message: `backtest.range.start (${start}) is not less than backtest.range.end (${end}). The backtest engine rejects empty or inverted ranges.`,
+        suggestion:
+          'Set range.start to a value strictly less than range.end (epoch ms after resolution). Omit either endpoint to fall back to the API default ("inception" for start, "now" for end).',
+        severity: 'error',
+      });
+    }
+  }
+
+  // Warmup vs indicator-period check. We can compute the longest indicator
+  // lookback from the signalGraph; if the configured `warmupPeriod` is below
+  // it, the engine will either reject finalize or emit warnings the LLM has
+  // to repair. A 2× headroom matches the rule of thumb the validator uses.
+  const settings = asJsonObject(draft.settings);
+  const warmupPeriod = asNumber(settings?.warmupPeriod);
+  const longestIndicatorPeriod = maxIndicatorPeriod(draft.signalGraph);
+  if (
+    longestIndicatorPeriod !== undefined &&
+    warmupPeriod !== undefined &&
+    warmupPeriod < longestIndicatorPeriod
+  ) {
+    issues.push({
+      code: 'PERSISTENCE_WARMUP_TOO_LOW',
+      path: 'settings.warmupPeriod',
+      field: 'settings',
+      message: `settings.warmupPeriod (${warmupPeriod}) is shorter than the longest indicator lookback in signalGraph.nodes (${longestIndicatorPeriod}). The engine needs warmup >= longest lookback before any indicator is fully formed; finalize may be rejected.`,
+      suggestion: `Bump settings.warmupPeriod to at least ${longestIndicatorPeriod}, or 2× (${
+        longestIndicatorPeriod * 2
+      }) for safer headroom.`,
+      severity: 'warning',
+    });
+  }
+
+  return {
+    valid: issues.filter((issue) => issue.severity !== 'warning').length === 0,
+    summary: {
+      errors: issues.filter((issue) => issue.severity !== 'warning').length,
+      warnings: issues.filter((issue) => issue.severity === 'warning').length,
+    },
+    issues: {
+      signalGraph: issues.filter((issue) => issue.field !== 'settings'),
+      settings: issues.filter((issue) => issue.field === 'settings'),
+      conflicts: [],
+    },
+  };
+}
+
 interface ValidatedDraftForResearch {
   draft: StrategyDraftLike;
   validation: ValidationSummaryLike;
@@ -178,6 +253,17 @@ async function validateDraftForResearch(
   const remote = normalizeValidation(
     await client.validateStrategy(buildAuthoringPayload(effective)),
   );
+  if (!remote.valid) {
+    return { draft: effective, validation: remote };
+  }
+
+  // Persistence preflight: covers fields the remote validate endpoint skips
+  // (instrument symbol etc). Returns the same `ValidationSummaryLike` shape so
+  // the runner's repair loop can react identically to a remote failure.
+  const persistence = preflightForPersistence(effective);
+  if (!persistence.valid) {
+    return { draft: effective, validation: persistence };
+  }
   return { draft: effective, validation: remote };
 }
 
@@ -443,15 +529,128 @@ function asAccumulationSettings(
   return settings;
 }
 
+/**
+ * Per-round draft normalization. Output of this is what validate/persist see.
+ *
+ * Two range/warmup transformations live here so they happen exactly once per
+ * round, before validate, persist, and the SDK's own preflight:
+ *
+ *   1. `resolveBacktestRangeInPlace` — turns "inception"/"now"/"1y"/ISO dates
+ *      into epoch ms (or omits the endpoint when it should default). This
+ *      eliminates the validate-vs-runBacktest mismatch where validate/preflight
+ *      historically required numbers but runBacktest accepted flexible inputs.
+ *
+ *   2. `bumpWarmupForIndicatorPeriods` — when the LLM-set warmup is below the
+ *      longest indicator lookback in signalGraph, raise it. Prevents finalize
+ *      from being gated by a warmup warning the runner can fix deterministically.
+ *
+ * Both transformations append `runnerNormalizationPatches` so the round log
+ * surfaces what was changed; an LLM auditing the log can see the runner's
+ * fingerprints rather than treating the draft as a black box.
+ */
+interface NormalizedRunnerDraft {
+  draft: StrategyDraftLike;
+  rangePatches: readonly string[];
+  warmupPatch?: { previous: number | undefined; next: number; reason: string };
+}
+
 function normalizeRunnerDraft(
   input: AutoAgentRequest,
   rawDraft: unknown,
-): StrategyDraftLike {
+): NormalizedRunnerDraft {
   const draft = normalizeDraft(rawDraft);
+  const baseSettings = buildDefaultStrategySettings(input, draft.settings);
+  const backtest = buildBacktestConfig(input, draft.backtest);
+
+  const rangeResult = resolveBacktestRangeInPlace(backtest);
+
+  const warmupBumped = bumpWarmupForIndicatorPeriods(
+    baseSettings,
+    draft.signalGraph,
+  );
+
   return {
-    ...draft,
-    settings: buildDefaultStrategySettings(input, draft.settings),
-    backtest: buildBacktestConfig(input, draft.backtest),
+    draft: {
+      ...draft,
+      settings: warmupBumped.settings,
+      backtest,
+    },
+    rangePatches: rangeResult.patches,
+    ...(warmupBumped.patch ? { warmupPatch: warmupBumped.patch } : {}),
+  };
+}
+
+interface WarmupBumpResult {
+  settings: StrategySettings;
+  patch?: { previous: number | undefined; next: number; reason: string };
+}
+
+/**
+ * Emit one log entry per runner-side normalization patch (range resolution,
+ * warmup bump). Keeps the LLM's audit trail symmetric with the existing
+ * vocabulary normalizer (`normalizeStrategyDraft`) — every implicit mutation
+ * gets a log line so producers can see what the runner adjusted.
+ */
+function appendRunnerNormalizationLogs(
+  round: number,
+  normalized: NormalizedRunnerDraft,
+  logs: AgentStepLog[],
+): void {
+  if (normalized.rangePatches.length > 0) {
+    logs.push(
+      createLog(
+        round,
+        'normalize',
+        `Runner resolved backtest.range string forms to epoch ms before validate/persist: ${normalized.rangePatches.join('; ')}`,
+      ),
+    );
+  }
+  if (normalized.warmupPatch) {
+    const { previous, next, reason } = normalized.warmupPatch;
+    logs.push(
+      createLog(
+        round,
+        'normalize',
+        `Runner adjusted settings.warmupPeriod ${
+          previous === undefined ? '(unset)' : previous
+        } → ${next}. ${reason}`,
+      ),
+    );
+  }
+}
+
+/**
+ * Raise `warmupPeriod` to the longest indicator lookback in `signalGraph` when
+ * the configured warmup is below it. Returns the (possibly mutated) settings
+ * plus an audit patch describing the bump.
+ *
+ * We do NOT bump beyond `longestPeriod` (e.g. to 2×) here — the safer-headroom
+ * value is reported as a `warning` from `preflightForPersistence` so the LLM
+ * can pick it up if it wants. The runner's job at this layer is just to clear
+ * the deterministic gate; LLM-driven tuning stays the LLM's job.
+ */
+function bumpWarmupForIndicatorPeriods(
+  settings: StrategySettings,
+  signalGraph: unknown,
+): WarmupBumpResult {
+  const longest = maxIndicatorPeriod(signalGraph);
+  if (longest === undefined) {
+    return { settings };
+  }
+  const current = asNumber(
+    asJsonObject(settings as unknown as JsonObject)?.warmupPeriod,
+  );
+  if (current !== undefined && current >= longest) {
+    return { settings };
+  }
+  const next = longest;
+  return {
+    settings: { ...settings, warmupPeriod: next } as StrategySettings,
+    patch: {
+      previous: current,
+      next,
+      reason: `Warmup raised to match the longest indicator lookback (${longest}) discovered in signalGraph.nodes.`,
+    },
   };
 }
 
@@ -519,6 +718,37 @@ export function buildDefaultStrategySettings(
   };
 }
 
+/**
+ * Compose the backtest config the runner sends to `runBacktest`.
+ *
+ * Resolution order (highest precedence first):
+ *   - `draftBacktest.<field>` — whatever the producer or normalizer left in
+ *     the draft wins for fields it sets explicitly (`timeframe`,
+ *     `initialBalance`, `range`, `execution`, `portfolioRisk`, etc.).
+ *   - `draftBacktest.signalInstrument` — wins ONLY when truthy. When the
+ *     draft omits it, we fall back to `base.signalInstrument`. This guard
+ *     exists because `normalizeDraft` no longer injects a default
+ *     `BTCUSDT` (which used to silently shadow the caller's
+ *     `input.instrument`).
+ *   - `base` — derived from the caller's `AutoAgentRequest`:
+ *       - `timeframe` ← `input.timeframe`
+ *       - `signalInstrument.symbol` ← `input.instrument`
+ *       - `initialBalance` ← `input.initialBalance`
+ *
+ * Fields that DO NOT have a default here:
+ *   - `range` (start/end epoch ms): unset → backtest engine picks the full
+ *     available history for the symbol's `dataStart`. Validate does not
+ *     enforce this; if you want a deterministic window, set it explicitly.
+ *   - `execution` (incl. `feeModel`, `slippage`, order roles): unset → server
+ *     applies its venue defaults. The local SDK schema treats these as
+ *     optional, but a deployment can require `feeModel` at persistence time
+ *     (see `traseq://persistence-requirements`).
+ *   - `ambiguityResolution` / `ambiguityFallback`: unset → server defaults.
+ *
+ * Why the runner does not fill execution defaults itself: defaults belong to
+ * the venue + tier, both server-owned. Filling client-side would lock the
+ * runner to one venue's fee structure and silently shadow server updates.
+ */
 export function buildBacktestConfig(
   input: AutoAgentRequest,
   draftBacktest?: BacktestConfigLike,
@@ -701,6 +931,33 @@ function stopReasonForPhase(phase: RoundPhase, error: unknown): string {
   return isBacktestTimeoutError(error) ? 'backtest_timeout' : 'backtest_failed';
 }
 
+/**
+ * Map a round phase to the platform tool name that augmentToolError keys off.
+ * The catch block uses this to surface a guided-flow hint for persistence /
+ * backtest failures with the same vocabulary the MCP server uses for direct
+ * tool calls — so the LLM sees one consistent recovery contract.
+ *
+ * `null` means the phase is producer-side (draft/repair) and there is no
+ * platform tool to attribute the error to.
+ */
+function toolNameForPhase(phase: RoundPhase): string | null {
+  switch (phase) {
+    case 'persist':
+      // We don't know whether create vs version vs finalize tripped without
+      // inspecting the error path. `create_strategy_version` covers most
+      // cases (round 2+) and is in STATE_GATED_TOOLS; finalize and create are
+      // also gated. Pick the most common to keep augmentation behavior
+      // deterministic — the hint patterns themselves are identical across all
+      // three.
+      return 'create_strategy_version';
+    case 'backtest_queue':
+    case 'backtest_wait':
+      return 'run_backtest';
+    default:
+      return null;
+  }
+}
+
 async function callWithTimeout<T>(
   fn: (signal: AbortSignal) => T | Promise<T>,
   timeoutMs: number,
@@ -735,7 +992,7 @@ export async function runResearchRunner(
   const input = normalizeRequest(options.input);
   const runId = randomUUID();
   const startedAt = toIsoNow();
-  const client = options.client ?? createClient();
+  const client = options.client ?? createTraseqClient();
   const maxRepairAttempts =
     options.maxRepairAttempts ?? DEFAULT_MAX_REPAIR_ATTEMPTS;
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -808,14 +1065,35 @@ export async function runResearchRunner(
     const repairAttemptRecords: RepairAttemptRecord[] = [];
 
     try {
-      draft = normalizeRunnerDraft(
-        input,
-        await callWithTimeout(
-          (signal) => options.draftProducer(context, signal),
-          producerTimeoutMs,
-          'draft',
-        ),
+      const rawDraft = await callWithTimeout(
+        (signal) => options.draftProducer(context, signal),
+        producerTimeoutMs,
+        'draft',
       );
+      {
+        const normalized = normalizeRunnerDraft(input, rawDraft);
+        draft = normalized.draft;
+        appendRunnerNormalizationLogs(round, normalized, logs);
+      }
+
+      // Surface runner-level fills so the LLM can audit any defaults the
+      // runner applied on top of the producer output. We previously masked
+      // a missing `signalInstrument` with a silent BTCUSDT default — this
+      // log entry replaces that opacity with an explicit notice and lets
+      // the LLM correct the producer prompt next round.
+      const rawBacktest = asJsonObject(asJsonObject(rawDraft)?.backtest);
+      const rawSymbol = asString(
+        asJsonObject(rawBacktest?.signalInstrument)?.symbol,
+      );
+      if (!rawSymbol) {
+        logs.push(
+          createLog(
+            round,
+            'normalize',
+            `Producer omitted backtest.signalInstrument.symbol; runner used input.instrument="${input.instrument}". If you intended a different symbol, set it explicitly in the draft.`,
+          ),
+        );
+      }
 
       logs.push(
         createLog(round, 'validate', 'Validating strategy draft.', {
@@ -864,14 +1142,16 @@ export async function runResearchRunner(
           validation,
         );
         const repairProducer = options.repairProducer;
-        draft = normalizeRunnerDraft(
-          input,
-          await callWithTimeout(
+        {
+          const repairedRaw = await callWithTimeout(
             (signal) => repairProducer(repairContext, signal),
             producerTimeoutMs,
             'repair',
-          ),
-        );
+          );
+          const normalized = normalizeRunnerDraft(input, repairedRaw);
+          draft = normalized.draft;
+          appendRunnerNormalizationLogs(round, normalized, logs);
+        }
         validationAttempts += 1;
         logs.push(
           createLog(
@@ -1030,13 +1310,30 @@ export async function runResearchRunner(
       const stopReason = stopReasonForPhase(phase, caught);
       const message = errorMessage(caught);
       const errorIssues = extractIssuesFromError(caught);
-      logs.push(
-        createLog(
-          round,
-          'stop',
-          `Stopped during ${phase}: ${stopReason}. ${message}`,
-        ),
-      );
+      // Persistence + backtest failures often pattern-match a state-machine
+      // hint (e.g. version not finalized, missing forkedFromVersionId).
+      // Surface the hint on the round so MCP clients can render the same
+      // recovery affordance they get for direct tool calls — without this,
+      // a research-runner failure swallows the augmentation that
+      // safeErrorMessage applies on the platform tool path.
+      const toolName = toolNameForPhase(phase);
+      const augmentation = toolName
+        ? augmentToolError(toolName, caught)
+        : { extraNextSteps: [], hintCode: null };
+      const guidedFlowHint =
+        augmentation.extraNextSteps.length > 0
+          ? {
+              hintCode: augmentation.hintCode,
+              nextSteps: augmentation.extraNextSteps,
+            }
+          : undefined;
+      const stopMessage =
+        guidedFlowHint && guidedFlowHint.nextSteps.length > 0
+          ? `Stopped during ${phase}: ${stopReason}. ${message} | Recovery hint (code=${
+              guidedFlowHint.hintCode ?? 'unknown'
+            }): ${guidedFlowHint.nextSteps.join(' ')}`
+          : `Stopped during ${phase}: ${stopReason}. ${message}`;
+      logs.push(createLog(round, 'stop', stopMessage));
       rounds.push({
         round,
         label: `Round ${round}`,
@@ -1053,6 +1350,7 @@ export async function runResearchRunner(
         ...(repairAttemptRecords.length > 0
           ? { repairAttempts: repairAttemptRecords }
           : {}),
+        ...(guidedFlowHint ? { guidedFlowHint } : {}),
       });
       return completeResult({
         runId,

@@ -1,4 +1,5 @@
 import type { SecretRef } from '../secrets/index.js';
+import type { McpProfile } from '../mcp/profile.js';
 
 export type ClientId = 'claude-code' | 'claude-desktop' | 'codex' | 'file';
 
@@ -15,8 +16,8 @@ export interface InstallInput {
   inline?: string;
   packageVersion?: string;
   acknowledgeShared?: boolean;
-  /** MCP server profile to write into the client config. Defaults to 'guided'. */
-  profile?: 'guided' | 'full';
+  /** MCP server profile to write into the client config. Defaults to 'hybrid'. */
+  profile?: McpProfile;
 }
 
 export interface McpServerEntry {

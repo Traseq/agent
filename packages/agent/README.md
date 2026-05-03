@@ -283,15 +283,18 @@ will fetch live capabilities first using `TRASEQ_API_KEY`.
 For first-time install run `traseq-agent setup` (see [MCP In 60 Seconds](#mcp-in-60-seconds)). To run the stdio MCP server directly:
 
 ```sh
-traseq-agent mcp                   # default: --profile=guided
-traseq-agent mcp --profile=full    # expose every platform tool
+traseq-agent mcp                         # default: --profile=hybrid
+traseq-agent mcp --profile=authoring     # SG v2-first authoring surface
+traseq-agent mcp --profile=template      # template/block-first surface
+traseq-agent mcp --profile=reference     # read-only examples/grammar surface
+traseq-agent mcp --profile=full          # expose every platform tool
 ```
 
 Generic MCP entry that points at the keychain-stored API key (the writer
 emits this shape for **Claude Desktop**, **Claude Code**, and Codex). The
-default `guided` profile is implicit, so the writer omits the `--profile`
-flag for `guided` and only appends `--profile=full` when explicitly requested
-at install time:
+default `hybrid` profile is implicit, so the writer omits the `--profile`
+flag for `hybrid` and only appends non-default profiles when explicitly
+requested at install time:
 
 ```json
 {
@@ -309,24 +312,41 @@ at install time:
 
 The server resolves `TRASEQ_API_KEY_REF` at boot, so no plaintext key sits in
 the client config. `tools/list` puts `start_research_engagement`,
-`run_guided_research_round`, and `summarize_research_engagement` first. Guided
-mode also exposes token grammar and semantic composition tools so agents can
-author AST-first blocks, validate expert token streams, use recipes as semantic
-macros, and assemble a SignalGraph draft without relying on unsupported token
-sequences.
+`run_guided_research_round`, and `summarize_research_engagement` first when the
+active profile includes the research workflow. The default `hybrid` profile
+exposes both template/block authoring and direct SG v2 helpers, so
+`start_research_engagement` can route vague prompts toward templates and route
+concrete strategy logic toward SG v2 without forcing everything through
+recipes.
 
 ### Profiles
 
-| Profile            | What it exposes                                                                                                                                                                                      | When to use                                                             |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| `guided` (default) | Guided research, token semantic composition, draft authoring helpers, and safe platform tools (workspace context, capabilities, list/get/compile/validate blocks, list/get strategies and backtests) | Most agents; minimises wrong-tool calls before validation.              |
-| `full`             | Everything in `guided` plus all write/destructive/long-running platform operations                                                                                                                   | Advanced automation, scripting, deletion sweeps, manual override flows. |
+| Profile            | What it exposes                                                                                                   | When to use                                                                      |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `hybrid` (default) | Research workflow, template/block tools, direct SG v2 assemble/preflight, repair helpers, and safe platform tools | Most agents; auto-routes vague intent to templates and concrete intent to SG v2. |
+| `template`         | Research workflow, system templates, token grammar, recipes, block assembly, and safe platform tools              | Users with no clear strategy yet, onboarding, and block editing.                 |
+| `authoring`        | Research workflow, semantic resolver, direct SG v2 assemble/preflight, repair helpers, and safe platform tools    | Concrete custom strategies, API/quant users, and advanced agents.                |
+| `reference`        | Read-only authoring examples, grammar, semantics, and safe reference platform reads                               | Inspect legal shapes without exposing callable composers.                        |
+| `full`             | Everything in `hybrid` plus all write/destructive/long-running platform operations                                | Advanced automation, scripting, deletion sweeps, manual override flows.          |
 
-Switch via env (`TRASEQ_MCP_PROFILE=full`) or CLI flag (`traseq-agent mcp --profile=full`); the install writers default to `guided` and accept `--profile=full` to override at install time. Destructive platform tools still require `confirm: true` before the local runner will call the API. When Traseq returns structured Public Agent errors, the server formats the machine-readable reason, next steps, retryability, and Traseq app links for the calling agent.
+Switch via env (`TRASEQ_MCP_PROFILE=authoring`) or CLI flag
+(`traseq-agent mcp --profile=authoring`). The install writers default to
+`hybrid`; `guided` is no longer a valid profile. Destructive platform tools
+still require `confirm: true` before the local runner will call the API. When
+Traseq returns structured Public Agent errors, the server formats the
+machine-readable reason, next steps, retryability, and Traseq app links for the
+calling agent.
 
 ## Token Grammar And Semantic Composition
 
-The preferred guided composition path is AST-first:
+The default authoring decision is intent-based:
+
+- Vague intent: start from system templates, recipes, or editable blocks.
+- Concrete custom intent: author SG v2 directly, then run local preflight.
+- Mixed intent: use SG v2 as the main draft and recipes/blocks only for facets
+  that exactly match curated macros.
+
+For block/template authoring, use the AST-first token grammar path:
 
 1. `get_token_grammar`: inspect the public AST/token grammar, operators,
    recursive slots, roles, and tier limits.
@@ -353,7 +373,8 @@ strategy writes still use SignalGraph v2.
 
 The semantic resolver helps an external AI agent move from user intent to
 capability-grounded `signalGraph` fragments. Use it for candidate discovery or
-advanced flows, then prefer token recipes when constructing editable blocks.
+advanced flows. Use token recipes only when constructing editable blocks or
+when a curated macro exactly preserves the user's facet.
 
 Use it when the user expresses strategy meaning, such as:
 
@@ -372,6 +393,7 @@ Available local tools:
 | `materialize_token_ast`            | Compile `StrategyAstV1` or `BoolExpr` into legal `TokenDto`.             |
 | `validate_token_grammar_candidate` | Validate AST-first or token-first grammar candidates.                    |
 | `get_token_semantics`              | Read deterministic token recipe macros, roles, and recipe params.        |
+| `get_authoring_examples`           | Read reference examples for template/block, hybrid, and SG v2 paths.     |
 | `compose_token_block`              | Compose legal TokenDto + paired SignalGraph fragment from a recipe.      |
 | `validate_token_block`             | Validate recipe or raw block tokens locally/remotely when available.     |
 | `assemble_strategy_from_blocks`    | Assemble recipe/workspace blocks into a preflighted strategy draft.      |
@@ -500,7 +522,7 @@ to a PR, or keep them in the current agent conversation.
 9. `create_strategy` or `create_strategy_version`: persist a draft.
 10. `finalize_strategy_version`: lock the version for backtesting.
 11. `run_backtest` and `wait_backtest`: queue and poll results.
-12. `get_backtest_chart_data`, `preview_robustness_analysis`,
+12. `get_backtest_price_preview`, `preview_robustness_analysis`,
     `create_comparison_set`: inspect evidence and compare revisions.
 
 For Claude Code, Codex, or another MCP-capable agent, the higher-level local
@@ -534,7 +556,6 @@ The older `run_research_draft`, `evaluate_research_result`, and
 | `analysis_runs_write`    | Previewing, creating, updating, and deleting robustness analysis runs                        |
 | `comparison_sets_read`   | Listing and reading comparison sets                                                          |
 | `comparison_sets_write`  | Creating, updating, and deleting comparison sets                                             |
-| `market_read`            | Reading chart data and price previews                                                        |
 
 Write scopes require the corresponding read scope when keys are created in the
 Traseq app.

@@ -55,7 +55,7 @@ describe('MCP server contract', () => {
     });
   });
 
-  it('lists tools and includes start_research_engagement (guided profile, slim)', async () => {
+  it('lists the default hybrid authoring surface', async () => {
     await withClient(async (client) => {
       const tools = await client.listTools();
       assert.ok(Array.isArray(tools.tools));
@@ -63,18 +63,19 @@ describe('MCP server contract', () => {
         tools.tools.some((t) => t.name === 'start_research_engagement'),
         'start_research_engagement must be listed',
       );
-      // P1-D: internal helpers (resolve/assemble/preflight) are intentionally
-      // hidden in guided mode and reachable inside run_guided_research_round.
       const exposed = new Set(tools.tools.map((t) => t.name));
-      for (const advanced of [
+      for (const required of [
         'assemble_signal_graph',
         'preflight_strategy_draft',
+        'assemble_strategy_from_blocks',
+        'compose_token_block',
         'resolve_strategy_semantics',
         'suggest_minimal_repairs',
+        'get_authoring_examples',
       ]) {
         assert.ok(
-          !exposed.has(advanced),
-          `${advanced} should be hidden in guided profile (P1-D)`,
+          exposed.has(required),
+          `${required} should be visible in the default hybrid profile`,
         );
       }
       const validate = tools.tools.find((t) => t.name === 'validate_strategy');

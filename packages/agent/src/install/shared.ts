@@ -1,4 +1,5 @@
 import { formatSecretRef, type SecretRef } from '../secrets/index.js';
+import { DEFAULT_MCP_PROFILE } from '../mcp/profile.js';
 
 import { packagePin } from './version.js';
 import type { InstallInput, McpServerEntry } from './types.js';
@@ -26,11 +27,10 @@ export function buildEntry(input: InstallInput): McpServerEntry {
     TRASEQ_AGENT_BIN,
     'mcp',
   ];
-  // Only emit `--profile=full` explicitly. The `guided` profile is the runtime
-  // default, so omitting the flag keeps the entry compatible with older pinned
-  // versions of @traseq/agent that do not parse `--profile`.
-  if (input.profile === 'full') {
-    args.push('--profile=full');
+  // Only emit non-default profiles explicitly. The hybrid profile is the
+  // runtime default and should keep generated config compact.
+  if (input.profile && input.profile !== DEFAULT_MCP_PROFILE) {
+    args.push(`--profile=${input.profile}`);
   }
   return {
     command: 'npx',

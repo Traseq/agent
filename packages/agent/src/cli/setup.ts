@@ -8,6 +8,11 @@ import {
   type ClientId,
 } from '../install/index.js';
 import { TRASEQ_APP_URL } from '../env.js';
+import {
+  DEFAULT_MCP_PROFILE,
+  parseMcpProfile,
+  type McpProfile,
+} from '../mcp/profile.js';
 import { probeTraseqMcpSetup } from '../mcp/probe.js';
 import {
   DEFAULT_SECRET_REF,
@@ -34,14 +39,14 @@ const NON_TTY_STEPS = [
 interface SetupFlags {
   targets: string[];
   apiKey?: string;
-  profile: 'guided' | 'full';
+  profile: McpProfile;
   nonInteractive: boolean;
 }
 
 function parseSetupFlags(argv: readonly string[]): SetupFlags {
   const flags: SetupFlags = {
     targets: [],
-    profile: 'guided',
+    profile: DEFAULT_MCP_PROFILE,
     nonInteractive: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -63,10 +68,14 @@ function parseSetupFlags(argv: readonly string[]): SetupFlags {
         flags.apiKey = next;
         i++;
       }
-    } else if (arg === '--profile=full') {
-      flags.profile = 'full';
-    } else if (arg === '--profile=guided') {
-      flags.profile = 'guided';
+    } else if (arg.startsWith('--profile=')) {
+      flags.profile = parseMcpProfile(arg.slice('--profile='.length));
+    } else if (arg === '--profile') {
+      const next = argv[i + 1];
+      if (next !== undefined) {
+        flags.profile = parseMcpProfile(next);
+        i++;
+      }
     } else if (arg === '--non-interactive') {
       flags.nonInteractive = true;
     }
@@ -202,7 +211,15 @@ async function ensureKeychainHasKey(apiKeyOverride?: string): Promise<number> {
 export async function runSetupCommand(
   argv: readonly string[],
 ): Promise<number> {
-  const flags = parseSetupFlags(argv);
+  let flags: SetupFlags;
+  try {
+    flags = parseSetupFlags(argv);
+  } catch (error) {
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return 1;
+  }
   const interactive = !flags.nonInteractive && process.stdin.isTTY;
   if (!interactive && flags.targets.length === 0) {
     for (const line of NON_TTY_STEPS) {

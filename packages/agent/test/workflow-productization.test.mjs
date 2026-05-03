@@ -386,6 +386,71 @@ describe('guided research service', () => {
     assert.ok(brief.authoringInstructions.includes('external AI agent'));
   });
 
+  it('routes vague prompts toward template/block authoring', async () => {
+    const brief = await startResearchEngagement(
+      { prompt: 'I have no strategy idea yet. Recommend a BTCUSDT template.' },
+      { client: makeClient() },
+    );
+
+    assert.equal(brief.intentMaturity, 'vague');
+    assert.match(brief.recommendedMode, /template|block/);
+    assert.ok(
+      brief.recommendedToolPath.some((tool) =>
+        ['compose_strategy_from_template', 'assemble_strategy_from_blocks'].includes(
+          tool,
+        ),
+      ),
+    );
+    assert.ok(brief.referenceTools.includes('get_authoring_examples'));
+  });
+
+  it('routes concrete strategy conditions toward SG v2 authoring', async () => {
+    const brief = await startResearchEngagement(
+      {
+        prompt:
+          'Use RSI crossing above 30, price above EMA100, and a 2% stop loss.',
+      },
+      { client: makeClient() },
+    );
+
+    assert.equal(brief.intentMaturity, 'concrete');
+    assert.match(brief.recommendedMode, /sg_v2|hybrid/);
+    assert.ok(brief.recommendedToolPath.includes('assemble_signal_graph'));
+    assert.ok(brief.recommendedToolPath.includes('preflight_strategy_draft'));
+    assert.ok(brief.fallbackToolPath.includes('assemble_strategy_from_blocks'));
+  });
+
+  it('routes expert graph/API prompts directly to SG v2', async () => {
+    const brief = await startResearchEngagement(
+      {
+        prompt:
+          'Author a custom SignalGraph v2 JSON draft with explicit node refs for my API workflow.',
+      },
+      { client: makeClient() },
+    );
+
+    assert.equal(brief.intentMaturity, 'expert');
+    assert.equal(brief.recommendedMode, 'sg_v2');
+    assert.ok(brief.routingRationale.includes('SG v2'));
+  });
+
+  it('honors authoringPreference overrides', async () => {
+    const brief = await startResearchEngagement(
+      {
+        prompt:
+          'Use RSI crossing above 30, price above EMA100, and a 2% stop loss.',
+        authoringPreference: 'template',
+      },
+      { client: makeClient() },
+    );
+
+    assert.equal(brief.recommendedMode, 'template');
+    assert.ok(
+      brief.recommendedToolPath.includes('compose_strategy_from_template'),
+    );
+    assert.ok(!brief.recommendedToolPath.includes('assemble_signal_graph'));
+  });
+
   it('update_research_engagement patches in-memory state without re-fetching context (P2-G)', async () => {
     // Why this test exists: the user transcript shows the agent re-running
     // start_research_engagement (= 4 API calls) every time the user said

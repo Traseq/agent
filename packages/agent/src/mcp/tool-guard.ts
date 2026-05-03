@@ -121,6 +121,75 @@ const STATE_HINT_PATTERNS: ReadonlyArray<{
       'Call run_guided_research_round to finalize the draft and run a backtest in one step.',
     ],
   },
+  {
+    // `execution.feeModel` is enforced by the persistence + backtest pipeline
+    // but is NOT covered by the remote `validateStrategy` payload (which only
+    // sees `signalGraph + settings`). When it's missing or malformed, the
+    // server tends to emit "feeModel is required" / "execution.feeModel must
+    // be ..." style messages — point the LLM at the capability spec instead
+    // of letting it guess.
+    re: /execution\.feeModel|feeModel\s+is\s+required|feeModel\s+must|missing.*feeModel/i,
+    hintCode: 'EXECUTION_FEE_MODEL_REQUIRED',
+    nextSteps: [
+      '`execution.feeModel` is a persistence/backtest requirement that the remote `validateStrategy` endpoint does not check, so this error only surfaces here.',
+      'Read traseq://capabilities (or call get_capabilities) and look for the `execution.feeModel` schema — fill in `kind: "tiered_maker_taker"` with `tiers` matching the venue, then re-run the round.',
+      'When a default is acceptable, prefer compose_strategy_from_template / get_system_strategy as a baseline — system templates already carry a valid feeModel.',
+    ],
+  },
+  {
+    // The `meta.source.editor` enum is owned by the server schema (e.g.
+    // `token-flow | text-dsl | ai | runtime-strategy | signal-graph` in the
+    // current repo, but other deployments may have different values like
+    // `workspace | ai-pasta | ai-pesto`). Tell the LLM not to guess.
+    re: /meta\.source\.editor|source\.editor.*must.*one\s+of|editor.*must\s+be\s+one\s+of/i,
+    hintCode: 'META_SOURCE_EDITOR_INVALID',
+    nextSteps: [
+      '`meta.source.editor` only accepts a server-defined enum. Do not guess from training data; the legal values vary by deployment.',
+      'Read traseq://capabilities and look for the source.editor enum, OR omit the field entirely — the server fills in a sensible default for research runs.',
+      'For LLM-authored drafts, when you must set it, use the value the server reports for "ai-authored" submissions in the capability spec.',
+    ],
+  },
+  {
+    // Warmup-vs-indicator gates emit a recognizable phrase server-side
+    // ("warmup", "warmupPeriod", "insufficient warmup", "indicator period",
+    // "indicator lookback"). Surface the deterministic fix: bump warmup to the
+    // longest lookback. The runner already auto-bumps via
+    // `bumpWarmupForIndicatorPeriods`, so if this hint fires it likely means
+    // the producer set warmup AFTER the runner normalized — point them at
+    // settings.warmupPeriod directly.
+    re: /\bwarmup(?:Period)?\b|insufficient\s+warmup|indicator\s+(?:period|lookback)\s+exceeds|warmup.*indicator|indicator.*warmup/i,
+    hintCode: 'WARMUP_TOO_LOW',
+    nextSteps: [
+      "settings.warmupPeriod is shorter than the longest indicator lookback in signalGraph. The engine can't form indicators before warmup completes, so finalize/backtest gates trip.",
+      'Set settings.warmupPeriod to at least the longest indicator length you use (length / period / window args). 2× headroom is a common safe default.',
+      'When run via `run_guided_research_round`, the runner auto-bumps warmup to the longest detected indicator period — if you keep hitting this, your producer is overriding the runner adjustment.',
+    ],
+  },
+  {
+    // `range.start` / `range.end` rejection at the SDK or persistence layer.
+    // Most common shapes: "must be number", "must be epoch ms", "expected
+    // integer", "range.start invalid", and the dataStart-bound rejection
+    // ("before dataStart" / "earlier than instrument inception").
+    re: /range\.(?:start|end)|backtest\.range|epoch\s+millisecond|dataStart|instrument\s+inception/i,
+    hintCode: 'BACKTEST_RANGE_INVALID',
+    nextSteps: [
+      'backtest.range.start / range.end accept ISO date ("2024-01-01"), relative duration ("1y"), the symbolic tokens "now"/"inception", or numeric epoch (seconds or milliseconds). Omit either endpoint to fall back to the API default.',
+      "If you set a numeric range, range.start must be >= the symbol's `dataStart` (read traseq://instruments) and strictly less than range.end.",
+      'When run via `run_guided_research_round`, the runner pre-resolves common string forms to epoch ms — if this fires, your producer likely passed an unrecognizable string. Switch to ISO/relative/symbolic or epoch ms.',
+    ],
+  },
+  {
+    // Generic schema-validation backstop: when none of the more specific
+    // patterns match but the API reports a `category: validation` failure,
+    // we still want the LLM to know which discovery surface to consult,
+    // not to assume the platform is broken.
+    re: /category[":\s]+validation|VALIDATION_FAILED|schema\s+validation\s+failed/i,
+    hintCode: 'SCHEMA_VALIDATION_FAILED',
+    nextSteps: [
+      'This is a schema/parameter problem, not a platform/quota problem (category: validation). Do not suggest a tier upgrade.',
+      'Re-read traseq://capabilities and the `validationIssues` (or response body `issues`) for the offending `path` and `code`, then fix the draft and re-run.',
+    ],
+  },
 ];
 
 export function augmentToolError(
@@ -130,12 +199,17 @@ export function augmentToolError(
   if (!(error instanceof TraseqApiError)) {
     return { extraNextSteps: [], hintCode: null };
   }
-  // Only augment for tools where state-machine violations are plausible —
-  // avoids leaking guided-round suggestions into unrelated error paths.
+  // Only augment for tools where state-machine OR schema-shape violations are
+  // plausible. We add `validate_strategy` and `create_strategy` here because
+  // the warmup / range / fee-model patterns can fire on any of the write or
+  // schema-introspecting endpoints, and the augmentation is conservative
+  // (regex-gated) so cross-tool noise stays low.
   const STATE_GATED_TOOLS = new Set([
     'run_backtest',
     'finalize_strategy_version',
     'create_strategy_version',
+    'create_strategy',
+    'validate_strategy',
     'create_pine_export',
     'create_robustness_analysis',
   ]);

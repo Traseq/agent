@@ -43,7 +43,6 @@ export type {
   BacktestRunContextInstrument,
   BacktestRunContextRange,
   CapabilityDocument,
-  ChartDataResponse,
   ComparisonSetDetail,
   ComparisonSetListResponse,
   ComparisonSetRequest,

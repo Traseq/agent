@@ -45,7 +45,6 @@ export TRASEQ_API_KEY="trsq_..."
 | `comparison_sets_write`  | Creating, updating, and deleting comparison sets                                             |
 | `blocks_read`            | Listing and reading reusable blocks                                                          |
 | `blocks_write`           | Creating, updating, deleting, pinning, and unpinning reusable blocks                         |
-| `market_read`            | Reading chart data and price previews                                                        |
 
 Write scopes require the corresponding read scope when keys are created in the Traseq app.
 

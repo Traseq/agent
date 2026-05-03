@@ -48,9 +48,13 @@ export {
 } from './mcp/index.js';
 export { toToolList } from './mcp/server.js';
 export {
+  AGENT_TOOL_NAMES_BY_PROFILE,
   DEFAULT_MCP_PROFILE,
-  GUIDED_AGENT_TOOL_NAMES,
-  GUIDED_PLATFORM_OPS,
+  MCP_PROFILE_VALUES,
+  REFERENCE_PLATFORM_OPS,
+  SAFE_PLATFORM_OPS,
+  agentToolNamesForProfile,
+  formatMcpProfileList,
   operationStage,
   parseMcpProfile,
   platformOperationsForProfile,
@@ -122,6 +126,13 @@ export {
   asNumber,
   asStringArray,
   parseJsonObject,
+  resolveRangePoint,
+  resolveBacktestRangeInPlace,
+  maxIndicatorPeriod,
+} from './normalize.js';
+export type {
+  ResolvedRangePoint,
+  ResolvedBacktestRangePatch,
 } from './normalize.js';
 
 // Types

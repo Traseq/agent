@@ -49,6 +49,10 @@ describe('claude-code writer', () => {
       assert.ok(plan.entry.args.includes('--package'));
       const pkgArg = plan.entry.args[plan.entry.args.indexOf('--package') + 1];
       assert.match(pkgArg, /^@traseq\/agent@\^\d+\.\d+\.\d+$/);
+      assert.ok(
+        !plan.entry.args.some((arg) => arg.startsWith('--profile=')),
+        'default hybrid profile should not be written explicitly',
+      );
       assert.equal(
         plan.entry.env.TRASEQ_API_KEY_REF,
         'keychain:traseq/api-key',
@@ -59,6 +63,17 @@ describe('claude-code writer', () => {
       if (existsSync(home)) rmSync(home, { recursive: true, force: true });
       if (existsSync(claudeJson)) rmSync(claudeJson, { force: true });
     }
+  });
+
+  it('writes explicit non-default profile flags', () => {
+    const target = parseTarget('claude-code:user');
+    const writer = getWriter(target);
+    const input = resolveDefaultInputs(target, {
+      secretRef: DEFAULT_SECRET_REF,
+      profile: 'authoring',
+    });
+    const plan = writer.plan(input);
+    assert.ok(plan.entry.args.includes('--profile=authoring'));
   });
 
   it('throws on inlined project secrets without acknowledgement', () => {

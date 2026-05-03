@@ -172,11 +172,6 @@ export async function runPlatformTool(
       return client.getBacktest(requiredString(input, 'backtestId'));
     case 'get_backtest_progress':
       return client.getBacktestProgress(requiredString(input, 'backtestId'));
-    case 'get_backtest_chart_data':
-      return client.getBacktestChartData(
-        requiredString(input, 'backtestId'),
-        omit(input, ['backtestId']) as any,
-      );
     case 'get_backtest_price_preview':
       return client.getBacktestPricePreview(
         requiredString(input, 'backtestId'),
