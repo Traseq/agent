@@ -122,18 +122,17 @@ const STATE_HINT_PATTERNS: ReadonlyArray<{
     ],
   },
   {
-    // `execution.feeModel` is enforced by the persistence + backtest pipeline
-    // but is NOT covered by the remote `validateStrategy` payload (which only
-    // sees `signalGraph + settings`). When it's missing or malformed, the
+    // `execution.feeModel` belongs to run_backtest config, not strategy
+    // create/finalize. When callers supply execution and it is malformed, the
     // server tends to emit "feeModel is required" / "execution.feeModel must
     // be ..." style messages — point the LLM at the capability spec instead
     // of letting it guess.
     re: /execution\.feeModel|feeModel\s+is\s+required|feeModel\s+must|missing.*feeModel/i,
     hintCode: 'EXECUTION_FEE_MODEL_REQUIRED',
     nextSteps: [
-      '`execution.feeModel` is a persistence/backtest requirement that the remote `validateStrategy` endpoint does not check, so this error only surfaces here.',
-      'Read traseq://capabilities (or call get_capabilities) and look for the `execution.feeModel` schema — fill in `kind: "tiered_maker_taker"` with `tiers` matching the venue, then re-run the round.',
-      'When a default is acceptable, prefer compose_strategy_from_template / get_system_strategy as a baseline — system templates already carry a valid feeModel.',
+      '`execution.feeModel` belongs to run_backtest config. Do not add it to create_strategy or finalize_strategy_version payloads.',
+      'When a default is acceptable, omit `config.execution` and let the server apply workspace defaults.',
+      'If you intentionally supply execution, read traseq://capabilities (or call get_capabilities) and fill in `kind: "tiered_maker_taker"` with venue-appropriate tiers.',
     ],
   },
   {
@@ -187,7 +186,7 @@ const STATE_HINT_PATTERNS: ReadonlyArray<{
     hintCode: 'SCHEMA_VALIDATION_FAILED',
     nextSteps: [
       'This is a schema/parameter problem, not a platform/quota problem (category: validation). Do not suggest a tier upgrade.',
-      'Re-read traseq://capabilities and the `validationIssues` (or response body `issues`) for the offending `path` and `code`, then fix the draft and re-run.',
+      'Re-read traseq://capabilities and the structured `issues` for the offending `path` and `code`, then fix the draft and re-run.',
     ],
   },
 ];

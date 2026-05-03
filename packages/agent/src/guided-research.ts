@@ -356,6 +356,10 @@ function buildGuidedEvidence(
   result: ResearchRunnerResult,
   evaluation: ResearchResultEvaluation,
 ): GuidedResearchEvidence {
+  const warningCount = result.rounds.reduce(
+    (count, round) => count + (round.warnings?.length ?? 0),
+    result.warnings?.length ?? 0,
+  );
   return {
     completedRounds: result.summary.completedRounds,
     totalRounds: result.summary.totalRounds,
@@ -363,6 +367,7 @@ function buildGuidedEvidence(
       ? { championRound: result.championRound }
       : {}),
     riskFlagCount: evaluation.riskFlags.length,
+    ...(warningCount > 0 ? { warningCount } : {}),
     headline: result.summary.headline,
   };
 }
@@ -400,7 +405,8 @@ function buildRoundMessages(
   const linkedBacktest = representativeBacktest(result, evaluation);
 
   if (result.status === 'failed') {
-    const topIssues = (result.validationIssues ?? []).slice(0, 3);
+    const failure = result.failure;
+    const topIssues = (failure?.issues ?? []).slice(0, 3);
     const issueLines = topIssues
       .map((issue) => {
         const code = issue.code ? `[${issue.code}] ` : '';
@@ -408,13 +414,12 @@ function buildRoundMessages(
         return `- ${code}${path}${issue.message}`;
       })
       .join('\n');
-    const baseMessage =
-      result.stopReason === 'validation_failed'
-        ? 'Validation failed, so no strategy write or backtest execution should be treated as completed research.'
-        : `The research run stopped with reason: ${result.stopReason ?? 'unknown'}.`;
+    const baseMessage = failure
+      ? `The research run stopped during ${failure.phase} (${failure.reason}): ${failure.message}`
+      : 'The research run stopped before producing a structured failure.';
     const fullMessage =
       issueLines.length > 0
-        ? `${baseMessage}\n\nTop issues (read \`result.validationIssues\` for the full list):\n${issueLines}`
+        ? `${baseMessage}\n\nTop issues (read \`result.failure.issues\` for the full list):\n${issueLines}`
         : baseMessage;
     messages.push({
       level: 'critical',

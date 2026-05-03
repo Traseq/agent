@@ -30,6 +30,7 @@ import type {
   ResearchDraftContext,
   ResearchRepairContext,
   ResearchRunnerClient,
+  ResearchRunnerFailure,
   ResearchRunnerCostEstimate,
   ResearchRunnerLiveContext,
   ResearchRunnerOptions,
@@ -54,7 +55,7 @@ type AccumulationConfig = AccumulateSettings['accumulation'];
 type AccumulationTriggerMode = AccumulationConfig['triggerMode'];
 type AccumulationSchedule = NonNullable<AccumulationConfig['schedule']>;
 
-export const RUNNER_SCHEMA_VERSION = 1;
+export const RUNNER_SCHEMA_VERSION = 2;
 
 const DEFAULT_MAX_REPAIR_ATTEMPTS = 4;
 const DEFAULT_POLL_INTERVAL_MS = 3_000;
@@ -344,9 +345,9 @@ function createRepairContext(
 
 function resultStatus(
   rounds: readonly ResearchRunnerRound[],
-  stopReason?: string,
+  failure?: ResearchRunnerFailure,
 ): ResearchRunnerStatus {
-  if (!stopReason) {
+  if (!failure) {
     return 'completed';
   }
 
@@ -391,14 +392,15 @@ function completeResult(args: {
   input: AutoAgentRequest;
   live: ResearchRunnerLiveContext;
   rounds: ResearchRunnerRound[];
-  stopReason?: string;
-  errors?: string[];
-  validationIssues?: ValidationIssueLike[];
+  failure?: ResearchRunnerFailure;
+  warnings?: ValidationIssueLike[];
   repairAttempts?: RepairAttemptRecord[];
 }): ResearchRunnerResult {
   const champion = selectChampionRound(args.rounds);
-  const status = resultStatus(args.rounds, args.stopReason);
+  const status = resultStatus(args.rounds, args.failure);
   const summary = buildSummary(args.input, args.rounds, champion);
+  const warnings =
+    args.warnings ?? args.rounds.flatMap((round) => round.warnings ?? []);
 
   return {
     schemaVersion: RUNNER_SCHEMA_VERSION,
@@ -416,11 +418,8 @@ function completeResult(args: {
     summary,
     ...(champion ? { championRound: champion.round } : {}),
     status,
-    ...(args.stopReason ? { stopReason: args.stopReason } : {}),
-    ...(args.errors && args.errors.length > 0 ? { errors: args.errors } : {}),
-    ...(args.validationIssues && args.validationIssues.length > 0
-      ? { validationIssues: args.validationIssues }
-      : {}),
+    ...(args.failure ? { failure: args.failure } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
     ...(args.repairAttempts && args.repairAttempts.length > 0
       ? { repairAttempts: args.repairAttempts }
       : {}),
@@ -741,8 +740,8 @@ export function buildDefaultStrategySettings(
  *     enforce this; if you want a deterministic window, set it explicitly.
  *   - `execution` (incl. `feeModel`, `slippage`, order roles): unset → server
  *     applies its venue defaults. The local SDK schema treats these as
- *     optional, but a deployment can require `feeModel` at persistence time
- *     (see `traseq://persistence-requirements`).
+ *     optional; `feeModel` belongs to runBacktest execution config, not
+ *     create/finalize persistence metadata.
  *   - `ambiguityResolution` / `ambiguityFallback`: unset → server defaults.
  *
  * Why the runner does not fill execution defaults itself: defaults belong to
@@ -886,49 +885,204 @@ class ProducerTimeoutError extends Error {
 type RoundPhase =
   | 'draft'
   | 'repair'
-  | 'persist'
-  | 'backtest_queue'
-  | 'backtest_wait';
+  | 'validate'
+  | 'create_strategy'
+  | 'create_strategy_version'
+  | 'finalize_strategy_version'
+  | 'run_backtest'
+  | 'wait_backtest';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function issueFromUnknown(issue: unknown): ValidationIssueLike | undefined {
+  const source = asJsonObject(issue);
+  if (!source || typeof source.message !== 'string') {
+    return undefined;
+  }
+  return {
+    ...(typeof source.code === 'string' ? { code: source.code } : {}),
+    ...(typeof source.path === 'string' ? { path: source.path } : {}),
+    ...(typeof source.field === 'string' ? { field: source.field } : {}),
+    message: source.message,
+    ...(typeof source.suggestion === 'string'
+      ? { suggestion: source.suggestion }
+      : {}),
+    ...(source.severity === 'error' || source.severity === 'warning'
+      ? { severity: source.severity }
+      : {}),
+    ...(source.gate === 'schema' ||
+    source.gate === 'draft_save' ||
+    source.gate === 'finalize' ||
+    source.gate === 'backtest_config'
+      ? { gate: source.gate }
+      : {}),
+    ...(typeof source.details === 'string' ? { details: source.details } : {}),
+    ...(asJsonObject(source.blockA)
+      ? { blockA: asJsonObject(source.blockA) as { id: string; name: string } }
+      : {}),
+    ...(asJsonObject(source.blockB)
+      ? { blockB: asJsonObject(source.blockB) as { id: string; name: string } }
+      : {}),
+  };
+}
+
+function flatIssuesFromArray(value: unknown): ValidationIssueLike[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map(issueFromUnknown)
+    .filter((issue): issue is ValidationIssueLike => issue !== undefined);
 }
 
 function extractIssuesFromError(error: unknown): ValidationIssueLike[] {
   if (!(error instanceof TraseqApiError)) {
     return [];
   }
-  const body = error.parsedBody;
-  if (!body || !Array.isArray(body.issues)) {
+  return flatIssuesFromArray(error.parsedBody?.issues);
+}
+
+function extractWarningsFromError(error: unknown): ValidationIssueLike[] {
+  if (!(error instanceof TraseqApiError)) {
     return [];
   }
-  return body.issues.map((issue) => ({
-    code: issue.code,
-    path: issue.path,
-    ...(issue.field ? { field: issue.field } : {}),
-    message: issue.message,
-    ...(issue.suggestion ? { suggestion: issue.suggestion } : {}),
-    ...(issue.severity ? { severity: issue.severity } : {}),
-    ...(issue.details ? { details: issue.details } : {}),
-    ...(issue.blockA ? { blockA: issue.blockA } : {}),
-    ...(issue.blockB ? { blockB: issue.blockB } : {}),
-  }));
+  return extractWarningsFromValue(error.parsedBody);
+}
+
+function extractWarningsFromValue(value: unknown): ValidationIssueLike[] {
+  const source = asJsonObject(value);
+  if (!source) {
+    return [];
+  }
+  // Server contract: `issues` is the flat list (mixed severities); `warnings`
+  // is the flat list of warning-severity entries returned on success and
+  // confirmation-required responses. Take warnings from `issues` when the
+  // payload only carries `issues` (e.g. validation error responses), and
+  // fall back to the explicit `warnings` array otherwise.
+  if (Array.isArray(source.warnings)) {
+    return flatIssuesFromArray(source.warnings).map((issue) => ({
+      ...issue,
+      severity: 'warning' as const,
+    }));
+  }
+  return flatIssuesFromArray(source.issues).filter(
+    (issue) => issue.severity === 'warning',
+  );
 }
 
 function isBacktestTimeoutError(error: unknown): boolean {
   return error instanceof Error && /timed out after/i.test(error.message);
 }
 
-function stopReasonForPhase(phase: RoundPhase, error: unknown): string {
+function isDuplicateVersionError(error: unknown): boolean {
+  if (!(error instanceof TraseqApiError) || error.status !== 409) {
+    return false;
+  }
+  const body = error.parsedBody;
+  return (
+    (typeof body?.message === 'string' && /duplicate/i.test(body.message)) ||
+    (Array.isArray(body?.issues) &&
+      body.issues.some(
+        (issue) => asJsonObject(issue)?.code === 'DUPLICATE_VERSION',
+      ))
+  );
+}
+
+function failureReasonForPhase(phase: RoundPhase, error: unknown): string {
   if (phase === 'draft' || phase === 'repair') {
     return error instanceof ProducerTimeoutError
       ? 'producer_timeout'
       : 'producer_error';
   }
-  if (phase === 'persist') {
-    return 'persistence_failed';
+  if (phase === 'validate') {
+    return 'validation_failed';
+  }
+  if (phase === 'create_strategy') {
+    return 'create_strategy_failed';
+  }
+  if (phase === 'create_strategy_version') {
+    if (isDuplicateVersionError(error)) {
+      return 'duplicate_version';
+    }
+    return 'create_strategy_version_failed';
+  }
+  if (phase === 'finalize_strategy_version') {
+    if (error instanceof TraseqApiError) {
+      const body = error.parsedBody;
+      if (body?.requiresConfirmation === true) {
+        return 'finalize_confirmation_required';
+      }
+      if (isDuplicateVersionError(error)) {
+        return 'duplicate_version';
+      }
+    }
+    return 'finalize_validation_failed';
   }
   return isBacktestTimeoutError(error) ? 'backtest_timeout' : 'backtest_failed';
+}
+
+function failureForPhase(
+  phase: RoundPhase | 'context',
+  error: unknown,
+  args?: {
+    message?: string;
+    reason?: ResearchRunnerFailure['reason'];
+    issues?: ValidationIssueLike[];
+    warnings?: ValidationIssueLike[];
+    nextSteps?: readonly string[];
+  },
+): ResearchRunnerFailure {
+  const message = args?.message ?? errorMessage(error);
+  const reason =
+    args?.reason ??
+    (phase === 'context'
+      ? 'context_failed'
+      : (failureReasonForPhase(
+          phase,
+          error,
+        ) as ResearchRunnerFailure['reason']));
+  const apiError = error instanceof TraseqApiError ? error : undefined;
+  const body = asJsonObject(apiError?.parsedBody);
+  const publicAgent = asJsonObject(body?.publicAgent);
+  const issues = args?.issues ?? extractIssuesFromError(error);
+  const warnings = args?.warnings ?? extractWarningsFromError(error);
+  const augmentation =
+    phase !== 'context' && toolNameForPhase(phase)
+      ? augmentToolError(toolNameForPhase(phase)!, error)
+      : { extraNextSteps: [], hintCode: null };
+  const publicNextSteps = Array.isArray(publicAgent?.nextSteps)
+    ? publicAgent.nextSteps.filter(
+        (step): step is string => typeof step === 'string',
+      )
+    : [];
+  const nextSteps = [
+    ...(args?.nextSteps ?? []),
+    ...publicNextSteps,
+    ...augmentation.extraNextSteps,
+  ];
+
+  return {
+    phase,
+    reason,
+    ...(toolNameForPhase(phase as RoundPhase)
+      ? { operation: toolNameForPhase(phase as RoundPhase)! }
+      : {}),
+    ...(apiError ? { statusCode: apiError.status } : {}),
+    message,
+    ...(typeof publicAgent?.category === 'string'
+      ? { category: publicAgent.category }
+      : {}),
+    ...(issues.length > 0 ? { issues } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
+    ...(body?.requiresConfirmation === true
+      ? { requiresConfirmation: true }
+      : {}),
+    ...(publicAgent ? { publicAgent } : {}),
+    ...(nextSteps.length > 0 ? { nextSteps } : {}),
+    ...(body ? { apiBody: body } : {}),
+  };
 }
 
 /**
@@ -942,16 +1096,14 @@ function stopReasonForPhase(phase: RoundPhase, error: unknown): string {
  */
 function toolNameForPhase(phase: RoundPhase): string | null {
   switch (phase) {
-    case 'persist':
-      // We don't know whether create vs version vs finalize tripped without
-      // inspecting the error path. `create_strategy_version` covers most
-      // cases (round 2+) and is in STATE_GATED_TOOLS; finalize and create are
-      // also gated. Pick the most common to keep augmentation behavior
-      // deterministic — the hint patterns themselves are identical across all
-      // three.
+    case 'create_strategy':
+      return 'create_strategy';
+    case 'create_strategy_version':
       return 'create_strategy_version';
-    case 'backtest_queue':
-    case 'backtest_wait':
+    case 'finalize_strategy_version':
+      return 'finalize_strategy_version';
+    case 'run_backtest':
+    case 'wait_backtest':
       return 'run_backtest';
     default:
       return null;
@@ -1012,6 +1164,7 @@ export async function runResearchRunner(
       client.getCapabilities(),
     ]);
   } catch (caught) {
+    const failure = failureForPhase('context', caught);
     return completeResult({
       runId,
       startedAt,
@@ -1024,8 +1177,7 @@ export async function runResearchRunner(
         capabilitySummary: {},
       },
       rounds: [],
-      stopReason: 'context_failed',
-      errors: [errorMessage(caught)],
+      failure,
     });
   }
 
@@ -1059,6 +1211,9 @@ export async function runResearchRunner(
     let draft: StrategyDraftLike | undefined;
     let validation: ValidationSummaryLike | undefined;
     let validationAttempts = 0;
+    let versionNumber: number | undefined;
+    let createdStrategyVersionId: string | undefined;
+    const forkedFromVersionId = previousFinalizedVersionId;
     // Hoisted out of `try` so the catch block can surface partial repair
     // records when a producer throws mid-loop (e.g. the third repair attempt
     // times out — the LLM still gets the first two attempts' before/after).
@@ -1100,6 +1255,7 @@ export async function runResearchRunner(
           validation: 1,
         }),
       );
+      phase = 'validate';
       {
         const initial = await validateDraftForResearch(
           client,
@@ -1181,8 +1337,19 @@ export async function runResearchRunner(
       }
 
       if (!validation.valid) {
-        const validationIssues = flattenValidationIssues(validation);
-        const errors = validationIssues.map(formatIssueMessage);
+        const issues = flattenValidationIssues(validation);
+        const errors = issues.map(formatIssueMessage);
+        const failure = failureForPhase(
+          'validate',
+          new Error(errors[0] ?? 'Validation failed.'),
+          {
+            reason: 'validation_failed',
+            message:
+              errors[0] ??
+              'Validation failed; no write or backtest calls were made.',
+            issues,
+          },
+        );
         logs.push(
           createLog(
             round,
@@ -1200,9 +1367,7 @@ export async function runResearchRunner(
           validation,
           validationAttempts,
           logs,
-          stopReason: 'validation_failed',
-          ...(errors.length > 0 ? { errors } : {}),
-          ...(validationIssues.length > 0 ? { validationIssues } : {}),
+          failure,
           ...(repairAttemptRecords.length > 0
             ? { repairAttempts: repairAttemptRecords }
             : {}),
@@ -1213,22 +1378,17 @@ export async function runResearchRunner(
           input,
           live,
           rounds,
-          stopReason: 'validation_failed',
-          errors,
-          validationIssues,
+          failure,
           ...(repairAttemptRecords.length > 0
             ? { repairAttempts: repairAttemptRecords }
             : {}),
         });
       }
 
-      phase = 'persist';
       const authoringPayload = buildAuthoringPayload(draft);
-      let versionNumber: number | undefined;
-      let createdStrategyVersionId: string | undefined;
-      const forkedFromVersionId = previousFinalizedVersionId;
 
       if (!strategyId) {
+        phase = 'create_strategy';
         logs.push(createLog(round, 'create', 'Creating the initial strategy.'));
         const created = await client.createStrategy({
           name: draft.name,
@@ -1238,6 +1398,7 @@ export async function runResearchRunner(
         strategyId = idFrom(created, 'createStrategy');
         versionNumber = versionNumberFrom(created);
       } else {
+        phase = 'create_strategy_version';
         logs.push(createLog(round, 'version', 'Creating a strategy revision.'));
         const createdVersion = await client.createStrategyVersion(strategyId, {
           ...authoringPayload,
@@ -1247,10 +1408,12 @@ export async function runResearchRunner(
         versionNumber = versionNumberFrom(createdVersion);
       }
 
+      phase = 'finalize_strategy_version';
       logs.push(createLog(round, 'finalize', 'Finalizing strategy version.'));
       const finalized = await client.finalizeStrategyVersion(strategyId, {
         ...authoringPayload,
         ...(versionNumber !== undefined ? { version: versionNumber } : {}),
+        ignoreWarnings: true,
       });
       const finalizedStrategyVersionId = idFrom(
         finalized,
@@ -1260,7 +1423,9 @@ export async function runResearchRunner(
       const estimate = await tryEstimateBacktestCost(client, draft.backtest);
       logs.push(createLog(round, 'estimate', estimate.message));
 
-      phase = 'backtest_queue';
+      const finalizeWarnings = extractWarningsFromValue(finalized);
+
+      phase = 'run_backtest';
       logs.push(createLog(round, 'backtest', 'Queueing backtest.'));
       const queuedBacktest = await client.runBacktest({
         strategyVersionId: finalizedStrategyVersionId,
@@ -1268,7 +1433,7 @@ export async function runResearchRunner(
       });
       const backtestId = idFrom(queuedBacktest, 'runBacktest');
 
-      phase = 'backtest_wait';
+      phase = 'wait_backtest';
       logs.push(
         createLog(round, 'wait', 'Waiting for terminal backtest result.'),
       );
@@ -1292,11 +1457,12 @@ export async function runResearchRunner(
         draft,
         validation,
         validationAttempts,
-        createdStrategyId: strategyId,
+        ...(strategyId ? { createdStrategyId: strategyId } : {}),
         ...(createdStrategyVersionId ? { createdStrategyVersionId } : {}),
         finalizedStrategyVersionId,
         ...(forkedFromVersionId ? { forkedFromVersionId } : {}),
         ...(estimate.estimate ? { costEstimate: estimate.estimate } : {}),
+        ...(finalizeWarnings.length > 0 ? { warnings: finalizeWarnings } : {}),
         backtest,
         score,
         analysis,
@@ -1307,32 +1473,18 @@ export async function runResearchRunner(
       });
       previousFinalizedVersionId = finalizedStrategyVersionId;
     } catch (caught) {
-      const stopReason = stopReasonForPhase(phase, caught);
+      const reason = failureReasonForPhase(phase, caught);
       const message = errorMessage(caught);
       const errorIssues = extractIssuesFromError(caught);
-      // Persistence + backtest failures often pattern-match a state-machine
-      // hint (e.g. version not finalized, missing forkedFromVersionId).
-      // Surface the hint on the round so MCP clients can render the same
-      // recovery affordance they get for direct tool calls — without this,
-      // a research-runner failure swallows the augmentation that
-      // safeErrorMessage applies on the platform tool path.
-      const toolName = toolNameForPhase(phase);
-      const augmentation = toolName
-        ? augmentToolError(toolName, caught)
-        : { extraNextSteps: [], hintCode: null };
-      const guidedFlowHint =
-        augmentation.extraNextSteps.length > 0
-          ? {
-              hintCode: augmentation.hintCode,
-              nextSteps: augmentation.extraNextSteps,
-            }
-          : undefined;
+      const errorWarnings = extractWarningsFromError(caught);
+      const failure = failureForPhase(phase, caught, {
+        issues: errorIssues,
+        warnings: errorWarnings,
+      });
       const stopMessage =
-        guidedFlowHint && guidedFlowHint.nextSteps.length > 0
-          ? `Stopped during ${phase}: ${stopReason}. ${message} | Recovery hint (code=${
-              guidedFlowHint.hintCode ?? 'unknown'
-            }): ${guidedFlowHint.nextSteps.join(' ')}`
-          : `Stopped during ${phase}: ${stopReason}. ${message}`;
+        failure.nextSteps && failure.nextSteps.length > 0
+          ? `Stopped during ${phase}: ${reason}. ${message} | Recovery hint: ${failure.nextSteps.join(' ')}`
+          : `Stopped during ${phase}: ${reason}. ${message}`;
       logs.push(createLog(round, 'stop', stopMessage));
       rounds.push({
         round,
@@ -1343,14 +1495,15 @@ export async function runResearchRunner(
         ...(draft ? { draft } : {}),
         ...(validation ? { validation } : {}),
         validationAttempts,
+        ...(strategyId ? { createdStrategyId: strategyId } : {}),
+        ...(createdStrategyVersionId ? { createdStrategyVersionId } : {}),
+        ...(forkedFromVersionId ? { forkedFromVersionId } : {}),
         logs,
-        stopReason,
-        errors: [message],
-        ...(errorIssues.length > 0 ? { validationIssues: errorIssues } : {}),
+        failure,
+        ...(errorWarnings.length > 0 ? { warnings: errorWarnings } : {}),
         ...(repairAttemptRecords.length > 0
           ? { repairAttempts: repairAttemptRecords }
           : {}),
-        ...(guidedFlowHint ? { guidedFlowHint } : {}),
       });
       return completeResult({
         runId,
@@ -1358,9 +1511,8 @@ export async function runResearchRunner(
         input,
         live,
         rounds,
-        stopReason,
-        errors: [message],
-        ...(errorIssues.length > 0 ? { validationIssues: errorIssues } : {}),
+        failure,
+        ...(errorWarnings.length > 0 ? { warnings: errorWarnings } : {}),
         ...(repairAttemptRecords.length > 0
           ? { repairAttempts: repairAttemptRecords }
           : {}),

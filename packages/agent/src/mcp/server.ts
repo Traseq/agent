@@ -53,22 +53,18 @@ import {
 /**
  * Static documentation surfaced via `traseq://persistence-requirements`.
  *
- * Why static rather than fetched: `validateStrategy` (remote) only sees
- * `{signalGraph, settings}` per `STRATEGY_AUTHORING_PAYLOAD_JSON_SCHEMA` in
- * @traseq/sdk, but the persistence + backtest pipeline rejects drafts on
- * additional fields (`backtest.signalInstrument.symbol`, `execution.feeModel`,
- * `meta.source.editor`, etc.). Those fields ARE in the capability spec, but
- * the validate-vs-persist gap is not obvious from the API alone — LLMs
- * routinely pass validate and then fail persistence. This resource names the
- * gap explicitly and points at the right discovery surface for each field,
- * so the recovery loop is "read this, fix that one field" instead of "guess
- * and retry".
+ * Why static rather than fetched: strategy writes accept `signalGraph +
+ * settings`, while backtest fields (`backtest.signalInstrument.symbol`,
+ * `execution.feeModel`, range, etc.) live outside the create/finalize payload.
+ * The boundary is not obvious from the API alone — LLMs routinely mix backtest
+ * config into create/finalize calls. This resource names the boundary
+ * explicitly and points at the right discovery surface for each field.
  *
  * Update this when a new persistence-only requirement is added on the server.
  */
 const PERSISTENCE_REQUIREMENTS_DOC = {
   description:
-    'Fields enforced by Traseq persistence and backtest endpoints that the remote `validateStrategy` does NOT cover. A draft can pass `validate_strategy` (which inspects only `signalGraph + settings`) and still fail at `create_strategy_version`, `finalize_strategy_version`, or `run_backtest`. Each entry below names the field, why validate misses it, and the recovery action.',
+    'Fields enforced by Traseq strategy-write and backtest endpoints. `validate_strategy` is the write-preflight for strategy metadata (`signalGraph + settings`); backtest config remains validated by `run_backtest`. Each entry below names the field, where it belongs, and the recovery action.',
   validateChecks: ['signalGraph', 'settings'],
   validateSkips: [
     'backtest.* (entire section)',
@@ -77,10 +73,10 @@ const PERSISTENCE_REQUIREMENTS_DOC = {
   requirements: [
     {
       field: 'backtest.signalInstrument.symbol',
-      requiredAt: ['create_strategy_version', 'run_backtest'],
+      requiredAt: ['run_backtest'],
       requiredByValidate: false,
       reason:
-        'The remote validate endpoint does not see backtest config. Persistence and runBacktest both reject a missing or unknown symbol.',
+        'Strategy create/finalize does not accept backtest config. runBacktest rejects a missing or unknown symbol.',
       discovery: 'traseq://instruments (or capabilities.instruments)',
       legalValuesShape: 'Exact symbol strings, e.g. "BTCUSDT", "BNBUSDT".',
       recovery:
@@ -101,20 +97,16 @@ const PERSISTENCE_REQUIREMENTS_DOC = {
     },
     {
       field: 'backtest.execution.feeModel',
-      requiredAt: [
-        'create_strategy_version',
-        'finalize_strategy_version',
-        'run_backtest',
-      ],
+      requiredAt: ['run_backtest when config.execution is supplied'],
       requiredByValidate: false,
       reason:
-        'Validate does not check backtest config. The execution schema in capabilities documents the legal `feeModel` shape (`kind: "tiered_maker_taker"` with `tiers`).',
+        'Strategy create/finalize does not accept backtest config. runBacktest accepts `execution` as optional; when omitted, server workspace defaults provide the execution model. When supplied, the execution schema documents the legal `feeModel` shape (`kind: "tiered_maker_taker"` with `tiers`).',
       discovery:
         'traseq://capabilities → look for `backtest.execution.feeModel` schema; or fork a system strategy via compose_strategy_from_template (templates carry valid feeModels).',
       legalValuesShape:
         '{ kind: "tiered_maker_taker", tiers: [{ minCumulativeNotional: number, makerRate: 0..1, takerRate: 0..1 }, ...] }',
       recovery:
-        'Either copy a feeModel from a system template (preferred — it stays in sync with the venue) or build one from the capability spec. Do not invent rate values.',
+        'For guided research, prefer omitting `backtest.execution` unless you intentionally want custom fees/slippage; the server will apply workspace defaults. If you supply execution, copy the feeModel from workspace/default capability data rather than inventing rate values.',
     },
     {
       field: 'meta.source.editor',
@@ -134,8 +126,8 @@ const PERSISTENCE_REQUIREMENTS_DOC = {
     },
   ],
   notes: [
-    'When a draft passes validate but fails persistence, prefer fixing the field above to retrying. Validate is signalGraph + settings only.',
-    'When uncertain about any persistence-only field, re-fork a system template (compose_strategy_from_template) — they ship pre-validated for the persistence layer.',
+    'create_strategy / finalize_strategy_version accept strategy metadata only: signalGraph + settings (plus name/description/version/ignoreWarnings/fork lineage as applicable). Do not pass backtest there.',
+    'assemble_strategy_from_blocks(valid:true) means the recipe assembly is internally consistent; still call validate_strategy as the write-preflight before persisting.',
   ],
 } as const;
 
@@ -152,8 +144,8 @@ export const MCP_SERVICE_INSTRUCTIONS = [
   'Show users the research task, assumptions, verdict, evidence, risk flags, Traseq app links, and next step. Do not lead with raw tool names or JSON.',
   'Use lower-level platform tools only for advanced automation or when the recommended authoring path cannot cover the requested workflow. Existing workspace/system blocks can be inspected with list_blocks/get_block and compiled/validated with compile_block/validate_block before assembly. Always pass an explicit role for workspace/raw token blocks.',
   'Tier limits in Traseq are: research credits (USD/month), active strategy count, saved backtest count, and workspaces. Backtest period is NOT tier-limited; all tiers can run all available history. Only treat a failure as a plan/billing problem if the response carries `publicAgent.category` of `plan` or `usage`. Errors with `category: validation` are schema/parameter problems — re-read the relevant reference doc and fix the call, do not suggest the user upgrade.',
-  'When validation fails, read `validationIssues` (or response body `issues`) for `code` / `path` / `severity` and fix the draft directly. Do not assume the platform is broken when validation reports issues; only escalate when issues are absent AND the response has no useful body.',
-  '`validate_strategy` only checks `signalGraph + settings`. It does NOT cover the `backtest` section, `execution.feeModel`, `meta.source.editor`, or other persistence-stage fields. A draft that passes validate can still fail at `create_strategy_version` / `finalize_strategy_version` / `run_backtest`. When that happens, read `traseq://persistence-requirements` for the gap fields and recovery actions; do not retry blindly.',
+  'When validation fails, read `failure.issues` (or response body `issues`) for `code` / `path` / `severity` and fix the draft directly. Do not assume the platform is broken when validation reports issues; only escalate when issues are absent AND the response has no useful body.',
+  '`validate_strategy` is the strategy write-preflight for `signalGraph + settings`; it does NOT cover `run_backtest` execution/range/cost behavior. Keep create/finalize payloads strategy-only, and send backtest config only to run_backtest or run_guided_research_round.',
   'If you need a write or destructive platform tool that is not exposed, ask the operator to enable `--profile=full`. Do not assume it is missing by accident — non-full profiles filter writes out of tools/list.',
   '@traseq/agent does not call an AI provider, place live orders, or provide investment advice. Historical backtests are research evidence only.',
   'Destructive platform tools require confirm=true.',
@@ -262,10 +254,8 @@ function safeErrorMessage(error: unknown, toolName?: string): string {
         formatted: augmentedFormatted,
         ...(augmentation.extraNextSteps.length > 0
           ? {
-              guidedFlowHint: {
-                hintCode: augmentation.hintCode,
-                nextSteps: augmentation.extraNextSteps,
-              },
+              hintCode: augmentation.hintCode,
+              nextSteps: augmentation.extraNextSteps,
             }
           : {}),
       },
@@ -524,7 +514,7 @@ export function buildMcpServer(
         uri: 'traseq://capabilities',
         name: 'Traseq capability spec',
         description:
-          'Full capability document: indicators, operators, node kinds, timeframes, tier limits, and the instrument universe (each instrument carries its `dataStart`). Read once and cache; stable across a server lifetime. NOTE: capabilities reports the *signalGraph + settings + execution* schema. Some persistence-only requirements (e.g. `meta.source.editor` enum, default `execution.feeModel`) are documented separately in `traseq://persistence-requirements`.',
+          'Full capability document: indicators, operators, node kinds, timeframes, tier limits, and the instrument universe (each instrument carries its `dataStart`). Read once and cache; stable across a server lifetime. NOTE: capabilities reports strategy authoring plus backtest execution schema. create/finalize remain strategy-only; execution.feeModel belongs to run_backtest config and can be omitted to use workspace defaults.',
         mimeType: 'application/json',
       },
       {
@@ -543,9 +533,9 @@ export function buildMcpServer(
       },
       {
         uri: 'traseq://persistence-requirements',
-        name: 'Traseq persistence requirements (validate-vs-persist gap)',
+        name: 'Traseq strategy-write and backtest field boundaries',
         description:
-          'Fields enforced by the persistence + backtest pipeline that are NOT covered by `validateStrategy` (which only sees `signalGraph + settings`). Read this when an LLM-authored draft passes `validate_strategy` but fails at `create_strategy_version` / `finalize_strategy_version` / `run_backtest`. Lists each required field, its discovery surface, and the recovery action.',
+          'Strategy-write and backtest field boundaries. Read this when an LLM-authored draft mixes backtest config into create/finalize or when run_backtest rejects execution/range/instrument config. Lists each field, its discovery surface, and the recovery action.',
         mimeType: 'application/json',
       },
       {

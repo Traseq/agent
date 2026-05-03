@@ -76,6 +76,7 @@ export interface ValidationIssueLike {
   message: string;
   suggestion?: string;
   severity?: 'error' | 'warning';
+  gate?: 'schema' | 'draft_save' | 'finalize' | 'backtest_config';
   details?: string;
   blockA?: { id: string; name: string };
   blockB?: { id: string; name: string };
@@ -422,6 +423,7 @@ export interface GuidedResearchEvidence {
   totalRounds: number;
   championRound?: number;
   riskFlagCount: number;
+  warningCount?: number;
   headline: string;
 }
 
@@ -442,6 +444,41 @@ export interface ResearchRunnerCostEstimate {
   afterBalanceUsd: number;
   wouldCauseOverage: boolean;
   overageAmountUsd: number;
+}
+
+export interface ResearchRunnerFailure {
+  phase:
+    | 'context'
+    | 'draft'
+    | 'repair'
+    | 'validate'
+    | 'create_strategy'
+    | 'create_strategy_version'
+    | 'finalize_strategy_version'
+    | 'run_backtest'
+    | 'wait_backtest';
+  reason:
+    | 'context_failed'
+    | 'producer_timeout'
+    | 'producer_error'
+    | 'validation_failed'
+    | 'create_strategy_failed'
+    | 'create_strategy_version_failed'
+    | 'finalize_validation_failed'
+    | 'finalize_confirmation_required'
+    | 'duplicate_version'
+    | 'backtest_failed'
+    | 'backtest_timeout';
+  operation?: string;
+  statusCode?: number;
+  message: string;
+  category?: string;
+  issues?: ValidationIssueLike[];
+  warnings?: ValidationIssueLike[];
+  requiresConfirmation?: boolean;
+  publicAgent?: JsonObject;
+  nextSteps?: readonly string[];
+  apiBody?: JsonObject;
 }
 
 export interface ResearchRunnerRound {
@@ -468,22 +505,9 @@ export interface ResearchRunnerRound {
   score?: ScoreBreakdown;
   analysis?: RoundAnalysis;
   logs: AgentStepLog[];
-  stopReason?: string;
-  errors?: string[];
-  validationIssues?: ValidationIssueLike[];
+  failure?: ResearchRunnerFailure;
+  warnings?: ValidationIssueLike[];
   repairAttempts?: RepairAttemptRecord[];
-  /**
-   * Recovery hint produced when the runner can pattern-match the failure
-   * (typically persistence or backtest stage) to a known guided-flow recovery
-   * step. Mirrors the `guidedFlowHint` shape used by `safeErrorMessage` in
-   * `mcp/server.ts` so MCP renderers can show the same affordance whether the
-   * failure came from a direct platform tool call or from inside a research
-   * round.
-   */
-  guidedFlowHint?: {
-    hintCode: string | null;
-    nextSteps: readonly string[];
-  };
 }
 
 export interface ResearchRunnerSummary {
@@ -507,9 +531,8 @@ export interface ResearchRunnerResult {
   summary: ResearchRunnerSummary;
   championRound?: number;
   status: ResearchRunnerStatus;
-  stopReason?: string;
-  errors?: string[];
-  validationIssues?: ValidationIssueLike[];
+  failure?: ResearchRunnerFailure;
+  warnings?: ValidationIssueLike[];
   repairAttempts?: RepairAttemptRecord[];
 }
 
@@ -568,7 +591,7 @@ export interface ResearchResultEvaluation {
   championRound?: number;
   rounds: ResearchRoundEvaluation[];
   riskFlags: ResearchRiskFlag[];
-  stopReasons: string[];
+  failureReasons: string[];
   verdict: ResearchVerdict;
 }
 

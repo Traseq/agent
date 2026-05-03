@@ -381,6 +381,7 @@ export interface TraseqValidationIssue {
   message: string;
   suggestion?: string;
   severity: 'error' | 'warning';
+  gate?: 'schema' | 'draft_save' | 'finalize' | 'backtest_config';
   details?: string;
   blockA?: { id: string; name: string };
   blockB?: { id: string; name: string };

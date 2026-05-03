@@ -56,7 +56,7 @@ function completedRound(round, summary, total = 10) {
 
 function runnerResult(rounds, championRound = undefined) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId: 'run-1',
     startedAt: '2026-01-01T00:00:00.000Z',
     completedAt: '2026-01-01T00:01:00.000Z',
@@ -281,7 +281,11 @@ describe('evaluateResearchResult', () => {
       },
       validationAttempts: 1,
       logs: [],
-      stopReason: 'validation_failed',
+      failure: {
+        phase: 'validate',
+        reason: 'validation_failed',
+        message: 'Entry trigger is required.',
+      },
     };
 
     const evaluation = evaluateResearchResult(runnerResult([failedRound]));
@@ -382,12 +386,12 @@ describe('buildResearchVerdict', () => {
 
   it('accepts an Omit<ResearchResultEvaluation, "verdict"> payload directly', () => {
     const verdict = buildResearchVerdict({
-      schemaVersion: 1,
+      schemaVersion: 2,
       status: 'completed',
       confidence: 'reject',
       rounds: [],
       riskFlags: [],
-      stopReasons: [],
+      failureReasons: [],
     });
 
     assert.equal(verdict.decision, 'reject_candidate');
@@ -452,7 +456,7 @@ describe('evaluate CLI', () => {
     assert.notEqual(result.code, 0);
     assert.match(
       result.stderr,
-      /does not look like a research-run result.*got 999.*expected schemaVersion=1/s,
+      /does not look like a research-run result.*got 999.*expected schemaVersion=2/s,
     );
   });
 });

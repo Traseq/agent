@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { TraseqApiError } from '@traseq/sdk';
 import { runResearchRunner, selectChampionRound } from '../dist/index.js';
 
 const VALIDATION_OK = {
@@ -162,7 +163,7 @@ describe('runResearchRunner', () => {
     });
 
     assert.equal(result.status, 'completed');
-    assert.equal(result.schemaVersion, 1);
+    assert.equal(result.schemaVersion, 2);
     assert.equal(result.rounds.length, 1);
     assert.equal(result.championRound, 1);
     assert.equal(result.rounds[0].status, 'completed');
@@ -177,6 +178,53 @@ describe('runResearchRunner', () => {
       'validateStrategy',
       'createStrategy',
       'finalizeStrategyVersion',
+      'runBacktest',
+      'waitForBacktestCompletion',
+    ]);
+    const finalizeCall = client.calls.find(
+      (call) => call.method === 'finalizeStrategyVersion',
+    );
+    assert.equal(finalizeCall.args[1].ignoreWarnings, true);
+  });
+
+  it('records finalize warnings while continuing to backtest', async () => {
+    const client = makeClient();
+    client.finalizeStrategyVersion = async (strategyId, payload) => {
+      client.calls.push({
+        method: 'finalizeStrategyVersion',
+        args: [strategyId, payload],
+      });
+      return {
+        id: 'version-warning',
+        version: 1,
+        status: 'ready',
+        warnings: [
+          {
+            code: 'WARMUP_TOO_SHORT',
+            field: 'settings',
+            path: 'settings.warmupPeriod',
+            message: 'Warmup is lower than the indicator lookback.',
+            severity: 'warning',
+            gate: 'finalize',
+          },
+        ],
+      };
+    };
+
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      draftProducer: () => makeDraft(),
+    });
+
+    assert.equal(result.status, 'completed');
+    assert.equal(result.rounds[0].backtest.id, 'bt-1');
+    assert.equal(result.rounds[0].warnings[0].code, 'WARMUP_TOO_SHORT');
+    assert.equal(result.warnings[0].gate, 'finalize');
+    assert.deepEqual(methodNames(client).slice(-2), [
       'runBacktest',
       'waitForBacktestCompletion',
     ]);
@@ -195,23 +243,24 @@ describe('runResearchRunner', () => {
     });
 
     assert.equal(result.status, 'failed');
-    assert.equal(result.stopReason, 'validation_failed');
+    assert.equal(result.failure.reason, 'validation_failed');
+    assert.equal(result.failure.phase, 'validate');
     assert.equal(result.rounds.length, 1);
     assert.equal(result.rounds[0].status, 'failed');
     assert.equal(result.rounds[0].validation.valid, false);
     assert.equal(result.rounds[0].backtest, undefined);
     // P0-A: structured issues must be propagated, not just a flat string.
     assert.ok(
-      Array.isArray(result.validationIssues) &&
-        result.validationIssues.length === 1,
-      'result should expose structured validationIssues',
+      Array.isArray(result.failure.issues) &&
+        result.failure.issues.length === 1,
+      'result should expose structured failure issues',
     );
-    assert.equal(result.validationIssues[0].code, 'missing_entry');
-    assert.equal(result.validationIssues[0].severity, 'error');
-    assert.equal(result.validationIssues[0].path, 'signalGraph.strategy.entry');
+    assert.equal(result.failure.issues[0].code, 'missing_entry');
+    assert.equal(result.failure.issues[0].severity, 'error');
+    assert.equal(result.failure.issues[0].path, 'signalGraph.strategy.entry');
     assert.deepEqual(
-      result.validationIssues,
-      result.rounds[0].validationIssues,
+      result.failure.issues,
+      result.rounds[0].failure.issues,
     );
     assert.deepEqual(methodNames(client), [
       'getManifest',
@@ -367,7 +416,8 @@ describe('runResearchRunner', () => {
     });
 
     assert.equal(result.status, 'failed');
-    assert.equal(result.stopReason, 'validation_failed');
+    assert.equal(result.failure.reason, 'validation_failed');
+    assert.equal(result.failure.phase, 'validate');
     assert.equal(result.rounds[0].validationAttempts, 5);
     assert.equal(
       methodNames(client).filter((method) => method === 'validateStrategy')
@@ -486,7 +536,7 @@ describe('runResearchRunner', () => {
 });
 
 describe('runResearchRunner producer timeout', () => {
-  it('returns producer_timeout stopReason without throwing when the draft producer stalls', async () => {
+  it('returns producer_timeout failure without throwing when the draft producer stalls', async () => {
     const client = makeClient();
 
     const result = await runResearchRunner({
@@ -503,9 +553,9 @@ describe('runResearchRunner producer timeout', () => {
     });
 
     assert.equal(result.status, 'failed');
-    assert.equal(result.stopReason, 'producer_timeout');
-    assert.equal(result.rounds[0].stopReason, 'producer_timeout');
-    assert.match(result.rounds[0].errors[0], /did not return within 50ms/);
+    assert.equal(result.failure.reason, 'producer_timeout');
+    assert.equal(result.rounds[0].failure.reason, 'producer_timeout');
+    assert.match(result.rounds[0].failure.message, /did not return within 50ms/);
     assert.ok(!methodNames(client).includes('validateStrategy'));
   });
 
@@ -526,13 +576,13 @@ describe('runResearchRunner producer timeout', () => {
       },
     });
 
-    assert.equal(result.stopReason, 'producer_timeout');
+    assert.equal(result.failure.reason, 'producer_timeout');
     assert.ok(receivedSignal instanceof AbortSignal);
     assert.equal(receivedSignal.aborted, true);
   });
 });
 
-describe('runResearchRunner structured stopReasons', () => {
+describe('runResearchRunner structured failures', () => {
   it('returns producer_error when the draft producer throws', async () => {
     const client = makeClient();
     const result = await runResearchRunner({
@@ -546,11 +596,11 @@ describe('runResearchRunner structured stopReasons', () => {
       },
     });
     assert.equal(result.status, 'failed');
-    assert.equal(result.stopReason, 'producer_error');
-    assert.match(result.rounds[0].errors[0], /producer crashed/);
+    assert.equal(result.failure.reason, 'producer_error');
+    assert.match(result.rounds[0].failure.message, /producer crashed/);
   });
 
-  it('returns persistence_failed when createStrategy fails', async () => {
+  it('returns create_strategy_failed when createStrategy fails', async () => {
     const client = makeClient();
     client.createStrategy = async () => {
       throw new Error('persistence layer down');
@@ -563,8 +613,9 @@ describe('runResearchRunner structured stopReasons', () => {
       },
       draftProducer: () => makeDraft(),
     });
-    assert.equal(result.stopReason, 'persistence_failed');
-    assert.match(result.rounds[0].errors[0], /persistence layer down/);
+    assert.equal(result.failure.reason, 'create_strategy_failed');
+    assert.equal(result.failure.phase, 'create_strategy');
+    assert.match(result.rounds[0].failure.message, /persistence layer down/);
   });
 
   it('returns backtest_failed when runBacktest fails', async () => {
@@ -580,7 +631,8 @@ describe('runResearchRunner structured stopReasons', () => {
       },
       draftProducer: () => makeDraft(),
     });
-    assert.equal(result.stopReason, 'backtest_failed');
+    assert.equal(result.failure.reason, 'backtest_failed');
+    assert.equal(result.failure.phase, 'run_backtest');
   });
 
   it('returns backtest_timeout when waitForBacktestCompletion times out', async () => {
@@ -596,7 +648,52 @@ describe('runResearchRunner structured stopReasons', () => {
       },
       draftProducer: () => makeDraft(),
     });
-    assert.equal(result.stopReason, 'backtest_timeout');
+    assert.equal(result.failure.reason, 'backtest_timeout');
+    assert.equal(result.failure.phase, 'wait_backtest');
+  });
+
+  it('returns duplicate_version when createStrategyVersion reports duplicate content', async () => {
+    const client = makeClient();
+    client.createStrategyVersion = async () => {
+      throw new TraseqApiError(
+        'Duplicate version content',
+        409,
+        'POST',
+        '/public/v1/strategies/strategy-1/versions',
+        JSON.stringify({
+          message: 'Duplicate version content',
+          issues: [
+            {
+              code: 'DUPLICATE_VERSION',
+              field: 'version',
+              path: 'version.contentHash',
+              severity: 'error',
+              message: 'Duplicate version content',
+              gate: 'draft_save',
+            },
+          ],
+          existingVersion: {
+            id: 'existing-version',
+            version: 1,
+            status: 'ready',
+          },
+        }),
+      );
+    };
+
+    const result = await runResearchRunner({
+      client,
+      input: {
+        prompt: 'Research a simple BTC trend-following strategy.',
+        rounds: 1,
+      },
+      strategyId: 'strategy-1',
+      draftProducer: () => makeDraft(),
+    });
+
+    assert.equal(result.failure.reason, 'duplicate_version');
+    assert.equal(result.failure.phase, 'create_strategy_version');
+    assert.equal(result.failure.issues[0].code, 'DUPLICATE_VERSION');
   });
 
   it('returns context_failed when the upfront context fetch throws', async () => {
@@ -613,7 +710,8 @@ describe('runResearchRunner structured stopReasons', () => {
       draftProducer: () => makeDraft(),
     });
     assert.equal(result.status, 'failed');
-    assert.equal(result.stopReason, 'context_failed');
+    assert.equal(result.failure.reason, 'context_failed');
+    assert.equal(result.failure.phase, 'context');
     assert.equal(result.rounds.length, 0);
   });
 });
@@ -634,8 +732,8 @@ describe('runResearchRunner accumulate settings', () => {
       }),
     });
     assert.equal(result.status, 'failed');
-    assert.equal(result.stopReason, 'producer_error');
-    assert.match(result.rounds[0].errors[0], /accumulation block/);
+    assert.equal(result.failure.reason, 'producer_error');
+    assert.match(result.rounds[0].failure.message, /accumulation block/);
   });
 
   it('accepts accumulate drafts with a valid triggerMode', async () => {
@@ -989,7 +1087,7 @@ describe('research-run CLI', () => {
     assert.notEqual(result.code, 0);
     const parsed = JSON.parse(result.stdout);
     assert.equal(parsed.status, 'failed');
-    assert.equal(parsed.stopReason, 'validation_failed');
+    assert.equal(parsed.failure.reason, 'validation_failed');
     assert.equal(parsed.rounds[0].validation.valid, false);
   });
 });

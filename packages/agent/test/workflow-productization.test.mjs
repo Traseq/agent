@@ -106,7 +106,7 @@ function completedRound(round = 1) {
 
 function researchResult() {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     runId: 'run-1',
     startedAt: '2026-01-01T00:00:00.000Z',
     completedAt: '2026-01-01T00:01:00.000Z',
@@ -853,7 +853,7 @@ describe('report CLI', () => {
     assert.notEqual(result.code, 0);
     assert.match(
       result.stderr,
-      /does not look like a research-run result.*got 999.*expected schemaVersion=1/s,
+      /does not look like a research-run result.*got 999.*expected schemaVersion=2/s,
     );
     assert.equal(result.stdout, '');
   });
@@ -952,7 +952,7 @@ describe('guided CLI', () => {
     assert.notEqual(result.code, 0);
     const parsed = JSON.parse(result.stdout);
     assert.equal(parsed.status, 'failed');
-    assert.equal(parsed.result.stopReason, 'validation_failed');
+    assert.equal(parsed.result.failure.reason, 'validation_failed');
     assert.equal(parsed.result.rounds[0].backtest, undefined);
     assert.ok(
       parsed.serviceMessages.some(

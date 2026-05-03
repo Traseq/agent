@@ -138,7 +138,9 @@ that implements the selected semantics.
 
 1. Prefer \`run_guided_research_round\` when an externally-authored draft is
    ready. It validates, persists only after validation, runs the backtest, and
-   returns evaluation plus a service memo.
+   returns evaluation plus a service memo. Guided runs pass
+   \`ignoreWarnings: true\` at finalize so non-blocking warnings are recorded
+   and the backtest can continue.
 2. If using lower-level tools, call \`create_strategy\` with the validated payload (name, signalGraph, settings).
    Save the returned \`strategyId\` and \`version\`.
 3. Call \`finalize_strategy_version\` to lock the version.

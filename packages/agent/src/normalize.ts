@@ -161,8 +161,7 @@ export function normalizeDraft(draft: unknown): StrategyDraftLike {
 /**
  * Result of `resolveRangePoint`. The runBacktest endpoint itself accepts
  * strings ("inception", "now", "1y", ISO dates, etc.), but earlier stages in
- * the agent pipeline — preflight, validate, persistence-stage feeModel/range
- * checks — historically expected numeric epoch values. To bridge the two,
+ * the agent pipeline historically expected numeric epoch values. To bridge the two,
  * the runner pre-resolves common string forms to epoch ms BEFORE the draft
  * leaves the agent layer. We keep the original string in `originalInput` so
  * an audit log can show the LLM what we did.
@@ -518,6 +517,16 @@ function normalizeValidationIssues(
       const details = asString(source.details);
       if (details) {
         issue.details = details;
+      }
+
+      const gate = asString(source.gate);
+      if (
+        gate === 'schema' ||
+        gate === 'draft_save' ||
+        gate === 'finalize' ||
+        gate === 'backtest_config'
+      ) {
+        issue.gate = gate;
       }
 
       if (severity) {

@@ -28,7 +28,11 @@ const KNOWN_STOP_REASONS = new Set([
   'backtest_timeout',
   'producer_timeout',
   'producer_error',
-  'persistence_failed',
+  'create_strategy_failed',
+  'create_strategy_version_failed',
+  'finalize_validation_failed',
+  'finalize_confirmation_required',
+  'duplicate_version',
   'context_failed',
 ]);
 
@@ -311,9 +315,9 @@ function championEvaluation(
 
 function failedRoundFlags(round: ResearchRunnerRound): {
   flags: ResearchRiskFlag[];
-  stopReasons: string[];
+  failureReasons: string[];
 } {
-  const rawReason = round.stopReason ?? 'round_failed';
+  const rawReason = round.failure?.reason ?? 'round_failed';
   const code = KNOWN_STOP_REASONS.has(rawReason) ? rawReason : 'round_failed';
   return {
     flags: [
@@ -324,7 +328,7 @@ function failedRoundFlags(round: ResearchRunnerRound): {
         round.round,
       ),
     ],
-    stopReasons: [rawReason],
+    failureReasons: [rawReason],
   };
 }
 
@@ -428,9 +432,9 @@ export function evaluateResearchResult(
     .filter((round) => round.status !== 'completed')
     .map(failedRoundFlags);
   const failedFlags = failed.flatMap((entry) => entry.flags);
-  const stopReasons = [
-    ...(result.stopReason ? [result.stopReason] : []),
-    ...failed.flatMap((entry) => entry.stopReasons),
+  const failureReasons = [
+    ...(result.failure?.reason ? [result.failure.reason] : []),
+    ...failed.flatMap((entry) => entry.failureReasons),
   ];
   const champion = championEvaluation(result, rounds);
   const baseConfidence = confidenceFromRounds(rounds);
@@ -449,7 +453,7 @@ export function evaluateResearchResult(
     ...(champion ? { championRound: champion.round } : {}),
     rounds,
     riskFlags,
-    stopReasons,
+    failureReasons,
   };
 
   return {

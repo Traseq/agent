@@ -61,6 +61,18 @@ function lineList(items: readonly string[]): string[] {
   return items.length > 0 ? items.map((item) => `- ${item}`) : ['- None'];
 }
 
+function warningLines(result: ResearchRunnerResult): string[] {
+  const warnings = [
+    ...(result.warnings ?? []),
+    ...result.rounds.flatMap((round) => round.warnings ?? []),
+  ];
+  return warnings.map((warning) => {
+    const code = warning.code ? `${warning.code}: ` : '';
+    const path = warning.path ? ` (${warning.path})` : '';
+    return `${code}${warning.message}${path}`;
+  });
+}
+
 // Picks the backtest that should represent an engagement for navigation +
 // "what we tested" framing. Prefers the evaluation's champion round, falls
 // back to the result-level pointer, then to the first round with a backtest.
@@ -193,6 +205,7 @@ export function formatResearchReport(
       manifest: result.live.manifest,
     });
   const usageSection = renderUsageStatusMarkdown(usageStatus);
+  const warnings = warningLines(result);
   const lines = [
     '# Traseq Guided Research Memo',
     '',
@@ -232,6 +245,9 @@ export function formatResearchReport(
       ),
     ),
     '',
+    ...(warnings.length > 0
+      ? ['## Validation Warnings', '', ...lineList(warnings), '']
+      : []),
     '## Decision',
     '',
     `- **Decision:** ${humanizeDecision(evaluation.verdict.decision)}`,

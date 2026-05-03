@@ -307,6 +307,8 @@ const ready = await client.finalizeStrategyVersion(draft.id, {
   ...authoringPayload,
 });
 
+// Backtest config belongs only to runBacktest. Do not pass `backtest`,
+// `execution`, or `feeModel` to createStrategy/finalizeStrategyVersion.
 const backtest = await client.runBacktest({
   strategyVersionId: ready.id,
   config: {
@@ -408,12 +410,14 @@ Authoring rules:
 Validation rules:
 - Use resolve_strategy_semantics, assemble_signal_graph, and preflight_strategy_draft before validate_strategy.
 - Always call validate_strategy before create_strategy or finalize_strategy_version.
+- Treat assemble_strategy_from_blocks(valid:true) as assembly validation only; still run validate_strategy as the write-preflight before persisting.
 - Treat issue code, path, message, and suggestion as the repair source of truth.
 - Modify the minimum subtree needed to resolve each blocking issue.
 - Revalidate after every repair pass.
 
 Execution rules:
 - Create drafts before finalizing.
+- Keep create/finalize payloads strategy-only (`signalGraph + settings`, plus metadata fields such as name/version). Send backtest config only to run_backtest.
 - Call get_usage again before write-heavy or backtest-heavy workflows if the session is long-lived.
 - Run backtests only after a ready version exists.
 - Summarize backtest outcomes from summaryJson before inspecting large artifacts.
