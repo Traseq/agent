@@ -115,6 +115,18 @@ const CODE_PROFILES: Record<
     suggestedFix:
       'Remove `output` from the indicator node. Read `capabilities.indicators[].outputs` to confirm which indicators support a selector.',
   },
+  indicator_output_required: {
+    humanReason:
+      'This multi-output indicator requires an explicit top-level output selector. Removing the selector changes the contract and will keep failing validation.',
+    suggestedFix:
+      'Add a valid top-level `output` from `capabilities.indicators[].outputs`. For SuperTrend use `supertrend` for the line or `trend_direction` for the +1/-1 regime.',
+  },
+  provenance_desync: {
+    humanReason:
+      'The strategy logic and an editor/provenance representation disagree. SignalGraph v2 remains the write contract; do not change a valid indicator output just to satisfy stale provenance.',
+    suggestedFix:
+      'Regenerate or omit token/AST provenance from the same SignalGraph. Keep required indicator selectors such as SuperTrend node.output intact.',
+  },
   indicator_arg_unknown: {
     humanReason:
       'The arg key is not in the indicator catalog. The schema is strict — unknown keys make the node invalid even if the value would be sensible.',
@@ -171,6 +183,15 @@ function inferSyntheticCode(
     /not supported for indicator/.test(message)
   ) {
     return { code: 'indicator_output_unsupported' };
+  }
+  if (
+    indicatorOutputPath.test(path) &&
+    /is required for indicator/.test(message)
+  ) {
+    return { code: 'indicator_output_required' };
+  }
+  if (issue.code === 'PROVENANCE_MISMATCH') {
+    return { code: 'provenance_desync' };
   }
   if (
     indicatorArgsPath.test(path) &&
@@ -298,12 +319,18 @@ export function explainValidationIssues(input: {
       (i) =>
         i.code === 'indicator_arg_unknown' ||
         i.code === 'indicator_arg_required_missing' ||
+        i.code === 'indicator_output_required' ||
         i.code === 'indicator_output_unsupported' ||
         i.code === 'indicator_unsupported_in_catalog',
     )
   ) {
     guidance.push(
       'Read `capabilities.indicators[].argNames` and `outputs` for the affected indicator before re-authoring; the schema is strict about both.',
+    );
+  }
+  if (issues.some((i) => i.code === 'provenance_desync')) {
+    guidance.push(
+      'Treat provenance mismatches as representation drift. Keep the valid SignalGraph shape and regenerate/omit provenance before retrying.',
     );
   }
   return { errorCount, warningCount, issues, guidance };

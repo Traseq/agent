@@ -1,12 +1,16 @@
 export {
   assembleSignalGraphDraft,
   buildStrategyAuthoringPayloadJsonSchema,
+  buildIndicatorCatalog,
+  buildInstrumentCatalog,
   TraseqClient,
   TraseqApiError,
   TraseqPublicApiError,
   explainTraseqError,
   formatTraseqAgentError,
+  normalizeStrategyDraft,
   preflightStrategyDraft,
+  resolveInstrument,
   STRATEGY_AUTHORING_PAYLOAD_JSON_SCHEMA,
 } from '@traseq/sdk';
 export type {

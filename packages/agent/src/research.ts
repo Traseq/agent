@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { resolveInstrument, type InstrumentResolution } from '@traseq/sdk';
 
 import {
   capabilitySummary,
@@ -63,7 +64,7 @@ export function normalizeRequest(input: unknown): AutoAgentRequest {
   }
 
   const instrument = asString(source.instrument, 'BTCUSDT').toUpperCase();
-  if (!/^[A-Z0-9:_-]{3,20}$/.test(instrument)) {
+  if (!/^[A-Z0-9:_/-]{3,30}$/.test(instrument)) {
     throw new Error('Instrument format is invalid.');
   }
 
@@ -92,6 +93,23 @@ export function normalizeRequest(input: unknown): AutoAgentRequest {
       clampedMaxConcurrentPositions,
     ),
     maxConcurrentPositions: clampedMaxConcurrentPositions,
+  };
+}
+
+export function resolveRequestInstrument(
+  input: AutoAgentRequest,
+  capabilities: unknown,
+): {
+  input: AutoAgentRequest;
+  resolution: InstrumentResolution;
+} {
+  const resolution = resolveInstrument(input.instrument, capabilities);
+  return {
+    input:
+      resolution.status === 'resolved' && resolution.symbol
+        ? { ...input, instrument: resolution.symbol }
+        : input,
+    resolution,
   };
 }
 
@@ -221,7 +239,7 @@ export async function runResearch(
   emit: EmitResearchEvent = () => undefined,
   options: { client?: ResearchContextClient } = {},
 ): Promise<AutoAgentResearchResult> {
-  const input = normalizeRequest(rawInput);
+  const normalizedInput = normalizeRequest(rawInput);
   const runId = randomUUID();
   const startedAt = toIsoNow();
   const client = options.client ?? createTraseqClient();
@@ -230,7 +248,7 @@ export async function runResearch(
     type: 'meta',
     runId,
     startedAt,
-    input,
+    input: normalizedInput,
   });
 
   await emit({
@@ -247,6 +265,10 @@ export async function runResearch(
     client.getUsage(),
     client.getCapabilities(),
   ]);
+  const { input, resolution } = resolveRequestInstrument(
+    normalizedInput,
+    capabilities,
+  );
 
   const completedAt = toIsoNow();
   const result: AutoAgentResearchResult = {
@@ -258,7 +280,9 @@ export async function runResearch(
       manifest,
       workspace,
       usage,
+      capabilities,
       capabilitySummary: capabilitySummary(capabilities),
+      instrumentResolution: resolution,
     },
     prompts: {
       authoring: buildAuthoringPrompt(input),

@@ -347,7 +347,7 @@ export function assembleSignalGraphDraft(
   const preflight = preflightStrategyDraft(draft, input.capabilities);
   return {
     valid: preflight.valid,
-    ...(preflight.draft ? { draft: preflight.draft } : { draft }),
+    draft: preflight.draft ?? draft,
     issues: preflight.issues,
   };
 }

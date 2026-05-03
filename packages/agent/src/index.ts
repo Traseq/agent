@@ -27,8 +27,11 @@ export {
   TraseqClient,
   TraseqApiError,
   TraseqPublicApiError,
+  buildIndicatorCatalog,
+  buildInstrumentCatalog,
   explainTraseqError,
   formatTraseqAgentError,
+  resolveInstrument,
   runPlatformTool,
 } from './client/index.js';
 export {

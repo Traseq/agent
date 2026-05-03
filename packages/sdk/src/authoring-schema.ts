@@ -5,6 +5,7 @@ import type {
   TraseqValidationIssue,
   TraseqValidationResponse,
 } from './types.js';
+import { normalizeStrategyDraft } from './capabilities.js';
 
 const TIMEFRAMES: Timeframe[] = ['15m', '1h', '4h', '1d'];
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -3710,7 +3711,8 @@ export function preflightStrategyDraft(
   value: unknown,
   capabilities?: unknown,
 ): TraseqValidationResponse & { draft?: StrategyDraft } {
-  const result = validateStrategyDraft(value, capabilities);
+  const normalized = normalizeStrategyDraft(value, capabilities);
+  const result = validateStrategyDraft(normalized.draft, capabilities);
   if (result.ok) {
     return {
       valid: true,

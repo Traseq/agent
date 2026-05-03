@@ -142,6 +142,46 @@ describe('explainValidationIssues', () => {
     assert.equal(result.issues[0].code, 'indicator_output_unsupported');
   });
 
+  it('infers indicator_output_required for missing multi-output selector', () => {
+    const result = explainValidationIssues({
+      validation: validation({
+        signalGraph: [
+          {
+            code: 'strategy_draft_schema',
+            path: 'signalGraph.nodes[3].output',
+            message:
+              'signalGraph.nodes[3].output is required for indicator "supertrend".',
+            severity: 'error',
+          },
+        ],
+      }),
+    });
+    assert.equal(result.issues[0].code, 'indicator_output_required');
+    assert.match(result.issues[0].suggestedFix, /SuperTrend/);
+  });
+
+  it('classifies provenance mismatch as representation drift, not output removal', () => {
+    const result = explainValidationIssues({
+      validation: validation({
+        signalGraph: [
+          {
+            code: 'PROVENANCE_MISMATCH',
+            path: 'signalGraph.nodes[1].output',
+            message:
+              'output field expected missing but received "supertrend".',
+            severity: 'error',
+          },
+        ],
+      }),
+    });
+    assert.equal(result.issues[0].code, 'provenance_desync');
+    assert.doesNotMatch(result.issues[0].suggestedFix, /Remove `output`/);
+    assert.ok(
+      result.guidance.some((line) => /provenance/i.test(line)),
+      'guidance should mention provenance drift',
+    );
+  });
+
   it('infers indicator_arg_unknown for unsupported arg keys', () => {
     const result = explainValidationIssues({
       validation: validation({

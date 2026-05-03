@@ -71,6 +71,7 @@ const WORKFLOW_TOOLS = [
 
 const REFERENCE_TOOLS = [
   'get_authoring_examples',
+  'resolve_instrument',
   'get_semantics',
   'get_token_grammar',
   'get_token_semantics',
@@ -79,6 +80,7 @@ const REFERENCE_TOOLS = [
 const TEMPLATE_TOOLS = [
   ...WORKFLOW_TOOLS,
   'explain_validation_issues',
+  'resolve_instrument',
   'compose_strategy_from_template',
   'get_authoring_examples',
   'get_token_grammar',
@@ -93,6 +95,7 @@ const TEMPLATE_TOOLS = [
 const AUTHORING_TOOLS = [
   ...WORKFLOW_TOOLS,
   'get_authoring_examples',
+  'resolve_instrument',
   'get_semantics',
   'resolve_strategy_semantics',
   'assemble_signal_graph',
@@ -109,6 +112,7 @@ const AUTHORING_TOOLS = [
 const HYBRID_TOOLS = [
   ...WORKFLOW_TOOLS,
   'explain_validation_issues',
+  'resolve_instrument',
   'compose_strategy_from_template',
   'compose_token_block',
   'assemble_strategy_from_blocks',

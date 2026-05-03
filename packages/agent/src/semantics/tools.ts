@@ -1,6 +1,7 @@
 import {
   assembleSignalGraphDraft,
   preflightStrategyDraft,
+  resolveInstrument,
   type AssembleSignalGraphDraftInput,
   type CapabilityDocument,
   type SemanticBlock,
@@ -75,7 +76,8 @@ export interface AgentToolDefinition {
     | 'explain_validation_issues'
     | 'suggest_minimal_repairs'
     | 'compose_strategy_from_template'
-    | 'update_research_engagement';
+    | 'update_research_engagement'
+    | 'resolve_instrument';
   readonly description: string;
   readonly input_schema: Record<string, unknown>;
   readonly local: true;
@@ -284,6 +286,19 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
       mode: enumProp(['template', 'block', 'hybrid', 'sg_v2'] as const),
       includeSignalGraph: booleanProp,
     }),
+  },
+  {
+    name: 'resolve_instrument',
+    description:
+      'Resolve a user-supplied market symbol against capabilities.instruments. Exact symbols win; unique base aliases such as BTC resolve to BTCUSDT; unsupported equities/ETFs return suggestions instead of silently defaulting.',
+    local: true,
+    input_schema: objectSchema(
+      {
+        instrument: stringProp,
+        capabilities: objectProp,
+      },
+      ['instrument'],
+    ),
   },
   {
     name: 'compose_token_block',
@@ -1051,6 +1066,19 @@ function setTokenArgsLength(tokens: TokenDto[], index: number, length: number) {
   if (args) args.length = length;
 }
 
+function setTokenIndicatorArg(
+  tokens: TokenDto[],
+  index: number,
+  name: string,
+  value: number,
+) {
+  const params = asJsonObject(tokenAt(tokens, index)?.params);
+  const args = asJsonObject(params?.args);
+  if (args && Object.prototype.hasOwnProperty.call(args, name)) {
+    args[name] = value;
+  }
+}
+
 function setTokenParamPeriod(
   tokens: TokenDto[],
   index: number,
@@ -1091,6 +1119,23 @@ function setFragmentIndicatorLength(
     if (object.kind !== 'indicator' || object.indicator !== indicator) return;
     const args = asJsonObject(object.args);
     if (args) args.length = length;
+  });
+}
+
+function setFragmentIndicatorArg(
+  fragment: SignalGraphFragment,
+  indicator: string,
+  name: string,
+  value: number,
+  nodeId?: string,
+) {
+  visitObjects(fragment, (object) => {
+    if (nodeId && object.id !== nodeId) return;
+    if (object.kind !== 'indicator' || object.indicator !== indicator) return;
+    const args = asJsonObject(object.args);
+    if (args && Object.prototype.hasOwnProperty.call(args, name)) {
+      args[name] = value;
+    }
   });
 }
 
@@ -1171,6 +1216,14 @@ function semanticSummaryForRecipe(
       return `Close is above EMA(${params.length}).`;
     case 'trend.ema_fast_above_slow':
       return `EMA(${params.fastLength}) is above EMA(${params.slowLength}).`;
+    case 'trend.supertrend_bullish_regime':
+      return `SuperTrend(${params.atrLength}, ${params.multiplier}) direction is bullish.`;
+    case 'trend.supertrend_bearish_regime':
+      return `SuperTrend(${params.atrLength}, ${params.multiplier}) direction is bearish.`;
+    case 'trend.close_crosses_up_supertrend':
+      return `Close crosses above SuperTrend(${params.atrLength}, ${params.multiplier}).`;
+    case 'trend.close_crosses_down_supertrend':
+      return `Close crosses below SuperTrend(${params.atrLength}, ${params.multiplier}).`;
     case 'momentum.rsi_cross_up_30':
       return `RSI(${params.length}) crosses above ${params.threshold}.`;
     case 'mean_reversion.close_near_ema_after_pullback':
@@ -1235,6 +1288,60 @@ function materializeRecipe(
         setTokenArgsLength(tokens, 2, slowLength);
         setFragmentIndicatorLength(fragment, 'ema', slowLength, 'ema_slow');
         setWarmup(fragment, Math.max(50, Math.ceil(slowLength * 2)));
+      }
+      break;
+    }
+    case 'trend.supertrend_bullish_regime':
+    case 'trend.supertrend_bearish_regime': {
+      const atrLength = numberRecipeParam(params, 'atrLength');
+      const multiplier = numberRecipeParam(params, 'multiplier');
+      if (atrLength !== undefined) {
+        setTokenIndicatorArg(tokens, 0, 'atr_length', atrLength);
+        setFragmentIndicatorArg(
+          fragment,
+          'supertrend',
+          'atr_length',
+          atrLength,
+          'supertrend_direction',
+        );
+        setWarmup(fragment, Math.max(30, Math.ceil(atrLength * 3)));
+      }
+      if (multiplier !== undefined) {
+        setTokenIndicatorArg(tokens, 0, 'multiplier', multiplier);
+        setFragmentIndicatorArg(
+          fragment,
+          'supertrend',
+          'multiplier',
+          multiplier,
+          'supertrend_direction',
+        );
+      }
+      break;
+    }
+    case 'trend.close_crosses_up_supertrend':
+    case 'trend.close_crosses_down_supertrend': {
+      const atrLength = numberRecipeParam(params, 'atrLength');
+      const multiplier = numberRecipeParam(params, 'multiplier');
+      if (atrLength !== undefined) {
+        setTokenIndicatorArg(tokens, 2, 'atr_length', atrLength);
+        setFragmentIndicatorArg(
+          fragment,
+          'supertrend',
+          'atr_length',
+          atrLength,
+          'supertrend_line',
+        );
+        setWarmup(fragment, Math.max(30, Math.ceil(atrLength * 3)));
+      }
+      if (multiplier !== undefined) {
+        setTokenIndicatorArg(tokens, 2, 'multiplier', multiplier);
+        setFragmentIndicatorArg(
+          fragment,
+          'supertrend',
+          'multiplier',
+          multiplier,
+          'supertrend_line',
+        );
       }
       break;
     }
@@ -2078,6 +2185,18 @@ export async function runAgentTool(
       return getTokenSemantics(input);
     case 'get_authoring_examples':
       return getAuthoringExamples(input);
+    case 'resolve_instrument': {
+      const instrument = asString(input.instrument);
+      if (!instrument) {
+        throw new Error('resolve_instrument requires instrument.');
+      }
+      const capabilities =
+        asJsonObject(input.capabilities) ??
+        (hasGetCapabilities(options.client)
+          ? await options.client.getCapabilities()
+          : undefined);
+      return resolveInstrument(instrument, capabilities);
+    }
     case 'compose_token_block':
       return composeTokenBlock(input);
     case 'validate_token_block':

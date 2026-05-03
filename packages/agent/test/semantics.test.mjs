@@ -77,10 +77,24 @@ const FULL_CAPABILITIES = {
         enumValues: ['macd', 'signal', 'hist'],
       },
     },
+    {
+      id: 'supertrend',
+      args: [
+        { name: 'atr_length', type: 'integer', required: true, minimum: 1 },
+        { name: 'multiplier', type: 'number', required: true, minimum: 0 },
+      ],
+      output: {
+        name: 'output',
+        type: 'enum',
+        required: true,
+        enumValues: ['supertrend', 'trend_direction'],
+      },
+      outputs: ['supertrend', 'trend_direction'],
+    },
   ],
   operators: {
-    compare: ['gt', 'lt'],
-    cross: ['cross_up'],
+    compare: ['eq', 'gt', 'lt'],
+    cross: ['cross_up', 'cross_down'],
     rolling: ['max', 'avg'],
   },
 };
@@ -378,6 +392,46 @@ describe('semantic resolver', () => {
     );
   });
 
+  it('resolves SuperTrend prompts into capability-supported candidates', () => {
+    const result = resolve('Use supertrend direction as a trend filter');
+    const ids = candidateIds(result);
+
+    assert.ok(ids.includes('trend.supertrend_bullish_regime'));
+    const candidate = result.candidates.find(
+      (item) => item.id === 'trend.supertrend_bullish_regime',
+    );
+    assert.equal(candidate.status, 'expressible');
+    const node = candidate.fragment.nodes.find(
+      (item) => item.id === 'supertrend_direction',
+    );
+    assert.deepEqual(node.args, { atr_length: 10, multiplier: 3 });
+    assert.equal(node.output, 'trend_direction');
+  });
+
+  it('marks SuperTrend candidates unavailable when capability catalog lacks it', () => {
+    const result = resolveStrategySemantics({
+      prompt: 'Use supertrend direction as a trend filter',
+      capabilities: {
+        ...FULL_CAPABILITIES,
+        indicators: FULL_CAPABILITIES.indicators.filter(
+          (item) => item.id !== 'supertrend',
+        ),
+      },
+      includeUnavailable: true,
+    });
+
+    const candidate = result.candidates.find((item) =>
+      item.id.startsWith('trend.supertrend_'),
+    );
+    assert.ok(candidate);
+    assert.equal(candidate.status, 'unavailable');
+    assert.ok(
+      candidate.validationHints.some((hint) =>
+        hint.includes('indicator:supertrend'),
+      ),
+    );
+  });
+
   it('ranks simple capability-supported candidates above risky candidates', () => {
     const result = resolve('volume above average and unusual volume spike');
     const avg = result.candidates.find(
@@ -638,6 +692,33 @@ describe('agent-local semantic tools', () => {
     assert.equal(result.block.name, 'RSI reclaim');
     // semanticSummary stays available for downstream UIs that want long form.
     assert.match(result.block.semanticSummary, /RSI/);
+  });
+
+  it('resolves instruments through the local MCP tool without fallback', async () => {
+    const btc = await runAgentTool('resolve_instrument', {
+      instrument: 'BTC',
+      capabilities: {
+        instruments: [
+          { symbol: 'BTCUSDT', base: 'BTC', quote: 'USDT' },
+          { symbol: 'ETHUSDT', base: 'ETH', quote: 'USDT' },
+          { symbol: 'SOLUSDT', base: 'SOL', quote: 'USDT' },
+        ],
+      },
+    });
+    assert.equal(btc.status, 'resolved');
+    assert.equal(btc.symbol, 'BTCUSDT');
+
+    const spy = await runAgentTool('resolve_instrument', {
+      instrument: 'SPY',
+      capabilities: {
+        instruments: [
+          { symbol: 'BTCUSDT', base: 'BTC', quote: 'USDT' },
+          { symbol: 'ETHUSDT', base: 'ETH', quote: 'USDT' },
+        ],
+      },
+    });
+    assert.equal(spy.status, 'unsupported');
+    assert.equal(spy.symbol, undefined);
   });
 
   it('every recipe with numeric params reflects the supplied value into tokens', async () => {

@@ -48,7 +48,7 @@ Identify trend direction and strength. Output: numeric series (sometimes multi-o
 | adx | ADX | length + output | 14 | Use output: "adx", "plus_di", or "minus_di" |
 | ichimoku | Ichimoku Cloud | conversion_length, base_length, lagging_span_length, displacement + output | 9, 26, 52, 26 | Multiple outputs, complex |
 | psar | Parabolic SAR | step, max | 0.02, 0.2 | Trailing stop indicator |
-| supertrend | SuperTrend | length, multiplier | 10, 3 | ATR-based trend follower |
+| supertrend | SuperTrend | atr_length, multiplier + output | 10, 3 | Use output: "supertrend" for the line or "trend_direction" for +1/-1 regime |
 
 **MACD usage**: MACD cross_up signal line = bullish. MACD > 0 = uptrend.
 MACD histogram divergence = potential reversal.

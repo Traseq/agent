@@ -2,6 +2,7 @@ import type {
   BacktestConfig as SdkBacktestConfig,
   TraseqClient as SdkTraseqClient,
   StrategySettings as SdkStrategySettings,
+  InstrumentResolution,
 } from '@traseq/sdk';
 
 import type { UsageStatus } from './usage-hints.js';
@@ -349,6 +350,7 @@ export interface ResearchRunnerLiveContext {
   usage: unknown;
   capabilities: unknown;
   capabilitySummary: JsonObject;
+  instrumentResolution?: InstrumentResolution;
 }
 
 export interface ResearchDraftContext {
@@ -621,7 +623,9 @@ export interface AutoAgentResearchResult {
     manifest: unknown;
     workspace: unknown;
     usage: unknown;
+    capabilities?: unknown;
     capabilitySummary: JsonObject;
+    instrumentResolution?: InstrumentResolution;
   };
   prompts: {
     authoring: string;

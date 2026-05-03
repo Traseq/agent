@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { TraseqApiError, preflightStrategyDraft } from '@traseq/sdk';
+import {
+  TraseqApiError,
+  preflightStrategyDraft,
+  resolveInstrument,
+} from '@traseq/sdk';
 
 import { analyzeRound } from './analysis.js';
 import {
@@ -413,6 +417,9 @@ function completeResult(args: {
       workspace: args.live.workspace,
       usage: args.live.usage,
       capabilitySummary: args.live.capabilitySummary,
+      ...(args.live.instrumentResolution
+        ? { instrumentResolution: args.live.instrumentResolution }
+        : {}),
     },
     rounds: args.rounds,
     summary,
@@ -1141,7 +1148,7 @@ async function callWithTimeout<T>(
 export async function runResearchRunner(
   options: ResearchRunnerOptions,
 ): Promise<ResearchRunnerResult> {
-  const input = normalizeRequest(options.input);
+  let input = normalizeRequest(options.input);
   const runId = randomUUID();
   const startedAt = toIsoNow();
   const client = options.client ?? createTraseqClient();
@@ -1181,13 +1188,61 @@ export async function runResearchRunner(
     });
   }
 
+  const instrumentResolution = resolveInstrument(
+    input.instrument,
+    capabilities,
+  );
+  if (
+    instrumentResolution.status === 'resolved' &&
+    instrumentResolution.symbol
+  ) {
+    input = { ...input, instrument: instrumentResolution.symbol };
+  }
+
   const live: ResearchRunnerLiveContext = {
     manifest,
     workspace,
     usage,
     capabilities,
     capabilitySummary: capabilitySummary(capabilities),
+    instrumentResolution,
   };
+
+  if (
+    instrumentResolution.status === 'unsupported' ||
+    instrumentResolution.status === 'ambiguous'
+  ) {
+    const issue: ValidationIssueLike = {
+      code:
+        instrumentResolution.status === 'ambiguous'
+          ? 'instrument_ambiguous'
+          : 'instrument_unavailable',
+      path: 'backtest.signalInstrument.symbol',
+      field: 'signalGraph',
+      severity: 'error',
+      message: instrumentResolution.reason,
+      suggestion:
+        instrumentResolution.suggestions.length > 0
+          ? `Use one of: ${instrumentResolution.suggestions.join(', ')}.`
+          : 'Read traseq://instruments and choose an exact supported symbol.',
+    };
+    return completeResult({
+      runId,
+      startedAt,
+      input,
+      live,
+      rounds: [],
+      failure: failureForPhase('validate', new Error(issue.message), {
+        reason: 'validation_failed',
+        message: issue.message,
+        issues: [issue],
+        nextSteps: [
+          issue.suggestion ??
+            'Read traseq://instruments and choose an exact supported symbol.',
+        ],
+      }),
+    });
+  }
 
   const rounds: ResearchRunnerRound[] = [];
   // Allow callers to continue iterating on an existing strategy. When set, the

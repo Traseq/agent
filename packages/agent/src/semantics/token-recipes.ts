@@ -108,6 +108,16 @@ const defaults = {
   ema20: price('ema', { length: 20 }),
   ema50: price('ema', { length: 50 }),
   ema100: price('ema', { length: 100 }),
+  supertrendLine: price('supertrend', {
+    atr_length: 10,
+    multiplier: 3,
+    output: 'supertrend',
+  }),
+  supertrendDirection: price('supertrend', {
+    atr_length: 10,
+    multiplier: 3,
+    output: 'trend_direction',
+  }),
   rsi14: oscillator('rsi', { length: 14 }),
   atr14: volatility('atr', { length: 14 }),
 };
@@ -141,6 +151,74 @@ export const TOKEN_RECIPES: readonly TokenRecipeDefinition[] = [
       numberParam('slowLength', 'Slow EMA length.', 50),
     ],
     tokens: [defaults.ema20, compare('gt'), defaults.ema50],
+  }),
+  recipe({
+    recipeId: 'trend.supertrend_bullish_regime',
+    implementationId: 'trend.supertrend_bullish_regime',
+    role: 'context_filter',
+    produces: 'bool',
+    validAs: ['entry.filter', 'entry.context_filter'],
+    displayName: 'SuperTrend bullish',
+    semanticSummary: 'SuperTrend direction is bullish.',
+    params: [
+      numberParam('atrLength', 'SuperTrend ATR lookback length.', 10, [
+        'length',
+        'atr_length',
+      ]),
+      numberParam('multiplier', 'SuperTrend ATR multiplier.', 3),
+    ],
+    tokens: [defaults.supertrendDirection, compare('eq'), constant(1)],
+  }),
+  recipe({
+    recipeId: 'trend.supertrend_bearish_regime',
+    implementationId: 'trend.supertrend_bearish_regime',
+    role: 'context_filter',
+    produces: 'bool',
+    validAs: ['entry.filter', 'entry.context_filter'],
+    displayName: 'SuperTrend bearish',
+    semanticSummary: 'SuperTrend direction is bearish.',
+    params: [
+      numberParam('atrLength', 'SuperTrend ATR lookback length.', 10, [
+        'length',
+        'atr_length',
+      ]),
+      numberParam('multiplier', 'SuperTrend ATR multiplier.', 3),
+    ],
+    tokens: [defaults.supertrendDirection, compare('eq'), constant(-1)],
+  }),
+  recipe({
+    recipeId: 'trend.close_crosses_up_supertrend',
+    implementationId: 'trend.close_crosses_up_supertrend',
+    role: 'entry_trigger',
+    produces: 'bool',
+    validAs: ['entry.trigger'],
+    displayName: 'Close crosses up SuperTrend',
+    semanticSummary: 'Close crosses above the SuperTrend line.',
+    params: [
+      numberParam('atrLength', 'SuperTrend ATR lookback length.', 10, [
+        'length',
+        'atr_length',
+      ]),
+      numberParam('multiplier', 'SuperTrend ATR multiplier.', 3),
+    ],
+    tokens: [defaults.close, cross('cross_up'), defaults.supertrendLine],
+  }),
+  recipe({
+    recipeId: 'trend.close_crosses_down_supertrend',
+    implementationId: 'trend.close_crosses_down_supertrend',
+    role: 'exit',
+    produces: 'bool',
+    validAs: ['strategy.exit.when'],
+    displayName: 'Close crosses down SuperTrend',
+    semanticSummary: 'Close crosses below the SuperTrend line.',
+    params: [
+      numberParam('atrLength', 'SuperTrend ATR lookback length.', 10, [
+        'length',
+        'atr_length',
+      ]),
+      numberParam('multiplier', 'SuperTrend ATR multiplier.', 3),
+    ],
+    tokens: [defaults.close, cross('cross_down'), defaults.supertrendLine],
   }),
   recipe({
     recipeId: 'momentum.rsi_cross_up_30',

@@ -1,9 +1,15 @@
+import type { InstrumentResolution } from '@traseq/sdk';
+
 import { evaluateResearchResult } from './evaluation.js';
 import { createTraseqClient } from './internal/runtime.js';
 import { isRiskTolerance } from './internal/literals.js';
 import { asJsonObject } from './normalize.js';
 import { formatResearchReport, representativeBacktest } from './report.js';
-import { normalizeRequest, runResearch } from './research.js';
+import {
+  normalizeRequest,
+  resolveRequestInstrument,
+  runResearch,
+} from './research.js';
 import { runResearchRunner } from './research-runner.js';
 import { summarizeUsageHints, type UsageStatus } from './usage-hints.js';
 import {
@@ -281,8 +287,9 @@ function buildDecisionPoints(
 function buildEngagementMessages(
   input: ReturnType<typeof normalizeRequest>,
   riskTolerance: ResearchRiskTolerance,
+  instrumentResolution?: InstrumentResolution,
 ): ServiceMessage[] {
-  return [
+  const messages: ServiceMessage[] = [
     {
       level: 'info',
       title: 'Research engagement initialized',
@@ -303,6 +310,31 @@ function buildEngagementMessages(
         'Backtests are research evidence only. The memo must show return and risk together and must not present results as investment advice.',
     },
   ];
+
+  if (
+    instrumentResolution &&
+    (instrumentResolution.status === 'unsupported' ||
+      instrumentResolution.status === 'ambiguous')
+  ) {
+    const { status, suggestions } = instrumentResolution;
+    messages.unshift({
+      level: 'warning',
+      title:
+        status === 'ambiguous'
+          ? 'Instrument needs disambiguation'
+          : 'Instrument is not supported',
+      message:
+        status === 'ambiguous'
+          ? `${input.instrument} maps to multiple supported instruments. Choose an exact symbol from capabilities.instruments before authoring.`
+          : `${input.instrument} is not in the supported instrument universe. Traseq currently supports Binance spot, USDT-quoted instruments exposed by capabilities.instruments.`,
+      nextAction:
+        suggestions.length > 0
+          ? `Use one of: ${suggestions.join(', ')}.`
+          : 'Read traseq://instruments and choose an exact supported symbol.',
+    });
+  }
+
+  return messages;
 }
 
 function buildEvidenceBoundaries(): string[] {
@@ -500,13 +532,21 @@ function rebuildBrief(
     ...base.input,
     ...overlay,
   } as ResearchEngagementInput;
-  const normalized = normalizeRequest(mergedRawInput);
+  const resolved = resolveRequestInstrument(
+    normalizeRequest(mergedRawInput),
+    base.live.capabilities,
+  );
+  const normalized = resolved.input;
   const riskTolerance = normalizeRiskTolerance(
     patch.riskTolerance ?? base.riskTolerance,
   );
   const route = buildAuthoringRoute(mergedRawInput);
 
-  const serviceMessages = buildEngagementMessages(normalized, riskTolerance);
+  const serviceMessages = buildEngagementMessages(
+    normalized,
+    riskTolerance,
+    resolved.resolution,
+  );
   const usageMessage = buildUsageStatusMessage(base.usageStatus);
   if (usageMessage) {
     serviceMessages.push(usageMessage);
@@ -526,6 +566,10 @@ function rebuildBrief(
     fallbackToolPath: route.fallbackToolPath,
     referenceTools: route.referenceTools,
     routingRationale: route.routingRationale,
+    live: {
+      ...base.live,
+      instrumentResolution: resolved.resolution,
+    },
     completedAt: new Date().toISOString(),
   };
 }
@@ -534,19 +578,23 @@ export async function startResearchEngagement(
   input: ResearchEngagementInput,
   options: { client?: ResearchContextClient } = {},
 ): Promise<ResearchEngagementBrief> {
-  const normalized = normalizeRequest(input);
   const riskTolerance = normalizeRiskTolerance(input.riskTolerance);
   const route = buildAuthoringRoute(input);
   const research = await runResearch(input, undefined, {
     ...(options.client ? { client: options.client } : {}),
   });
+  const normalized = research.input;
 
   const usageStatus = summarizeUsageHints({
     usage: research.live.usage,
     workspace: research.live.workspace,
     manifest: research.live.manifest,
   });
-  const serviceMessages = buildEngagementMessages(normalized, riskTolerance);
+  const serviceMessages = buildEngagementMessages(
+    normalized,
+    riskTolerance,
+    research.live.instrumentResolution,
+  );
   const usageMessage = buildUsageStatusMessage(usageStatus);
   if (usageMessage) {
     serviceMessages.push(usageMessage);

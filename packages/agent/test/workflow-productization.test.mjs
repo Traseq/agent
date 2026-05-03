@@ -18,6 +18,19 @@ const VALIDATION_OK = {
   issues: [],
 };
 
+const CRYPTO_CAPABILITIES = {
+  protocol: 'traseq.capabilities',
+  version: 1,
+  signalGraph: { nodes: [], bindings: [] },
+  indicators: [],
+  operators: { compare: [], cross: [] },
+  instruments: [
+    { symbol: 'BTCUSDT', base: 'BTC', quote: 'USDT', dataStart: '2017-08-17' },
+    { symbol: 'ETHUSDT', base: 'ETH', quote: 'USDT', dataStart: '2017-08-17' },
+    { symbol: 'SOLUSDT', base: 'SOL', quote: 'USDT', dataStart: '2020-08-11' },
+  ],
+};
+
 function draft() {
   return {
     name: 'Agent strategy',
@@ -140,8 +153,15 @@ function researchResult() {
   };
 }
 
-function makeClient() {
+function makeClient(options = {}) {
   const calls = [];
+  const capabilities = options.capabilities ?? {
+    protocol: 'traseq.capabilities',
+    version: 1,
+    signalGraph: { nodes: [], bindings: [] },
+    indicators: [],
+    operators: { compare: [], cross: [] },
+  };
   return {
     calls,
     async getManifest() {
@@ -158,13 +178,7 @@ function makeClient() {
     },
     async getCapabilities() {
       calls.push('getCapabilities');
-      return {
-        protocol: 'traseq.capabilities',
-        version: 1,
-        signalGraph: { nodes: [], bindings: [] },
-        indicators: [],
-        operators: { compare: [], cross: [] },
-      };
+      return capabilities;
     },
     async validateStrategy() {
       calls.push('validateStrategy');
@@ -404,6 +418,41 @@ describe('guided research service', () => {
     assert.ok(brief.referenceTools.includes('get_authoring_examples'));
   });
 
+  it('keeps vague market copy limited to supported instruments', async () => {
+    const brief = await startResearchEngagement(
+      { prompt: 'I have no strategy idea yet.' },
+      { client: makeClient({ capabilities: CRYPTO_CAPABILITIES }) },
+    );
+    const rendered = [
+      formatResearchEngagementBrief(brief),
+      JSON.stringify(brief.decisionPoints),
+      JSON.stringify(brief.serviceMessages),
+    ].join('\n');
+
+    assert.doesNotMatch(rendered, /\bSPY\b|\bAAPL\b/);
+    assert.match(rendered, /BTCUSDT/);
+  });
+
+  it('surfaces explicit unsupported instruments before authoring', async () => {
+    const brief = await startResearchEngagement(
+      {
+        prompt: 'Research a SPY trend strategy.',
+        instrument: 'SPY',
+      },
+      { client: makeClient({ capabilities: CRYPTO_CAPABILITIES }) },
+    );
+
+    assert.equal(brief.input.instrument, 'SPY');
+    assert.equal(brief.live.instrumentResolution.status, 'unsupported');
+    assert.ok(
+      brief.serviceMessages.some(
+        (message) =>
+          message.title === 'Instrument is not supported' &&
+          message.nextAction.includes('BTCUSDT'),
+      ),
+    );
+  });
+
   it('routes concrete strategy conditions toward SG v2 authoring', async () => {
     const brief = await startResearchEngagement(
       {
@@ -561,6 +610,40 @@ describe('guided research service', () => {
         (message) =>
           message.links?.backtest === 'https://app.traseq.test/backtests/bt-1',
       ),
+    );
+  });
+
+  it('does not run a guided round for explicit unsupported instruments', async () => {
+    const client = makeClient({ capabilities: CRYPTO_CAPABILITIES });
+    const output = await runGuidedResearchRound(
+      {
+        prompt: 'Research a SPY trend strategy.',
+        draft: draft(),
+        instrument: 'SPY',
+        timeframe: '4h',
+      },
+      { client },
+    );
+
+    assert.equal(output.status, 'failed');
+    assert.equal(output.result.failure.phase, 'validate');
+    assert.equal(output.result.live.instrumentResolution.status, 'unsupported');
+    assert.ok(
+      output.result.failure.issues.some(
+        (issue) => issue.code === 'instrument_unavailable',
+      ),
+    );
+    assert.deepEqual(
+      client.calls.filter((name) =>
+        [
+          'validateStrategy',
+          'createStrategy',
+          'createStrategyVersion',
+          'finalizeStrategyVersion',
+          'runBacktest',
+        ].includes(name),
+      ),
+      [],
     );
   });
 });
