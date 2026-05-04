@@ -101,7 +101,10 @@ describe('explainValidationIssues', () => {
       }),
     });
     assert.equal(result.issues[0].code, 'indicator_arg_period_unsupported');
-    assert.match(result.issues[0].suggestedFix, /Rename .* `period` to `length`/);
+    assert.match(
+      result.issues[0].suggestedFix,
+      /Rename .* `period` to `length`/,
+    );
     assert.ok(
       result.guidance.some((line) => /args\.length/.test(line)),
       'guidance should mention args.length',
@@ -167,8 +170,7 @@ describe('explainValidationIssues', () => {
           {
             code: 'PROVENANCE_MISMATCH',
             path: 'signalGraph.nodes[1].output',
-            message:
-              'output field expected missing but received "supertrend".',
+            message: 'output field expected missing but received "supertrend".',
             severity: 'error',
           },
         ],

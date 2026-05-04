@@ -272,10 +272,7 @@ describe('runResearchRunner', () => {
     assert.equal(result.failure.issues[0].code, 'missing_entry');
     assert.equal(result.failure.issues[0].severity, 'error');
     assert.equal(result.failure.issues[0].path, 'signalGraph.strategy.entry');
-    assert.deepEqual(
-      result.failure.issues,
-      result.rounds[0].failure.issues,
-    );
+    assert.deepEqual(result.failure.issues, result.rounds[0].failure.issues);
     assert.deepEqual(methodNames(client), [
       'getManifest',
       'getWorkspaceContext',
@@ -677,7 +674,10 @@ describe('runResearchRunner producer timeout', () => {
     assert.equal(result.status, 'failed');
     assert.equal(result.failure.reason, 'producer_timeout');
     assert.equal(result.rounds[0].failure.reason, 'producer_timeout');
-    assert.match(result.rounds[0].failure.message, /did not return within 50ms/);
+    assert.match(
+      result.rounds[0].failure.message,
+      /did not return within 50ms/,
+    );
     assert.ok(!methodNames(client).includes('validateStrategy'));
   });
 

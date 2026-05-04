@@ -226,9 +226,7 @@ describe('semantic ontology', () => {
     assert.equal(goldenCross.tokens[1].params.crossOperator, 'cross_up');
     assert.equal(goldenCross.tokens[2].params.args.length, 200);
 
-    const deathCross = recipeByImplementation.get(
-      'trend.sma_death_cross_exit',
-    );
+    const deathCross = recipeByImplementation.get('trend.sma_death_cross_exit');
     assert.ok(deathCross, 'trend.sma_death_cross_exit recipe exists');
     assert.equal(deathCross.role, 'exit');
     assert.equal(deathCross.tokens[1].params.crossOperator, 'cross_down');

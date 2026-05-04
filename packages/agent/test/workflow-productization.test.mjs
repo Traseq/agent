@@ -737,7 +737,6 @@ describe('agent workflow MCP tools', () => {
     });
     assert.match(summary.report, /Recommended Next Step/);
   });
-
 });
 
 describe('report CLI', () => {

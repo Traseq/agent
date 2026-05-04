@@ -132,10 +132,6 @@
                   "zh-hant/guides/workspace/invitations",
                   "zh-hant/guides/workspace/settings"
                 ]
-              },
-              {
-                "group": "學習中心",
-                "pages": ["zh-hant/learn/content-factory-acceptance-20260420"]
               }
             ]
           },

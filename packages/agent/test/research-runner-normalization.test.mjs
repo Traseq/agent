@@ -143,9 +143,7 @@ describe('runResearchRunner indicator-aware warmup', () => {
     );
 
     const normalizeLogs = result.rounds[0].logs.filter(
-      (log) =>
-        log.step === 'normalize' &&
-        log.message.includes('warmupPeriod'),
+      (log) => log.step === 'normalize' && log.message.includes('warmupPeriod'),
     );
     assert.ok(
       normalizeLogs.length >= 1,
@@ -228,9 +226,7 @@ describe('runResearchRunner range pre-resolution', () => {
     // to the API defaults — the engine still covers full available history.
     assert.ok(
       sentRange === undefined ||
-        (sentRange &&
-          !('start' in sentRange) &&
-          !('end' in sentRange)),
+        (sentRange && !('start' in sentRange) && !('end' in sentRange)),
       'symbolic-only range should be omitted from the persisted backtest config',
     );
   });

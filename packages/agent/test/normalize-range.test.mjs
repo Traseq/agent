@@ -10,7 +10,9 @@ const REFERENCE_MS = Date.UTC(2026, 0, 1); // 2026-01-01
 
 describe('resolveRangePoint', () => {
   it('passes through 13-digit epoch milliseconds unchanged', () => {
-    const result = resolveRangePoint(1704067200000, { referenceMs: REFERENCE_MS });
+    const result = resolveRangePoint(1704067200000, {
+      referenceMs: REFERENCE_MS,
+    });
     assert.equal(result.resolved, 1704067200000);
     assert.equal(result.changed, false);
   });
@@ -22,7 +24,9 @@ describe('resolveRangePoint', () => {
   });
 
   it('parses ISO date strings to epoch ms (UTC)', () => {
-    const result = resolveRangePoint('2024-01-01', { referenceMs: REFERENCE_MS });
+    const result = resolveRangePoint('2024-01-01', {
+      referenceMs: REFERENCE_MS,
+    });
     assert.equal(result.resolved, Date.UTC(2024, 0, 1));
     assert.equal(result.changed, true);
   });
@@ -38,7 +42,9 @@ describe('resolveRangePoint', () => {
   it('preserves "now" and "inception" as symbolic tokens (lowercased)', () => {
     const now = resolveRangePoint('NOW', { referenceMs: REFERENCE_MS });
     assert.equal(now.resolved, 'now');
-    const inception = resolveRangePoint('Inception', { referenceMs: REFERENCE_MS });
+    const inception = resolveRangePoint('Inception', {
+      referenceMs: REFERENCE_MS,
+    });
     assert.equal(inception.resolved, 'inception');
   });
 
@@ -172,6 +178,9 @@ describe('maxIndicatorPeriod', () => {
   it('returns undefined when no period-bearing nodes exist', () => {
     assert.equal(maxIndicatorPeriod({ nodes: [] }), undefined);
     assert.equal(maxIndicatorPeriod(null), undefined);
-    assert.equal(maxIndicatorPeriod({ nodes: [{ kind: 'pattern' }] }), undefined);
+    assert.equal(
+      maxIndicatorPeriod({ nodes: [{ kind: 'pattern' }] }),
+      undefined,
+    );
   });
 });

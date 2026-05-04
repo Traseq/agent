@@ -4,9 +4,7 @@ import { runResearch } from '../dist/index.js';
 
 describe('runResearch', () => {
   it('creates a tool-first research brief without AI provider env', async () => {
-    const providerEnv = ['OPENAI', 'AI'].map(
-      (prefix) => `${prefix}_API_KEY`,
-    );
+    const providerEnv = ['OPENAI', 'AI'].map((prefix) => `${prefix}_API_KEY`);
     const previousEnv = {
       TRASEQ_API_KEY: process.env.TRASEQ_API_KEY,
       TRASEQ_BASE_URL: process.env.TRASEQ_BASE_URL,
