@@ -210,7 +210,6 @@ export function augmentToolError(
     'create_strategy_version',
     'create_strategy',
     'validate_strategy',
-    'create_pine_export',
     'create_robustness_analysis',
   ]);
   if (!STATE_GATED_TOOLS.has(toolName)) {

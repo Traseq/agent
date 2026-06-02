@@ -384,6 +384,28 @@ function buildUsageStatusMessage(
   };
 }
 
+/**
+ * Emits an instruction service message telling the upstream LLM to render
+ * verdicts, risk flags, and natural-language summaries in the user's locale.
+ *
+ * The agent runtime is locale-neutral and never translates content itself
+ * — this message is a hint to whichever client model wraps our structured
+ * data so that, e.g., a zh-TW user sees Chinese narrative even though the
+ * underlying token / DSL identifiers and quantitative values stay in English.
+ */
+function buildLocaleInstructionMessage(
+  locale: string | undefined,
+): ServiceMessage | undefined {
+  if (!locale) return undefined;
+  const normalized = locale.trim();
+  if (!normalized || normalized.toLowerCase() === 'en') return undefined;
+  return {
+    level: 'info',
+    title: 'User locale',
+    message: `User locale is ${normalized}. Render verdict, risk flags, evidence narrative, and any natural-language explanations in this locale. Keep DSL token ids, error codes, numeric values, and quantitative finance term keys in English.`,
+  };
+}
+
 function buildGuidedEvidence(
   result: ResearchRunnerResult,
   evaluation: ResearchResultEvaluation,
@@ -608,6 +630,10 @@ export async function startResearchEngagement(
   const usageMessage = buildUsageStatusMessage(usageStatus);
   if (usageMessage) {
     serviceMessages.push(usageMessage);
+  }
+  const localeMessage = buildLocaleInstructionMessage(input.locale);
+  if (localeMessage) {
+    serviceMessages.push(localeMessage);
   }
 
   const brief: ResearchEngagementBrief = {

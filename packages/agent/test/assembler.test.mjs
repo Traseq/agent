@@ -507,7 +507,6 @@ const TOOL_INPUTS = {
   delete_strategy_version: { strategyId: ID, version: 1, confirm: true },
   archive_strategy_version: { strategyId: ID, version: 1 },
   restore_strategy_version: { strategyId: ID, version: 1 },
-  create_pine_export: { strategyId: ID, version: 1 },
   list_backtests: {},
   run_backtest: {
     strategyVersionId: ID,
@@ -587,7 +586,6 @@ const CLIENT_METHOD_BY_TOOL = {
   delete_strategy_version: 'deleteStrategyVersion',
   archive_strategy_version: 'archiveStrategyVersion',
   restore_strategy_version: 'restoreStrategyVersion',
-  create_pine_export: 'createPineExport',
   list_backtests: 'listBacktests',
   run_backtest: 'runBacktest',
   get_backtest: 'getBacktest',

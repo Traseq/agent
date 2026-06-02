@@ -279,6 +279,14 @@ export interface ResearchEngagementInput {
   maxConcurrentPositions?: number;
   riskTolerance?: ResearchRiskTolerance;
   authoringPreference?: AuthoringPreference;
+  /**
+   * BCP-47 user locale (e.g. `en`, `zh-TW`). Set by callers that know the
+   * user's UI language so downstream LLMs can render verdicts/risk text in
+   * that language. Agent runtime is locale-neutral and does not translate
+   * generated content; this field is propagated to the engagement brief and
+   * surfaced as a service message for the upstream LLM to honour.
+   */
+  locale?: string;
 }
 
 export interface ServiceMessage {

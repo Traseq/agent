@@ -1,3 +1,4 @@
+import { assertNoInvestmentAdvice } from './compliance.js';
 import { evaluateResearchResult } from './evaluation.js';
 import {
   renderUsageStatusMarkdown,
@@ -71,6 +72,22 @@ function warningLines(result: ResearchRunnerResult): string[] {
     const path = warning.path ? ` (${warning.path})` : '';
     return `${code}${warning.message}${path}`;
   });
+}
+
+// Collects every string Traseq itself authored in the evaluation (verdict
+// prose, per-round strengths/weaknesses, risk-flag messages). Deliberately
+// excludes user-supplied content like the echoed prompt — a rule description
+// such as "buy when RSI < 30" is legitimate input, not advice we emit.
+function agentAuthoredProse(evaluation: ResearchResultEvaluation): string {
+  return [
+    evaluation.verdict.summary,
+    evaluation.verdict.nextAction,
+    ...evaluation.rounds.flatMap((round) => [
+      ...round.strengths,
+      ...round.weaknesses.map((weakness) => weakness.message),
+    ]),
+    ...evaluation.riskFlags.map((flag) => flag.message),
+  ].join('\n');
 }
 
 // Picks the backtest that should represent an engagement for navigation +
@@ -206,6 +223,13 @@ export function formatResearchReport(
     });
   const usageSection = renderUsageStatusMarkdown(usageStatus);
   const warnings = warningLines(result);
+
+  // Defensive compliance net: our verdict/evidence prose is deterministic and
+  // compliant today, so this should never fire — it exists to fail loudly in
+  // tests/CI if a future template edit drifts into investment-advice language.
+  // Scans Traseq-authored prose only, never the echoed user prompt.
+  assertNoInvestmentAdvice(agentAuthoredProse(evaluation), 'research memo');
+
   const lines = [
     '# Traseq Guided Research Memo',
     '',
@@ -253,7 +277,7 @@ export function formatResearchReport(
     `- **Decision:** ${humanizeDecision(evaluation.verdict.decision)}`,
     `- **Summary:** ${evaluation.verdict.summary}`,
     '',
-    '## Recommended Next Step',
+    '## Next Step',
     '',
     evaluation.verdict.nextAction,
   ];

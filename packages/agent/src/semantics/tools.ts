@@ -442,7 +442,7 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
   {
     name: 'start_research_engagement',
     description:
-      'Start a service-style Traseq research engagement. Reads live workspace context, usage, and capabilities, then returns assumptions, intent maturity, recommended authoring mode, tool paths, evidence boundaries, and provider-agnostic authoring instructions.',
+      'Start a service-style Traseq research engagement. Reads live workspace context, usage, and capabilities, then returns assumptions, intent maturity, recommended authoring mode, tool paths, evidence boundaries, and provider-agnostic authoring instructions. Pass `locale` (BCP-47, e.g. `zh-TW`) when the user has selected a non-English UI locale; the brief surfaces it as a service message instructing the caller to render verdicts and risk text in that locale.',
     local: true,
     input_schema: objectSchema(
       {
@@ -457,6 +457,7 @@ export const AGENT_TOOL_REGISTRY: readonly AgentToolDefinition[] = [
         maxConcurrentPositions: numberProp,
         riskTolerance: enumProp(RISK_TOLERANCE_VALUES),
         authoringPreference: enumProp(AUTHORING_PREFERENCE_VALUES),
+        locale: stringProp,
       },
       ['prompt'],
     ),

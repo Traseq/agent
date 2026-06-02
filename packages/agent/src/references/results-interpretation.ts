@@ -4,6 +4,12 @@ export const RESULTS_INTERPRETATION_REFERENCE = `\
 After a backtest completes, the \`summaryJson\` and \`resultJson\` fields contain
 performance metrics. This guide explains how to interpret them.
 
+> This guide is for interpreting historical research evidence only. The
+> benchmarks and verdicts below are research comparison thresholds — not
+> investment advice, performance predictions, or suitability assessments. Any
+> strategy must be independently validated and stress-tested before any
+> live-trading decision.
+
 ## Step 1: Sanity Check
 
 Before analyzing metrics, verify the basics:
@@ -13,7 +19,7 @@ Before analyzing metrics, verify the basics:
 | Total positions | 0 trades | Loosen entry conditions, check warmup period |
 | Total positions | < 10 trades | Results are statistically unreliable. Widen date range or loosen conditions. |
 | Status | "failed" | Check error message. Common: invalid strategy, missing data. |
-| Max drawdown | > 80% | Strategy is dangerous. Reduce position size or add risk controls. |
+| Max drawdown | > 80% | Excessive drawdown. Research should test smaller position sizing and risk controls. |
 
 ## Step 2: Headline Metrics
 
@@ -21,7 +27,7 @@ Before analyzing metrics, verify the basics:
 - Total percentage gain/loss over the test period.
 - **Context**: Always compare to buy-and-hold for the same instrument/period.
   A strategy returning 50% when BTC returned 200% underperformed passive holding.
-- **Good**: Beats buy-and-hold after fees.
+- **Benchmark**: Beats buy-and-hold after fees.
 
 ### Max Drawdown
 - Largest peak-to-trough equity decline during the test.
@@ -77,7 +83,7 @@ Before analyzing metrics, verify the basics:
 
 ### Average Win vs Average Loss
 - If average loss > 2× average win, the strategy needs high win rate to survive.
-- Ideal: average win >= average loss (profits from both rate and magnitude).
+- Preferred: average win >= average loss (profits from both rate and magnitude).
 
 ### Consecutive Wins / Losses
 - Long loss streaks test psychological resilience.
@@ -117,11 +123,11 @@ When comparing two backtest results:
 
 | Scenario | Verdict | Next Step |
 |----------|---------|-----------|
-| Return > buy-and-hold, Sharpe > 1, DD < 20% | Strong candidate | Stress test with fees/slippage |
-| Return > buy-and-hold, Sharpe < 1 | Acceptable but risky | Reduce position size, add risk controls |
-| Return < buy-and-hold, Sharpe > 1 | Low return but consistent | May work for risk-averse allocation |
+| Return > buy-and-hold, Sharpe > 1, DD < 20% | Meets first-pass research bar | Continue research: test sensitivity to fees/slippage |
+| Return > buy-and-hold, Sharpe < 1 | High variance relative to return | Continue research: examine risk profile and position sizing |
+| Return < buy-and-hold, Sharpe > 1 | Lower return, steadier profile | Continue research before drawing further conclusions |
 | Zero trades | Signal issue | Loosen conditions, check warmup |
 | < 10 trades | Insufficient data | Extend date range, loosen conditions |
-| DD > 40% | Too risky | Reduce sizing, add max drawdown exit |
-| Profit factor < 1 | Net loser | Rethink thesis, review entry/exit logic |
+| DD > 40% | Excessive drawdown | Test smaller sizing and a max-drawdown exit |
+| Profit factor < 1 | Net loser in-sample | Rethink thesis, review entry/exit logic |
 `;

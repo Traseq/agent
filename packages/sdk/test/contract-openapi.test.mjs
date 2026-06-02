@@ -184,12 +184,6 @@ const CLIENT_METHOD_MAP = [
     verb: 'POST',
     path: '/public/v1/strategies/:param/versions/:param/restore',
   },
-  {
-    method: 'createPineExport',
-    verb: 'POST',
-    path: '/public/v1/strategies/:param/versions/:param/pine-export',
-    requestBody: true,
-  },
   { method: 'listBacktests', verb: 'GET', path: '/public/v1/backtests' },
   {
     method: 'runBacktest',

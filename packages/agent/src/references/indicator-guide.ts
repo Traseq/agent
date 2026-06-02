@@ -96,10 +96,10 @@ Measure momentum and overbought/oversold conditions. Output: numeric series (bou
 | awesome_osc | Awesome Oscillator | fast_length, slow_length | 5, 34 | Unbounded | Median price momentum |
 
 **RSI levels**:
-- Oversold: < 30 (buy signal for mean-reversion)
+- Oversold: < 30 (long-entry trigger for mean-reversion)
 - Neutral: 30-70
-- Overbought: > 70 (sell signal for mean-reversion)
-- Trend reclaim: cross_up 45-50 in uptrend (pullback buy)
+- Overbought: > 70 (exit / short-entry trigger for mean-reversion)
+- Trend reclaim: cross_up 45-50 in uptrend (pullback long-entry)
 
 **Common pairings**: RSI(14) + EMA(100) trend filter. Stochastic + support level.
 

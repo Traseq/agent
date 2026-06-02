@@ -119,8 +119,8 @@ Returns are positive without fees but negative with realistic execution costs.
 2. Switch order roles to maker where possible (lower fees).
 3. Widen entry thresholds to trade only on stronger signals.
 4. Switch to a longer timeframe (fewer but higher-conviction trades).
-5. If the edge is consistently < 0.2% per trade, the strategy is
-   likely not viable for real trading. Consider a different thesis.
+5. If the edge is consistently < 0.2% per trade, it is likely too thin to
+   survive fees and slippage in research; consider a different thesis.
 
 ---
 

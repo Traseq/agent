@@ -2253,34 +2253,6 @@
     }
   },
   {
-    "name": "create_pine_export",
-    "description": "Export Pine script for a strategy version.",
-    "endpoint": {
-      "method": "POST",
-      "path": "/public/v1/strategies/{strategyId}/versions/{version}/pine-export"
-    },
-    "input_schema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["strategyId", "version"],
-      "properties": {
-        "strategyId": {
-          "type": "string"
-        },
-        "version": {
-          "type": "integer"
-        },
-        "validationMode": {
-          "type": "string",
-          "enum": ["compatible", "exact_only"]
-        },
-        "strategyName": {
-          "type": "string"
-        }
-      }
-    }
-  },
-  {
     "name": "list_backtests",
     "description": "List workspace backtests.",
     "endpoint": {

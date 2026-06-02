@@ -28,7 +28,6 @@ import type {
   ListSignalMonitorsQuery,
   ListStrategiesQuery,
   ListSystemStrategiesQuery,
-  PineExportRequest,
   QueryParams,
   PublicManifest,
   RobustnessAnalysisRequest,
@@ -443,18 +442,6 @@ export class TraseqClient {
     return this.request<StrategyVersionDetail>(
       'POST',
       `/public/v1/strategies/${encodeURIComponent(strategyId)}/versions/${encodeURIComponent(String(version))}/restore`,
-    );
-  }
-
-  createPineExport(
-    strategyId: string,
-    version: number,
-    payload: PineExportRequest,
-  ): Promise<JsonObject> {
-    return this.request<JsonObject>(
-      'POST',
-      `/public/v1/strategies/${encodeURIComponent(strategyId)}/versions/${encodeURIComponent(String(version))}/pine-export`,
-      payload,
     );
   }
 

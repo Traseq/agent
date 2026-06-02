@@ -170,7 +170,7 @@ Key analysis steps:
 7. **Compare to baseline**: Buy-and-hold return over the same period.
 
 Present results as a service memo with: Executive Verdict, What We Tested,
-Evidence, Risk Flags, Decision, and Recommended Next Step. Never cherry-pick
+Evidence, Risk Flags, Decision, and Next Step. Never cherry-pick
 favorable metrics while hiding unfavorable ones. Always show return and risk
 metrics together.
 

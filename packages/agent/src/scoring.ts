@@ -1,5 +1,9 @@
 import type { JsonObject, ScoreBreakdown } from './types.js';
 
+// The score and notes produced here describe historical backtest evidence for
+// research comparison only. They are not investment advice, performance
+// predictions, or an assessment of suitability for live trading.
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }

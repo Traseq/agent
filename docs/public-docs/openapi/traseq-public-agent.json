@@ -11521,56 +11521,6 @@
         "tags": ["Agent API"]
       }
     },
-    "/public/v1/strategies/{id}/versions/{version}/pine-export": {
-      "post": {
-        "operationId": "PublicOpenApiController_createPineExport",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "version",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "indicatorOnly": {
-                    "type": "boolean"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Pine export result"
-          }
-        },
-        "security": [
-          {
-            "traseq-api-key": []
-          }
-        ],
-        "summary": "Export a strategy version to Pine Script",
-        "tags": ["Agent API"]
-      }
-    },
     "/public/v1/backtests": {
       "get": {
         "operationId": "PublicOpenApiController_listBacktests",

@@ -158,12 +158,6 @@ export async function runPlatformTool(
         requiredString(input, 'strategyId'),
         requiredNumber(input, 'version'),
       );
-    case 'create_pine_export':
-      return client.createPineExport(
-        requiredString(input, 'strategyId'),
-        requiredNumber(input, 'version'),
-        omit(input, ['strategyId', 'version']),
-      );
     case 'list_backtests':
       return client.listBacktests(input as any);
     case 'run_backtest':

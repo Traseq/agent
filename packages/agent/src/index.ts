@@ -79,6 +79,12 @@ export {
 } from './evaluation.js';
 export { buildResearchArtifactBundle, formatResearchReport } from './report.js';
 export {
+  InvestmentAdviceError,
+  assertNoInvestmentAdvice,
+  findAdvicePhrases,
+} from './compliance.js';
+export type { AdvicePhraseMatch } from './compliance.js';
+export {
   renderUsageStatusMarkdown,
   summarizeUsageHints,
 } from './usage-hints.js';

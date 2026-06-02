@@ -72,7 +72,6 @@ export type {
   ListComparisonSetsQuery,
   ListStrategiesQuery,
   ListSystemStrategiesQuery,
-  PineExportRequest,
   PortfolioRisk,
   PublicManifest,
   QueryParams,

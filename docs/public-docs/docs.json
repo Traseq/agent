@@ -164,7 +164,9 @@
                 "group": "法律",
                 "pages": [
                   "zh-hant/legal/terms-of-service",
-                  "zh-hant/legal/privacy-policy"
+                  "zh-hant/legal/privacy-policy",
+                  "zh-hant/legal/refund-policy",
+                  "zh-hant/legal/disclaimer"
                 ]
               }
             ]

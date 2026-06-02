@@ -416,7 +416,7 @@ const refs = getAgentContext({ sections: ['references'] });
 
 ### Strategy Versions
 
-`create_strategy_version` · `get_strategy_version` · `update_strategy_version` · `finalize_strategy_version` · `delete_strategy_version` · `archive_strategy_version` · `restore_strategy_version` · `create_pine_export`
+`create_strategy_version` · `get_strategy_version` · `update_strategy_version` · `finalize_strategy_version` · `delete_strategy_version` · `archive_strategy_version` · `restore_strategy_version`
 
 ### Backtests
 

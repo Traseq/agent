@@ -336,7 +336,7 @@ Weaknesses
 - **Decision:** Keep candidate (\`keep_candidate\`)
 - **Summary:** Champion round meets the first-pass research robustness bar.
 
-## Recommended Next Step
+## Next Step
 
 Keep this candidate and move to baseline or robustness evaluation next.
 `;
@@ -735,7 +735,7 @@ describe('agent workflow MCP tools', () => {
       result: output.result,
       evaluation: output.evaluation,
     });
-    assert.match(summary.report, /Recommended Next Step/);
+    assert.match(summary.report, /## Next Step/);
   });
 });
 

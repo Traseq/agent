@@ -251,6 +251,12 @@ export interface AccumulationSettings {
   budgetCap?: number;
   targetAllocationPct?: number;
   stopWhenNoCash?: boolean;
+  /**
+   * Lot-matching policy applied when an accumulate cycle exits. Defaults to
+   * 'fifo'. Only meaningful for accumulate positions that can hold multiple
+   * lots.
+   */
+  exitLotMatching?: 'fifo' | 'lifo' | 'weighted_average';
 }
 
 export interface SinglePositionSettings {
@@ -267,6 +273,12 @@ export interface PyramidPositionSettings {
 export interface AccumulatePositionSettings {
   positionStyle: 'accumulate';
   warmupPeriod?: number;
+  /**
+   * Maximum number of parallel accumulate cycles. Defaults to 1 (one cycle at
+   * a time, identical to the original behavior). Values above 1 let a new
+   * cycle start before the previous one has fully exited.
+   */
+  maxConcurrentPositions?: number;
   accumulation: AccumulationSettings;
 }
 
@@ -714,11 +726,6 @@ export interface ListSystemStrategiesQuery extends QueryParams {
   category?: string;
   search?: string;
   tags?: string | readonly string[];
-}
-
-export interface PineExportRequest {
-  validationMode?: 'compatible' | 'exact_only';
-  strategyName?: string;
 }
 
 export interface RobustnessAnalysisRequest {

@@ -535,23 +535,6 @@ const OPERATIONS = [
     ),
   },
   {
-    name: 'create_pine_export',
-    description: 'Export Pine script for a strategy version.',
-    endpoint: {
-      method: 'POST',
-      path: '/public/v1/strategies/{strategyId}/versions/{version}/pine-export',
-    },
-    input_schema: objectSchema(
-      {
-        strategyId: stringProp,
-        version: integerProp,
-        validationMode: { type: 'string', enum: ['compatible', 'exact_only'] },
-        strategyName: stringProp,
-      },
-      ['strategyId', 'version'],
-    ),
-  },
-  {
     name: 'list_backtests',
     description: 'List workspace backtests.',
     endpoint: { method: 'GET', path: '/public/v1/backtests' },
