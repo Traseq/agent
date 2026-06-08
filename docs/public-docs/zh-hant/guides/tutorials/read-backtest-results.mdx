@@ -9,14 +9,16 @@ description: 理解 Summary、Rules、Trades、Analytics 與 Charts 五個分頁
 
 Summary 分頁會顯示最重要的績效指標。
 
-| 指標                | 說明             | 如何解讀                           |
-| ------------------- | ---------------- | ---------------------------------- |
-| **Return %**        | 回測期間總報酬   | 正數代表獲利，越高越好             |
-| **Max Drawdown**    | 權益曲線最大回撤 | 越小越好                           |
-| **Total Positions** | 總交易數         | 太少可能條件太嚴，太多可能過度交易 |
-| **Win Rate**        | 獲利交易比例     | 需要搭配盈虧比一起看               |
-| **Sharpe Ratio**    | 風險調整後報酬   | 大於 1 通常不錯                    |
-| **Profit Factor**   | 總獲利 / 總虧損  | 大於 1 代表整體有利潤              |
+| 指標                | 說明                                       | 如何解讀                           |
+| ------------------- | ------------------------------------------ | ---------------------------------- |
+| **Return %**        | 回測期間的總損益                           | 正數代表獲利，越高越好             |
+| **Max Drawdown**    | 帳戶價值從高點掉到之後低點的最大跌幅       | 越小越好，代表最壞情況的虧損       |
+| **Total Positions** | 交易筆數（這裡的部位與交易是同一件事）     | 太少可能條件太嚴，太多可能過度交易 |
+| **Win Rate**        | 獲利交易的比例                             | 要搭配獲利因子一起看，不能只看勝率 |
+| **Sharpe Ratio**    | 把報酬對照「過程有多顛簸」（波動）         | 大於 1 不錯、大於 2 算強，越高越穩 |
+| **Profit Factor**   | 總獲利 ÷ 總虧損                            | 大於 1 代表賺的比賠的多            |
+
+> Note: 想看任一指標的一句話定義，請見 [術語小辭典](/zh-hant/reference/glossary)。
 
 ## Rules
 
@@ -46,10 +48,10 @@ Trades 分頁列出每一筆交易。
 
 Analytics 分頁通常包含：
 
-- P&L Histogram
-- Duration Distribution
-- MAE/MFE Scatter
-- Monthly Returns Heatmap
+- P&L Histogram（損益分佈）
+- Duration Distribution（持倉時間分佈）
+- MAE/MFE Scatter（每筆交易平倉前曾達到的最差／最佳未實現損益）
+- Monthly Returns Heatmap（月度報酬熱圖）
 
 ## Charts
 

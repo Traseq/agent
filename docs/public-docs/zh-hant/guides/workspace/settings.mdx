@@ -1,65 +1,53 @@
 ---
 title: 工作空間設定
-description: 管理 workspace 基本資料，以及會預先帶入新回測的 backtest defaults。
+description: 設定工作空間基本資料，以及新回測的預設參數。
 ---
 
-工作空間設定分成兩個層次：
+工作空間設定分成兩部分：工作空間的基本資料，以及新回測的預設參數。
 
-- **General**: 工作空間本身的資料
-- **Backtest Defaults**: 新回測會預先帶入的研究預設
+## General（一般）
 
-## General
+在 **Settings > General** 更新工作空間的基本資料：
 
-### 名稱
+- **名稱**：工作空間的顯示名稱
+- **描述**：成員可看到的簡短說明
+- **Logo**：上傳 PNG 或 JPG 圖片
 
-修改工作空間顯示名稱。
+## 回測預設值（Backtest Defaults）
 
-### 描述
+回測預設值是一組共用的基準，會預先帶入工作空間裡每一個新回測。這樣你的
+團隊不必每次都從頭設定相同參數，而是從一致的起點開始。
 
-新增或編輯簡短描述。
+預設值包含：
 
-### Logo
-
-上傳 PNG、JPG 等常見格式的 logo。
-
-這一區從 **Settings** -> **General** 進入。
-
-## Backtest Defaults
-
-Backtest Defaults 是工作空間共用的研究基準，會預先帶入：
-
-- 預設 timeframe
-- 預設日期區間
+- 交易對
+- 時間框架
+- 日期區間
 - 初始資金
-- 預設交易對
-- execution 預設
+- 成交成本設定（手續費與滑價）
 
-### execution 預設包含什麼
+### 成交成本設定
 
-execution shell 採研究導向設計，包含：
+這一區控制套用到新回測的成本假設：
 
-- **Execution Defaults**: 這個工作空間儲存的 execution 基線
-- **Execution Summary**: 顯示 fill 假設、fees 與 slippage 的唯讀摘要
-- **Trading Fees**: maker / taker 摘要與進階 tier schedule
-- **Slippage**: `None`、`Fixed`、`Volatility Scaled`
-- **Expert Settings**: routing、進階 fee schedule 與 volatility cap
+- **手續費（Trading Fees）**：maker 與 taker 費率，可選用分級費率
+- **滑價（Slippage）**：可選 `None`、`Fixed` 或 `Volatility Scaled`
+- **進階設定（Expert Settings）**：訂單路由、分級手續費與波動滑價上限
 
-這一頁只會編輯工作空間已儲存的 execution model。新工作空間一開始會是
-`0% / 0%` maker/taker 與 `None` 滑價，直到你手動修改。
+新工作空間一開始是 `0% / 0%` 的 maker／taker 手續費與 `None`（無滑價）。
+你可以隨時調整，使其符合你實際的交易條件。
 
-系統會把 fill model 保留在內部，不讓使用者直接編輯。固定的 bar-based
-成交假設會寫進 backtest manifest，方便之後追溯。
+> Note: 成交方式（訂單在模擬中如何成交）由 Traseq 自動處理，無法更改。
+> 你只需要設定成本層 ── 手續費與滑價。
 
-### 從哪裡編輯 backtest defaults
+### 從哪裡設定
 
-進入 **Settings** -> **Backtest Defaults**。
-
-這一頁的目的是維護會預先帶入新回測的 workspace baseline，而不是把所有
-execution 細節都塞進主畫面。
+進入 **Settings > Backtest Defaults**。你也可以在 QuickRun 面板針對個別回測
+覆寫這些預設值。
 
 ## 權限
 
-修改這兩個區塊都需要 **Owner** 或 **Admin** 權限。
+只有 **Owner** 與 **Admin** 角色可以修改工作空間設定。
 
 ## 下一步
 

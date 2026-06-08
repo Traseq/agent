@@ -69,13 +69,23 @@ would have performed. You configure:
 
 ### How backtests are executed
 
-Traseq uses a bar-based simulation model with consistent execution rules:
+You don't need to configure how orders fill — Traseq handles that automatically
+with a consistent, bar-by-bar model. (A *bar* is one price candle for your
+timeframe; on a `1h` chart each bar covers one hour.) Here's what happens
+under the hood:
 
-- Conditions are checked at each **bar close**.
-- Signal entries and exits fill at the **next bar open**.
-- Take-profit orders use a **limit / gap fill**.
-- Stop-loss and trailing-stop orders use a **stop / gap fill**.
+- Conditions are checked when each **bar closes** — once the candle is final.
+- Signal entries and exits fill at the **next bar's open**, so the backtest
+  never acts on prices that hadn't happened yet.
+- Take-profit orders use a **limit fill**: they fill at your target price or
+  better, or at the next available price if price gapped past it.
+- Stop-loss and trailing-stop orders use a **stop fill**: they trigger at your
+  level, then fill at the market.
 - Fees and slippage are applied **after** the fill price is determined.
+
+> Note: Unsure about a term like *slippage*, *bps*, *ATR*, or *drawdown*? The
+> [Glossary](/reference/glossary) has plain-language definitions for everything
+> in these docs.
 
 > Warning: Backtest results reflect past performance and do not guarantee
 > future results.

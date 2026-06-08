@@ -10,14 +10,17 @@ how the strategy performed. Here's what each tab shows.
 
 The Summary tab highlights the key performance metrics at a glance.
 
-| Metric              | Description                           | How to interpret                                                             |
-| ------------------- | ------------------------------------- | ---------------------------------------------------------------------------- |
-| **Return %**        | Total return over the backtest period | Positive means profitable; higher is better                                  |
-| **Max Drawdown**    | Largest peak-to-trough equity decline | Smaller is better — shows worst-case risk                                    |
-| **Total Positions** | Number of trades taken                | Too few may mean overly strict conditions; too many may suggest over-trading |
-| **Win Rate**        | Percentage of profitable trades       | Look at this together with profit/loss ratio, not in isolation               |
-| **Sharpe Ratio**    | Risk-adjusted return                  | Above 1 is solid, above 2 is strong                                          |
-| **Profit Factor**   | Total profit divided by total loss    | Above 1 means the strategy is net profitable                                 |
+| Metric              | Description                                                                | How to interpret                                                             |
+| ------------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| **Return %**        | Total profit or loss over the backtest period                             | Positive means profitable; higher is better                                  |
+| **Max Drawdown**    | The largest drop from a high point in your equity to a later low          | Smaller is better — it shows your worst-case loss                            |
+| **Total Positions** | Number of trades taken (a position and a trade are the same thing here)   | Too few may mean overly strict conditions; too many may suggest over-trading |
+| **Win Rate**        | Percentage of profitable trades                                           | Read it together with Profit Factor, not on its own                          |
+| **Sharpe Ratio**    | Return measured against how bumpy the ride was (its volatility)           | Above 1 is solid, above 2 is strong — higher means steadier returns          |
+| **Profit Factor**   | Total profit divided by total loss                                        | Above 1 means the strategy made more than it lost                            |
+
+> Note: For one-line definitions of any metric here, see the
+> [Glossary](/reference/glossary).
 
 ## Rules
 
@@ -45,7 +48,8 @@ The Analytics tab gives you deeper statistical insights:
 
 - **P&L histogram** — distribution of trade profits and losses
 - **Duration distribution** — how long positions stayed open
-- **MAE/MFE scatter plot** — worst and best unrealized P&L per trade
+- **MAE/MFE scatter plot** — the worst (MAE) and best (MFE) unrealized profit
+  each trade reached before it closed
 - **Monthly returns heatmap** — performance broken down by month
 
 ## Charts

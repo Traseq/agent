@@ -50,6 +50,9 @@ Pick a preset or enter a custom date range:
 
 `1M` · `3M` · `6M` · `1Y` · `2Y` · `YTD` · Custom
 
+> Note: `YTD` means *year to date* — from January 1 of the current year until
+> today.
+
 All current plans can select full available history. Monthly research credits
 control how much total backtesting you can run in a billing cycle:
 
@@ -79,42 +82,52 @@ set realistic trading conditions:
 New backtests default to your **Workspace** preset. You can update your
 workspace defaults anytime in **Settings > Backtest Defaults**.
 
+> Note: A few terms used above — `bps` (basis points: `1 bp = 0.01%`),
+> *maker / taker* (the fee for a resting limit order vs. an order that fills
+> immediately), and `ATR` (a gauge of how much price typically moves, used to
+> size slippage). See the [Glossary](/reference/glossary) for more.
+
 ### Fill assumptions
 
 Traseq handles order execution automatically — you don't need to configure
 fill logic. Here's how it works:
 
-- Signal entries and exits fill at the **next bar open**.
-- Take-profit orders use a **limit / gap fill**.
-- Stop-loss and trailing-stop orders use a **stop / gap fill**.
+- Signal entries and exits fill at the **next bar's open**.
+- Take-profit orders use a **limit fill** (your target price or better, or the
+  next available price if price gapped past it).
+- Stop-loss and trailing-stop orders use a **stop fill** (triggers at your
+  level, then fills at the market).
 - Fees and slippage are applied **after** the fill price is determined.
 
 ### Trading fees
 
 The fee summary comes from your workspace backtest defaults. New workspaces
-start with `0% / 0%` maker/taker — update this in **Settings > Backtest
-Defaults** to match your actual exchange fees.
+start with `0% / 0%` maker/taker (no fees) — update this in **Settings >
+Backtest Defaults** to match your actual exchange fees.
 
 ### Slippage
 
-Three slippage models are available:
+Slippage is the gap between the price you expected and the price you actually
+got. Three models are available:
 
 - **None** — no slippage applied
-- **Fixed** — a constant amount in `bps` (or `ticks` for symbols with
-  tick-size metadata)
-- **Volatility Scaled** — dynamically scales with `ATR %` or `Bar Range %`
+- **Fixed** — a constant amount in `bps` (or `ticks` for symbols that trade in
+  fixed price steps)
+- **Volatility Scaled** — slippage grows and shrinks with market volatility,
+  based on `ATR %` or `Bar Range %`
 
 > Note: Slippage only affects market-style fills. Limit fills always execute
 > at the resolved limit or gap price.
 
 ### Expert settings
 
-For fine-grained control, expand **Expert Settings**:
+Most users can skip this. For fine-grained control, expand **Expert
+Settings**:
 
-- order routing for entry, exit, and risk orders
-- tiered maker / taker fee schedules
+- order routing — how entry, exit, and risk orders are sent to the market
+- tiered maker / taker fee schedules — fees that change with trading volume
 - ATR period and min / max caps for volatility-scaled slippage
-- portfolio guardrails like max drawdown or max daily loss
+- portfolio guardrails — automatic limits like max drawdown or max daily loss
 
 ## Run the backtest
 

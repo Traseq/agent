@@ -71,7 +71,7 @@
             "groups": [
               {
                 "group": "Reference",
-                "pages": ["reference/faq"]
+                "pages": ["reference/faq", "reference/glossary"]
               },
               {
                 "group": "Legal",
@@ -158,7 +158,7 @@
             "groups": [
               {
                 "group": "參考資料",
-                "pages": ["zh-hant/reference/faq"]
+                "pages": ["zh-hant/reference/faq", "zh-hant/reference/glossary"]
               },
               {
                 "group": "法律",

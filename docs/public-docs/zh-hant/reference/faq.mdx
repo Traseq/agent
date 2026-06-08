@@ -1,28 +1,58 @@
 ---
 title: FAQ
-description: 關於目前 Traseq 文件站範圍的常見問題。
+description: 關於 Traseq 的常見問題。
 ---
 
-## 目前已經搬了哪些內容？
+## Traseq 是什麼？
 
-目前站內已包含核心 onboarding、tutorial、workspace 與 API 文件，以及生成式端點文件。
+Traseq 是專為加密貨幣交易打造的策略研究平台。你可以用視覺化積木建立策略、
+用歷史資料回測，再比較結果來優化做法 ── 全程不需要寫程式。
+
+## Traseq 是免費的嗎？
+
+是。免費方案可以建立策略、執行回測、體驗整個平台，含每月 3 個研究額度，
+以及小額的 Public Agent API key 配額。付費方案（Plus、Pro、Team）則提供更多
+每月研究額度、更大的 API key 配額、檢視者席位與更高的協作容量。
+
+## 支援哪些交易對？
+
+目前支援核心的 USDT 現貨交易對，包含 BTCUSDT、ETHUSDT 與 SOLUSDT。
+
+## 可以使用哪些時間框架？
+
+所有方案都支援四種時間框架：`15m`、`1h`、`4h`、`1d`。所有方案也都能選擇
+完整可用歷史；每月研究額度才是控制總用量的依據。
+
+## 可以編輯已定案的策略嗎？
+
+不行。策略版本一旦定案就會被鎖定，以確保回測結果可重現（任何人跑同一個
+版本都會得到相同結果）。要修改的話，請建立策略的新版本。
+
+## 研究額度怎麼計算？
+
+每個方案都包含每月研究額度。`1` 個額度約涵蓋掃描 `100k` 根 K 棒，每次執行
+前都會顯示預估的額度成本。時間框架越短、日期區間越長，會掃描越多 K 棒，
+消耗的額度也越多。
 
 ## 有支援繁體中文嗎？
 
-有。站點已提供 `zh-Hant` 導航結構，與英文維持相同的頂層 tab。
+有。使用導覽列的語言切換器，即可在英文與繁體中文之間切換。
+
+## 可以邀請團隊成員嗎？
+
+可以，適用於 Pro 與 Team 方案。工作空間的擁有者與管理員可以邀請協作者並
+指派角色。詳見 [邀請成員](/zh-hant/guides/workspace/invitations)。
 
 ## Traseq 有提供 API 嗎？
 
-有。Public Agent API 可讓外部工具與 AI agent 串接 workspace，並以程式化方式建立策略、執行回測與讀取結果。所有方案都可使用 Public Agent API；Free 與 Plus 受較低的 API key quota、research credits 與 workspace limits 約束。請見 [API Overview](/zh-hant/api-reference/overview)。
-
-## API Reference 使用哪個 OpenAPI 檔案？
-
-`openapi/traseq-public-agent.json`
-
-這個檔案預期由 backend Swagger 匯出，而不是手工維護。
+有。Public Agent API 讓你把外部工具與 AI agent 串接到工作空間，所有方案都能
+以程式化方式建立策略、執行回測與讀取結果。Free 與 Plus 會受到較低的 key 配額、
+研究額度與工作空間限制約束。請見 [API 總覽](/zh-hant/api-reference/overview)
+開始使用。
 
 ## 相關頁面
 
-- [文件首頁](/zh-hant/index)
 - [快速開始](/zh-hant/guides/quickstart)
+- [核心概念](/zh-hant/guides/core-concepts)
+- [術語小辭典](/zh-hant/reference/glossary)
 - [API Keys](/zh-hant/api-reference/api-keys)

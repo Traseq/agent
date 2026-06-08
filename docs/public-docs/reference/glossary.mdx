@@ -1,0 +1,67 @@
+---
+title: Glossary
+description: Plain-language definitions of the trading and Traseq terms used across these docs.
+---
+
+New to trading or to Traseq? This page explains the terms that show up in the
+guides, tutorials, and results screens — in plain language, with no prior
+knowledge assumed.
+
+## Strategy and backtest basics
+
+| Term | What it means |
+| ---- | ------------- |
+| **Strategy** | A set of rules that decides when to open and close trades. |
+| **Backtest** | A test that runs your strategy over past market data to see how it *would* have performed. It is research, not a prediction. |
+| **Position / Trade** | The same thing in Traseq: one round trip from opening to closing. "Total Positions" simply means the number of trades taken. |
+| **Long / Short** | Long = you profit if price goes up. Short = you profit if price goes down. |
+| **Entry / Exit** | Entry = opening a position. Exit = closing it. |
+| **Bar (candle)** | One price candle for your chosen timeframe. On a `1h` chart, each bar covers one hour. |
+| **Bar close / Next bar open** | Traseq checks your conditions when a bar *closes* (the candle is final), then fills the order at the *open* of the next bar. This prevents the backtest from acting on prices that hadn't happened yet. |
+| **Timeframe** | How much time each bar represents — `15m`, `1h`, `4h`, or `1d`. |
+| **Spot / USDT pair** | Spot = buying the actual asset, with no leverage. A USDT pair like `BTCUSDT` is priced in the USDT stablecoin. |
+
+## Costs and order execution
+
+| Term | What it means |
+| ---- | ------------- |
+| **Fee (maker / taker)** | The trading fee charged per trade. A *maker* order rests on the book and adds liquidity; a *taker* order fills immediately and removes it. Exchanges usually charge takers a bit more. |
+| **bps (basis points)** | A unit for small percentages. `1 bp = 0.01%`, so `10 bps = 0.10%`. Used for fees and slippage. |
+| **Slippage** | The gap between the price you expected and the price you actually got. Fast-moving or thin markets cause more slippage. |
+| **ATR (Average True Range)** | A measure of how much price typically moves in one bar. Traseq can scale slippage by ATR, so volatile periods assume larger slippage. |
+| **Limit fill** | An order that fills only at a set price or better. |
+| **Stop fill** | An order that triggers once price crosses a level, then fills at the market. |
+| **Gap fill** | When price jumps *past* your target between two bars, the order fills at the next available (gapped) price instead of the exact level. |
+| **Take-profit / Stop-loss / Trailing stop** | Exit orders. Take-profit closes at a profit target; stop-loss caps a loss; a trailing stop follows price as it moves in your favour and locks in gains. |
+
+## Performance metrics
+
+| Term | What it means |
+| ---- | ------------- |
+| **Return %** | Total profit or loss over the backtest, as a percentage of starting capital. |
+| **Drawdown / Max drawdown** | *Peak-to-trough* means the largest drop from a high point in your account value to a later low. Max drawdown is the worst one — smaller is better. |
+| **Win rate** | The percentage of trades that were profitable. Read it together with profit factor, not on its own — a high win rate with large losing trades can still lose money. |
+| **Profit factor** | Total profit ÷ total loss. Above `1` means the strategy made more than it lost. |
+| **Sharpe ratio** | Return measured against how bumpy the ride was (its volatility). Higher means steadier returns for the risk taken. Above `1` is solid, above `2` is strong. |
+| **Equity curve** | A line chart of your account value over the course of the backtest. |
+| **P&L (PnL)** | Profit and loss. "P&L" and "PnL" mean the same thing. |
+| **MAE / MFE** | Maximum Adverse / Favourable Excursion — the worst (MAE) and best (MFE) unrealized profit a trade reached *before* it closed. |
+
+## Traseq concepts
+
+| Term | What it means |
+| ---- | ------------- |
+| **Semantic block** | A reusable piece of strategy logic, such as `RSI below 30`. You combine blocks to build a strategy. |
+| **Draft / Ready** | A strategy version's state. Draft is editable; Ready is finalized and locked for backtesting. |
+| **Finalize** | Locking a strategy version so it can be backtested. Once finalized it can't be edited — you create a new version instead. |
+| **Research credits** | The credits a backtest consumes. `1` credit covers about `100k` bars scanned; longer periods and shorter timeframes scan more bars and cost more. |
+| **Comparison set** | A group of backtest results placed side by side for comparison. |
+| **Workspace** | Your team's research space. Strategies, backtests, blocks, members, and billing all live inside a workspace. |
+| **Execution preset** | A one-click set of fee and slippage assumptions — **Workspace** (your saved defaults), **Market Baseline** (realistic spot conditions), or **Stress Test** (harsher slippage). |
+| **YTD** | Year to date — from January 1 of the current year until today. |
+
+## Related pages
+
+- [Core Concepts](/guides/core-concepts)
+- [Reading Backtest Results](/guides/tutorials/read-backtest-results)
+- [FAQ](/reference/faq)
